@@ -1,0 +1,12 @@
+
+ChangeLog for chipFish
+
+Version 0.1
+-----------
+. prototyping
+. utils
+. error
+. genome
+. chromosome
+. gDraw
+. feature
