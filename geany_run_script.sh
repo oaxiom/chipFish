@@ -1,6 +1,6 @@
 #!/bin/sh
 
-python "main.py"
+python "genome.py"
 
 echo "
 
