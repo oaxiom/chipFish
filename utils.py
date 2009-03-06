@@ -1,7 +1,7 @@
 """
 utils, part of chipFish
 
-(c) 2008-2009 oAxiom 
+(c) 2008-2009 oAxiom
 
 Not for distribution.
 
@@ -22,14 +22,14 @@ def rc(seq):
     tseq = [] # new list
     for i in range(len(seq)):
         tseq.append(compdict[seq[i]])
-        
+
     tseq.reverse()
-    
+
     rc_seq = str(tseq).strip('[]').replace('\'', '').replace(' ', '').replace(',', '')
     return(rc_seq)
-    
+
 def getLocation(_string):
-	"""
+    """
     # split the string into a dict [chr, left, right]
     # string of for chrN:left-right
     """
@@ -37,7 +37,7 @@ def getLocation(_string):
         t = _string.split(":")
     except ValueError:
         return(False)
-    
+
     chr = t[0].lower().strip("chr")
     if chr == "x":
         chr = "X"
@@ -47,7 +47,7 @@ def getLocation(_string):
         chr = "M"
     else:
         chr = int(chr)
-        
+
     t2 = t[1].split("-")
     left = int(t2[0])
     right = int(t2[1])
