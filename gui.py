@@ -9,7 +9,7 @@ Class container for constants and other data
 
 """
 
-import wx, guiWxParent, math
+import wx, guiWxParent, math, sys
 
 import ctypes
 import cairo
@@ -65,18 +65,20 @@ def Context_FromSWIGObject(swigObj):
     cairo_dll.cairo_reference(ptr)
     return pycairo_api.Context_FromContext(ptr, ContextType, None)
 
-class mainFrame(guiWxParent.frame_mainFrame_parent):
-    def __init__(self, *args, **kwds):
-        """
-        The mainFrame for the app.
-        """
-        #wx.Frame.__init__(self, None, -1, "test", size=(500,400))
-        guiWxParent.frame_mainFrame_parent.__init__(self, None, -1) # inherit
-        self.Bind(wx.EVT_PAINT, self.OnPaint)
-        #self.Maximize(True)
+class cairoPanel(wx.Panel):
+    def __init__(self, parent):
+        wx.Panel.__init__(self, parent, -1)
+
+        # put it into a sizer to make it movable.
+        #sizer = wx.BoxSizer(wx.VERTICAL)
+        #sizer.Add(self.canvas, 1, wx.LEFT|wx.TOP|wx.GROW)
+        #self.SetSizer(sizer)
+        #self.SetSizer(sizer)
+        self.Fit()
 
     def OnPaint(self, event):
-        dc = wx.PaintDC(self)
+        # override;
+        dc = wx.PaintDC(self) # make each time OnPaint is called.
         w,h = dc.GetSizeTuple()
         gc = wx.GraphicsContext.Create(dc)
         nc = gc.GetNativeContext()
@@ -87,13 +89,35 @@ class mainFrame(guiWxParent.frame_mainFrame_parent):
         gc.SetBrush(wx.Brush("pink"))
         gc.DrawRectangle(w/4.,h/4.,w/2.,h/2.)
 
-        #cairo drawing calls
+        #cairo drawing calls, need to go here.
         ctx.arc(2.*w/3,2.*h/3.,min(w,h)/4. - 10,0, math.pi*2)
         ctx.set_source_rgba(0,1,1,0.5)
         ctx.fill_preserve()
         ctx.set_source_rgb(1,0.5,0)
         ctx.stroke()
 
+    def OnRedraw(self,evt):
+        self.canvas.draw() #?
+
+    def getPlotHandle(self):
+        return(self.subplot)
+
+    def onEraseBackground(self, evt):
+        # this is supposed to prevent redraw flicker on some X servers...
+        # from fakeTime? Still required?
+        pass
+
+class mainFrame(guiWxParent.frame_mainFrame_parent):
+    def __init__(self, *args, **kwds):
+        """
+        The mainFrame for the app.
+        """
+        #sys.stderr = self
+        #sys.stdout = self
+        #wx.Frame.__init__(self, None, -1, "test", size=(500,400))
+        guiWxParent.frame_mainFrame_parent.__init__(self, None, -1) # inherit
+        self.Maximize(True)
+        self.Drawer = cairoPanel(self.gDrawPanel)
 
 if __name__ == "__main__":
     app = wx.App()
