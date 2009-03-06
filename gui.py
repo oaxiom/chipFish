@@ -65,9 +65,10 @@ def Context_FromSWIGObject(swigObj):
     cairo_dll.cairo_reference(ptr)
     return pycairo_api.Context_FromContext(ptr, ContextType, None)
 
-class cairoPanel(wx.Panel):
+class drawPanel(wx.Panel):
     def __init__(self, parent):
-        wx.Panel.__init__(self, parent, -1)
+        wx.Panel.__init__(self, parent, -1, size=(-1,-1), style=wx.FULL_REPAINT_ON_RESIZE) # This has to be set to full repaint :)
+        self.Bind(wx.EVT_PAINT, self.OnPaint)
 
         # put it into a sizer to make it movable.
         #sizer = wx.BoxSizer(wx.VERTICAL)
@@ -79,32 +80,51 @@ class cairoPanel(wx.Panel):
     def OnPaint(self, event):
         # override;
         dc = wx.PaintDC(self) # make each time OnPaint is called.
+        #dc = wx.AutoBufferedPaintDC(self) # not clear why this doesn't work ...
         w,h = dc.GetSizeTuple()
         gc = wx.GraphicsContext.Create(dc)
         nc = gc.GetNativeContext()
         ctx = Context_FromSWIGObject(nc)
 
-        #wxGC drawing calls
-        gc.SetPen(wx.Pen("navy", 2))
-        gc.SetBrush(wx.Brush("pink"))
-        gc.DrawRectangle(w/4.,h/4.,w/2.,h/2.)
-
-        #cairo drawing calls, need to go here.
+        # Cairo:
+        ctx.set_source_rgba(0,0,0,1)
+        ctx.rectangle(0,0,w,h)
+        ctx.set_source_rgba(1, 1, 0, 0.80)
+        ctx.rectangle(0, 0, 0.5, 0.5)
+        ctx.fill()
         ctx.arc(2.*w/3,2.*h/3.,min(w,h)/4. - 10,0, math.pi*2)
         ctx.set_source_rgba(0,1,1,0.5)
         ctx.fill_preserve()
         ctx.set_source_rgb(1,0.5,0)
+        #ctx.stroke()
+
+        ctx.set_source_rgb(0, 0, 0)
+        ctx.move_to(0, 0)
+        ctx.line_to(w, h)
+        ctx.move_to(1, 0)
+        ctx.line_to(0, 1)
+        ctx.set_line_width(0.2)
         ctx.stroke()
 
-    def OnRedraw(self,evt):
-        self.canvas.draw() #?
+        ctx.rectangle(0, 0, 0.5, 0.5)
+        ctx.set_source_rgba(1, 0, 0, 0.80)
+        ctx.fill()
 
-    def getPlotHandle(self):
-        return(self.subplot)
+        ctx.rectangle(0, 0.5, 0.5, 0.5)
+        ctx.set_source_rgba(0, 1, 0, 0.60)
+        ctx.fill()
+
+        ctx.rectangle(0.5, 0, 0.5, 0.5)
+        ctx.set_source_rgba(0, 0, 1, 0.40)
+        ctx.fill()
+        #self.Layout()
+
+    def OnRedraw(self,evt):
+        self.OnPaint(evt)
 
     def onEraseBackground(self, evt):
         # this is supposed to prevent redraw flicker on some X servers...
-        # from fakeTime? Still required?
+        # Still required?
         pass
 
 class mainFrame(guiWxParent.frame_mainFrame_parent):
@@ -112,12 +132,18 @@ class mainFrame(guiWxParent.frame_mainFrame_parent):
         """
         The mainFrame for the app.
         """
-        #sys.stderr = self
+        #sys.stderr = self # silence errors.
         #sys.stdout = self
-        #wx.Frame.__init__(self, None, -1, "test", size=(500,400))
         guiWxParent.frame_mainFrame_parent.__init__(self, None, -1) # inherit
         self.Maximize(True)
-        self.Drawer = cairoPanel(self.gDrawPanel)
+        # set-up the gDraw Cairo panel
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        self._Drawer = drawPanel(self.gDrawPanel)
+        sizer.Add(self._Drawer, 2, wx.EXPAND, 0)
+        self.gDrawPanel.SetSizer(sizer)
+        self.Fit()
+        #
+        #gDrawPanelSizer.Add(self.gDrawPanel, 2, wx.EXPAND, 0)
 
 if __name__ == "__main__":
     app = wx.App()

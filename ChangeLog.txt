@@ -1,8 +1,17 @@
 
 ChangeLog for chipFish
 
+todo:
+-----
+. error to handle the stderr/out log.
+
+BUGS:
+-----
+. [LOW] The panel sliders can be sized to the extreme up/left/etc and disappear, never to return...
+
 Version 0.1
 -----------
+. getting Cairo to work.
 . prototyping
 . utils
 . error
