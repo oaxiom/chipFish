@@ -1,6 +1,6 @@
 #!/bin/sh
 
-python "genome.py"
+python "gui.py"
 
 echo "
 
