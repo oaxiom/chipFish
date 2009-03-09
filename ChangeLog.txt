@@ -8,6 +8,7 @@ todo:
 BUGS:
 -----
 . [LOW] The panel sliders can be sized to the extreme up/left/etc and disappear, never to return...
+. [LOW] Double clicking in a window pane 'maximises' the pane and it becomes unavailable.
 
 Version 0.1
 -----------
