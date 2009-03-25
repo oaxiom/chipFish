@@ -6,7 +6,8 @@ utils, part of chipFish
 Not for distribution.
 
 Class container for utilities for conversion etc...
-
+stuff that doesn't really belong attached to a class.
+useful macros that get used all over the code base
 """
 
 def rc(seq):
@@ -35,20 +36,27 @@ def getLocation(_string):
     """
     try:
         t = _string.split(":")
-    except ValueError:
+
+        chr = t[0].lower().strip("chr")
+        if chr == "x":
+            chr = "X"
+        elif chr == "y":
+            chr = "Y"
+        elif chr == "m":
+            chr = "M"
+        else:
+            chr = int(chr)
+
+        t2 = t[1].split("-")
+        left = int(t2[0])
+        right = int(t2[1])
+        return({"chr": chr, "left":left, "right":right})
+    except:
         return(False)
 
-    chr = t[0].lower().strip("chr")
-    if chr == "x":
-        chr = "X"
-    elif chr == "y":
-        chr = "Y"
-    elif chr == "m":
-        chr = "M"
-    else:
-        chr = int(chr)
-
-    t2 = t[1].split("-")
-    left = int(t2[0])
-    right = int(t2[1])
-    return({"chr": chr, "left":left, "right":right})
+def formatLocation(chr, left, right):
+    """
+    returns a correctly formatted genomic location string.
+    the opposite of getLocation()
+    """
+    return("chr%s:%s-%s" % (str(chr), str(left), str(right)))

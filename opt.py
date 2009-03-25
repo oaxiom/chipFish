@@ -8,16 +8,25 @@ Not for distribution.
 Class container for mutable constants and other data
 
 . These should be loadable/savable and changable.
+. save as a editable text file?
 """
-
-# set of options
 
 import sys, os
 
 # generic options
-app_path = sys.path[0]
+class generic:
+    app_path = sys.path[0]
 
-# graphic options
+class debug:
+    """
+    containers for debugging options.
+    """
+    debug_version = True
+    if debug_version:
+        draw_collision_boxes = True
+    else:
+        draw_collision_boxes = False
+
 class graphics:
     """
     general graphics options.
@@ -33,13 +42,14 @@ class graphics:
 
 class ruler:
     """
-    options specific to the ruler.
+    options specific to the genome ruler.
     """
-    ruler_font = "Arial"
-    ruler_height_px = 10 # height ofruler in pixels.
-    ruler_text_height = 20 # distance from top of screen of the ruler text.
-    ruler_colour = (0,0,0)
-    ruler_line_width = 1.5
+    font = "Arial"
+    font_size = 6
+    height_px = 10 # height of ruler in pixels.
+    text_height = 20 # distance from top of screen of the ruler text.
+    colour = (0,0,0)
+    line_width = 1
 
 if __name__ == "__main__":
     # error checking

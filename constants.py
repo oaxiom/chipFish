@@ -11,7 +11,7 @@ Class container for immutable constants
 
 import cairo
 
-# genuine constants, unchangable:
+# genuine constants, unmutable:
 
 # text constants
 TXT_NORMAL = 1

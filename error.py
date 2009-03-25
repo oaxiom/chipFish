@@ -7,6 +7,7 @@ Not for distribution.
 
 Class containter for error handling.
 
+. remove the error class, and raise exceptions.
 """
 
 import sys, os
