@@ -13,19 +13,20 @@ NOTES:
 . only gDraw external procedures are valid.
 . procedures prefixed with _ are undocumented, internal and liable to change.
   (private classes)
-. DXF/PS exporter?
+. DXF/PS exporter? Yes please.
 . make a set of drawing primitives in case we need to swap out the back renderer
     some time in the future.
 . We're currently using the 'toy' text-rendering API.
     Is this adequate for our needs?
     - will only render UTF-8 fonts... Anything else requried?
-    that rules out greek symbols?
+    that rules out greek symbols, Chinese Cyrillic etc...?
 """
 
 import sys, os, math, opt
 
 from error import *
 from constants import *
+from boundbox import bBox
 
 #----------------------------------------------------------------------
 # The Cairo interface.
@@ -95,7 +96,7 @@ class drawPanel(wx.Panel):
     """
     def __init__(self, parent, paint_Procedure):
         wx.Panel.__init__(self, parent, -1, size=(-1,-1), style=wx.FULL_REPAINT_ON_RESIZE) # This has to be set to full repaint :)
-        self.Bind(wx.EVT_PAINT, paint_Procedure)
+        self.Bind(wx.EVT_PAINT, paint_Procedure, self)
         self.Fit()
 
 #----------------------------------------------------------------------
@@ -111,6 +112,19 @@ class gDraw:
         """
         self.validDraw = False # set to true if it is valid to draw
         self.scale = 1
+        self.colBoxes = [] # list of boundbox objects.
+
+    def _debug_draw_col_boxes(self):
+        """
+        (Internal)
+        Debug routine to draw the locations of the collision boxes.
+        """
+        self._setPenColour((0.6, 0.2, 0, 0.5))
+        for box in self.colBoxes:
+            dim = box.getDimensions()
+            self.ctx.rectangle(dim[0], dim[1], dim[2], dim[3])
+            self.ctx.fill()
+        self.ctx.stroke()
 
     def bindPanel(self, panel):
         """
@@ -192,9 +206,9 @@ class gDraw:
         if not self.validDraw: raise CairoDrawError
 
         x,y,w,h = self._getTextExtents("Chromosome %s" % str(self.chromosome))
-        self._drawText(5, opt.ruler.ruler_text_height+w, opt.ruler.ruler_font, "Chromosome %s" % str(self.chromosome))
+        self._drawText(5, opt.ruler.text_height+w, opt.ruler.font, "Chromosome %s" % str(self.chromosome))
 
-        self._setPenColour(opt.ruler.ruler_colour)
+        self._setPenColour(opt.ruler.colour)
         # work out a good scale representation
         # wether to draw at 100, 1000, 10000, 100000, 1000000 ...
 
@@ -202,15 +216,18 @@ class gDraw:
         for index, window_size in enumerate([100, 1000, 10000]):
 
             nearest = int(math.ceil(float(self.lbp+1) / window_size) * window_size)
-            self.ctx.set_line_width(opt.ruler.ruler_line_width * index+0.5)
+            self.ctx.set_line_width(opt.ruler.line_width * index+0.5)
 
             for real_offset in xrange(nearest, self.rbp, window_size):
                 screen_offset = (self.w * (float(real_offset - self.lbp) / self.delta))
                 self.ctx.move_to(screen_offset, 0)
-                self.ctx.line_to(screen_offset, opt.ruler.ruler_height_px * index+0.5)
+                self.ctx.line_to(screen_offset, opt.ruler.height_px * index+0.5)
                 self.ctx.stroke()
                 if index == 1:
-                    self._drawText(screen_offset +2, opt.ruler.ruler_text_height, opt.ruler.ruler_font, str(real_offset))
+                    self._drawText(screen_offset +2, opt.ruler.text_height, opt.ruler.font, str(real_offset), opt.ruler.font_size)
+
+        # set up the bounding box.
+        self.colBoxes.append(bBox((0,0,self.w, opt.ruler.text_height), (0,0), None, None))
         return(True)
 
     def drawGene(self, data):
@@ -301,6 +318,13 @@ class gDraw:
         """
         return(self.panel)
 
+    def forceRedraw(self):
+        """
+        Use me to force a repaint, rather than calling OnPaint directly.
+        """
+        self.OnPaint(None)
+        return(True)
+
     def OnPaint(self, event):
         """
         Call to get Cairo to paint, this is done automatically if bound
@@ -354,6 +378,9 @@ class gDraw:
             raise ErrorCairoAcquireDevice
         self.ctx = ctx
 
+        # kill all the colission boxes
+        self.colBoxes = []
+
         # blank the screen:
         self._setPenColour(opt.graphics.screen_colour)
         ctx.rectangle(0,0,self.w,self.h)
@@ -361,7 +388,7 @@ class gDraw:
 
         # do the drawing's here:
         #self.setLocation(3, 9500, 15000) # what the viewport can see.
-        self.setLocation(3, 5000, 30000)
+        #self.setLocation(3, 5000, 30000)
         self.drawChr(None)
         tgene = {"type": "gene", "strand": "+", "left": 12344, "right": 13455}
         self.drawGene(tgene)
@@ -376,6 +403,7 @@ class gDraw:
         self.validDraw = False
 
         # any further (internal) drawing goes here.
+        if opt.debug.draw_collision_boxes: self._debug_draw_col_boxes()
         return(True)
 
     def _setPenColour(self, colour):
