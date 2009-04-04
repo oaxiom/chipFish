@@ -393,6 +393,8 @@ class gDraw:
         #self.ctx.stroke()
         self.ctx.fill()
 
+        self.ctx.set_line_width(1)
+
         if data["strand"] == "+": # top strand
             # arrow.
             self.ctx.move_to(posLeft+10, self.halfh-20)
