@@ -9,6 +9,7 @@ Class container for mutable constants and other data
 
 . These should be loadable/savable and changable.
 . save as a editable text file?
+. would this be better as a set of dictionaries?
 """
 
 import sys, os
@@ -31,12 +32,13 @@ class graphics:
     """
     general graphics options.
     """
-    gene_height = 10        # width to draw the genes
-    lncrna_height = 8
+    gene_height = 8        # width to draw the genes
+    cds_height = 12
+    lncrna_height = 7
     microRNA_height = 6
 
     screen_colour = (1,1,1,1)
-    gene_colour = (0,0,0)
+    gene_colour = (0,0,1)
     lncrna_colour = (0.1, 0.8, 0.1)
     microRNA_colour = (0.6, 0.1, 0)
 
@@ -54,5 +56,5 @@ class ruler:
 if __name__ == "__main__":
     # error checking
     #print dir(graphics.gene_colour)
-    print graphics.gene_colour
-
+    # export the options as a csv.
+    pass

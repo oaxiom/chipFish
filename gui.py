@@ -5,94 +5,78 @@ gui, part of chipFish
 
 Not for distribution.
 
-Class container for the gui, inherits from guiWxParent, auto generated
-from wxGlade
+Class container for the gui,
 
 TODO:
 . introduce a log class
 
 """
 
-import wx, guiWxParent, math, sys, gDraw, utils, wx.xrc
+import math, sys, gDraw, utils, time
 
-#logic by itself in module
+from genome import *
 
 import wx
 from wx import xrc
 
-
-class MyApp(wx.App):
+class cfApp(wx.App):
     """
-    main frame of the application. Overrides the guiWxParent
-    derived from wxGlade
+    main frame of the application
     """
     def OnInit(self):
         # errors should be put into a log;
         #sys.stderr = self # silence errors.
         #sys.stdout = self
-        print "chipFish (c) 2009, oAxiom" # log.
+        print "chipFish (c) 2009, oAxiom, %s" % (str(time.time())) # log.
+
+        # set up and load the genome
+        # (In future this will load the initial state here)
+
+        self.g = genome("mouse", "mm8")
+
+        # load the gui
         self.res = xrc.XmlResource('gui_parent.xrc')
+
         # load the mainFrame
         self.main = self.res.LoadFrame(None, "mainFrame")
-        # I have to bind all the events here;
-
 
         # bind the gPanel;
         sizer = wx.BoxSizer(wx.VERTICAL)
-        self._Drawer = gDraw.gDraw()
+        self._Drawer = gDraw.gDraw(self.g)
         self.gui_panel = id=wx.xrc.XRCCTRL(self.main, "gui_panel")
-        print self.gui_panel
-        #self.frame.Bind(wx.EVT_BUTTON, self.OnSubmit, id=xrc.XRCID('button'))
         gDrawPanel = wx.xrc.XRCCTRL(self.main, "gDrawPanel")
         self._Drawer.bindPanel(gDrawPanel) # bind the drawPanel to gDraw
         draw_panel = self._Drawer.getPanel()
         sizer.Add(draw_panel, 2, wx.EXPAND, 0) # add the panel to the gui
         gDrawPanel.SetSizer(sizer) # add it to the GUI
-        self._Drawer.setLocation(3, 9500, 15000)
-
-        print wx.xrc.XRCCTRL(self.gui_panel, "butViewLeft")
+        #self._Drawer.setLocation("3", 153639000, 153883000) # set the location of the genome.
+        self._Drawer.setLocation("3", 153772000, 153850000) # set the location of the genome.
+        self._Drawer.setLocation("3", 153844000, 153850000) # set the location of the genome.
+        #self._Drawer.setLocation("8", 49604255, 49639408) # set the location of the genome.
 
         # bind events to the GUI.
         self.Bind(wx.EVT_LEFT_DOWN, self._mouseLeftDown, draw_panel)
         self.Bind(wx.EVT_BUTTON, self.OnViewLeft, wx.xrc.XRCCTRL(self.gui_panel, "butViewLeft"))
         self.Bind(wx.EVT_BUTTON, self.OnViewRight, wx.xrc.XRCCTRL(self.main, "butViewRight"))
         self.Bind(wx.EVT_BUTTON, self.OnViewBigRight, wx.xrc.XRCCTRL(self.main, "butViewBigRight"))
+        self.Bind(wx.EVT_BUTTON, self.OnButZoomIn, wx.xrc.XRCCTRL(self.main, "butZoomIn"))
+        self.Bind(wx.EVT_BUTTON, self.OnButZoomOut, wx.xrc.XRCCTRL(self.main, "butZoomOut"))
 
-
-        # get changable elements from the gui
+        # get changable elements from the gui and store them locally.
+        # (See _updateDisplay())
         self.textGoToLoc = wx.xrc.XRCCTRL(self.main, "textGoToLoc")
-        print "textGoToLoc", self.textGoToLoc
+        #print "textGoToLoc", self.textGoToLoc
 
         self.main.Show()
         self.main.Maximize(True)
         return(True)
-
-        # set-up the gDraw panel
-        #sizer = wx.BoxSizer(wx.VERTICAL)
-        #self._Drawer = gDraw.gDraw()
-        #self._Drawer.bindPanel(self.gDrawPanel) # bind the drawPanel to gDraw
-        #draw_panel = self._Drawer.getPanel()
-        #sizer.Add(draw_panel, 2, wx.EXPAND, 0) # add the panel to the gui
-        #self.gDrawPanel.SetSizer(sizer)
-
-        # Bind mouse events to gDrawPanel
-        #self.gDrawPanel.Connect(wx.EVT_LEFT_DOWN, self._mouseLeftDown)
-        #self.Bind(wx.EVT_LEFT_DOWN, self._mouseLeftUp)
-
-        #self.Bind(wx.EVT_LEFT_UP, self._mouseLeftUp, sizer)
-        #self.Bind(wx.EVT_LEFT_DOWN, self._mouseLeftDown, draw_panel)
-
-        #self.Fit()
-
-        # set-up other parts of the display.
-        #self.textGoToLoc.SetValue(utils.formatLocation(3, self._Drawer.lbp, self._Drawer.rbp))
 
     #------------------------------------------------------------------
     # Internal
     def _updateDisplay(self, redrawDisplay=True, event=None):
         """
         (Internal)
-        update the gui forms
+        update the gui forms and changeable elements.
         redrawDisplay will not redraw the gui, it just redraws the
         gDrawPanel
         """
@@ -166,5 +150,5 @@ class MyApp(wx.App):
 
 
 if __name__ == "__main__":
-    app = MyApp()
+    app = cfApp()
     app.MainLoop()
