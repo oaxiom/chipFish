@@ -19,14 +19,17 @@ NOTES:
 . We're currently using the 'toy' text-rendering API.
     Is this adequate for our needs?
     - will only render UTF-8 fonts... Anything else requried?
-    that rules out greek symbols, Chinese Cyrillic etc...?
+    that rules out greek symbols, Chinese, Cyrillic etc...?
 """
 
-import sys, os, math, opt
+import sys, os, math
+
+import opt, utils
 
 from error import *
 from constants import *
 from boundbox import bBox
+from operator import itemgetter
 
 #----------------------------------------------------------------------
 # The Cairo interface.
@@ -103,7 +106,7 @@ class drawPanel(wx.Panel):
 # End of the Cairo interface
 
 class gDraw:
-    def __init__(self):
+    def __init__(self, genome):
         """
         initialise the gDraw
         pass a wx.Panel that the drawer can atach to.
@@ -113,6 +116,14 @@ class gDraw:
         self.validDraw = False # set to true if it is valid to draw
         self.scale = 1
         self.colBoxes = [] # list of boundbox objects.
+        self.paintQ = []
+
+        self.genome = genome
+
+        # testers
+        self.paintQ.append({"type": "gene", "strand": "+", "left": 12344, "right": 13455})
+        self.paintQ.append({"type": "lncRNA", "strand": "-", "left": 10000, "right": 11000})
+        self.paintQ.append({"type": "microRNA", "strand": "+", "left": 11050, "right": 11100})
 
     def _debug_draw_col_boxes(self):
         """
@@ -149,19 +160,19 @@ class gDraw:
         base pair number.
         It also calculates the internal scale representations.
         """
-        try:
-            self.chromosome = int(chromosome)
-        except ValueError:
-            if chromosome in validChrNames: # from constants
-                self.chromosome = chromosome
-            else:
-                raise ErrorInvalidChromosome
+        self.chromosome = str(chromosome)
+        # test for valid chr.
+        # elif
 
         self.lbp = leftBasePair
         self.rbp = rightBasePair
         self.scale = (rightBasePair - leftBasePair) / 10000
         self.delta = self.rbp - self.lbp
         self.deltaf = float(self.delta)
+
+        # get the new paintQ:
+        self.paintQ = self.genome.getAllFeaturesInRange(utils.formatLocation(self.chromosome, self.lbp, self.rbp))
+        print self.paintQ
         return(True)
 
     def setDrawAttribute(self, attribute, value):
@@ -197,6 +208,12 @@ class gDraw:
         """
         pass
 
+    def drawObject(self, data):
+        """
+        add an object onto the Q
+        """
+        self.paintQ.append(data)
+
     def drawRuler(self):
         """
         draw the ruler.
@@ -212,7 +229,7 @@ class gDraw:
         # work out a good scale representation
         # wether to draw at 100, 1000, 10000, 100000, 1000000 ...
 
-        # ten housands
+        # ten thousands
         for index, window_size in enumerate([100, 1000, 10000]):
 
             nearest = int(math.ceil(float(self.lbp+1) / window_size) * window_size)
@@ -230,73 +247,6 @@ class gDraw:
         self.colBoxes.append(bBox((0,0,self.w, opt.ruler.text_height), (0,0), None, None))
         return(True)
 
-    def drawGene(self, data):
-        """
-        drawFeatures of the type "Gene"
-        data should be a dict of the form:
-        [chr, left, right,
-        exon_coords(local), strand, cds_start, cds_end]
-        """
-        if not self.validDraw: raise ErrorCairoDraw
-
-        # if the gene is not within the viewport the quit out
-
-        #print "t:", ((data["left"]-self.lbp) / self.deltaf), ((data["right"]-self.lbp) / self.deltaf)
-
-        # should turn this pos stuff into a macro
-        posLeft = self.w * ((data["left"]-self.lbp) / self.deltaf)
-        posRight = (self.w * ((data["right"]-self.lbp) / self.deltaf))
-        #print posLeft, posRight, self.delta
-
-        self.ctx.set_line_width(1)
-
-        if data["type"] == "gene":
-            self._setPenColour(opt.graphics.gene_colour)
-            hei_off = opt.graphics.gene_height # height offset
-        elif data["type"] == "lncRNA":
-            self._setPenColour(opt.graphics.lncrna_colour)
-            hei_off = opt.graphics.lncrna_height
-        elif data["type"] == "microRNA":
-            self._setPenColour(opt.graphics.microRNA_colour)
-            hei_off = opt.graphics.microRNA_height
-        else:
-            self.ctx.set_source_rgb(0,0,0)
-            hei_off = 5
-
-        if data["strand"] == "+": # top strand
-            self.ctx.rectangle(posLeft,self.halfh-hei_off,posRight - posLeft,hei_off * 2)
-            self.ctx.fill()
-            # the line, up.
-            self.ctx.move_to(posLeft, self.halfh)
-            self.ctx.line_to(posLeft, self.halfh-20)
-            self.ctx.line_to(posLeft+20, self.halfh-20)
-            self.ctx.stroke()
-            # arrow.
-            self.ctx.move_to(posLeft+10, self.halfh-20)
-            self.ctx.line_to(posLeft+10, self.halfh-30)
-            self.ctx.line_to(posLeft+20, self.halfh-20)
-            self.ctx.line_to(posLeft+10, self.halfh-10)
-            self.ctx.line_to(posLeft+10, self.halfh-20)
-            self.ctx.stroke()
-        elif data["strand"] == "-":
-            self.ctx.rectangle(posLeft,self.halfh-hei_off,posRight - posLeft,hei_off * 2)
-            self.ctx.fill()
-            # the line
-            self.ctx.move_to(posRight, self.halfh)
-            self.ctx.line_to(posRight, self.halfh+20)
-            self.ctx.line_to(posRight-20, self.halfh+20)
-            self.ctx.stroke()
-            # arrow.
-            self.ctx.move_to(posRight-10, self.halfh+20)
-            self.ctx.line_to(posRight-10, self.halfh+30)
-            self.ctx.line_to(posRight-20, self.halfh+20)
-            self.ctx.line_to(posRight-10, self.halfh+10)
-            self.ctx.line_to(posRight-10, self.halfh+20)
-            self.ctx.stroke()
-        else:
-            raise ErrorInvalidGeneDefinition
-            # bottom strand
-
     def exportPostScript(self, _filename):
         pass
 
@@ -307,9 +257,6 @@ class gDraw:
         pass
 
     def exportBMP(self, _filename):
-        pass
-
-    def exportJPG(self, _filename):
         pass
 
     def getPanel(self):
@@ -347,6 +294,16 @@ class gDraw:
 
     #------------------------------------------------------------------
     # Internal painters
+    #------------------------------------------------------------------
+
+    def _realToLocal(self, x, y):
+        """
+        (Internal)
+        Convert real genomic coords to local pixel coordinates.
+        local to the location of the genome line.
+        """
+        return(( (self.w * ((x-self.lbp) / self.deltaf), self.halfh + y) ))
+
     def _getTextExtents(self, text):
         """
         (Internal)
@@ -367,6 +324,99 @@ class gDraw:
         self.ctx.move_to(x, y)
         self.ctx.show_text(text)
 
+    def _drawGene(self, data):
+        """
+        draw Features of the type "Gene"
+        data should be a dict of the form: (a dict)
+        [chr, left, right,
+        exon_coords(local), strand, cds_start, cds_end]
+        """
+        if not self.validDraw: raise ErrorCairoDraw
+
+        #print "t:", ((data["left"]-self.lbp) / self.deltaf), ((data["right"]-self.lbp) / self.deltaf)
+
+        # should turn this pos stuff into a macro
+        posLeft = self.w * ((data["start"]-self.lbp) / self.deltaf)
+        posRight = (self.w * ((data["end"]-self.lbp) / self.deltaf))
+        #print posLeft, posRight, self.delta
+        gOff = opt.graphics.gene_height # height offsets
+        cOff = opt.graphics.cds_height
+        self.ctx.set_line_width(0.5)
+        self._setPenColour(opt.graphics.gene_colour)
+
+        off = gOff
+
+        start = False
+        done = False
+
+        tc = []
+        for item in data["exonStarts"]:
+            tc.append({"c": item ,"t": "es"})
+        for item in data["exonEnds"]:
+            tc.append({"c": item, "t": "ee"})
+        tc.append({"c": data["cdsStart"], "t": "cdss"})
+        tc.append({"c": data["cdsEnd"], "t": "cdse"})
+
+        tc = sorted(tc, key=itemgetter("c"))
+
+        coords = []
+        coords.append(self._realToLocal(data["start"], 0))
+        coords.append(self._realToLocal(data["start"], +gOff))
+        off = gOff
+        for c in tc:
+            if c["t"] == "cdss":
+                off = cOff
+                coords.append(self._realToLocal(c["c"], +gOff))
+                coords.append(self._realToLocal(c["c"], +cOff))
+            elif c["t"] == "cdse":
+                off = gOff
+                coords.append(self._realToLocal(c["c"], +cOff))
+                coords.append(self._realToLocal(c["c"], +gOff))
+            elif c["t"] == "es":
+                coords.append(self._realToLocal(c["c"], 0))
+                coords.append(self._realToLocal(c["c"], +off))
+            elif c["t"] == "ee":
+                coords.append(self._realToLocal(c["c"], +off))
+                coords.append(self._realToLocal(c["c"], 0))
+
+        coords.append(self._realToLocal(data["end"], +gOff))
+        coords.append(self._realToLocal(data["end"], 0))
+
+        self.ctx.move_to(coords[0][0], coords[0][1])
+        for index, item in enumerate(coords):
+            self.ctx.line_to(item[0], item[1])
+        self.ctx.move_to(coords[0][0], coords[0][1])
+
+        #coords.reverse()
+        for item in coords:
+            self.ctx.line_to(item[0], self.halfh-(item[1]-self.halfh))
+        #self.ctx.stroke()
+        self.ctx.fill()
+
+        if data["strand"] == "+": # top strand
+            # arrow.
+            self.ctx.move_to(posLeft+10, self.halfh-20)
+            self.ctx.line_to(posLeft+10, self.halfh-30)
+            self.ctx.line_to(posLeft+20, self.halfh-20)
+            self.ctx.line_to(posLeft+10, self.halfh-10)
+            self.ctx.line_to(posLeft+10, self.halfh-20)
+            self.ctx.stroke()
+            self._drawText(posLeft, self.halfh-25, "Arial", data["name"], 12)
+        elif data["strand"] == "-":
+            # arrow.
+            self.ctx.move_to(posRight-10, self.halfh+20)
+            self.ctx.line_to(posRight-10, self.halfh+30)
+            self.ctx.line_to(posRight-20, self.halfh+20)
+            self.ctx.line_to(posRight-10, self.halfh+10)
+            self.ctx.line_to(posRight-10, self.halfh+20)
+            self.ctx.stroke()
+            self._drawText(posRight, self.halfh+25, "Arial", data["name"], 12)
+        else:
+            raise ErrorInvalidGeneDefinition
+
+
+        return(True)
+
     def _paint(self, ctx):
         """
         (Internal)
@@ -386,18 +436,19 @@ class gDraw:
         ctx.rectangle(0,0,self.w,self.h)
         ctx.fill()
 
-        # do the drawing's here:
-        #self.setLocation(3, 9500, 15000) # what the viewport can see.
-        #self.setLocation(3, 5000, 30000)
-        self.drawChr(None)
-        tgene = {"type": "gene", "strand": "+", "left": 12344, "right": 13455}
-        self.drawGene(tgene)
-        tgene = {"type": "lncRNA", "strand": "-", "left": 10000, "right": 11000}
-        self.drawGene(tgene)
-        tgene = {"type": "microRNA", "strand": "+", "left": 11050, "right": 11100}
-        self.drawGene(tgene)
+        func_dict = {
+            "gene": self._drawGene,
+            "lncRNA": self._drawGene,
+            "microRNA": self._drawGene
+        }
 
-        self.drawRuler()
+        self.drawChr(None)
+
+        for item in self.paintQ:
+            if func_dict.has_key(item["type"]):
+                func_dict[item["type"]](item) # I can't believe this actually works!
+
+        #self.drawRuler()
 
         # render and finish drawing.
         self.validDraw = False
@@ -419,3 +470,7 @@ class gDraw:
         else:
             return(False)
         return(True)
+
+if __name__ == "__main__":
+    a = gDraw()
+    a._drawGene()

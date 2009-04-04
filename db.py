@@ -10,6 +10,8 @@ interface to the db backend.
 abstracted to add in/out other db backends.
 based on SQL and using SQLite for this particular implmenetation.
 
+At the moment, it's all done with a bunch of adhoc csv's :(
+
 """
 
 import sqlite
