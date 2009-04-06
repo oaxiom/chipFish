@@ -12,9 +12,12 @@ TODO:
 
 """
 
-import math, sys, gDraw, utils, time
+import math, sys, time
+
+import opt, gDraw, utils
 
 from genome import *
+from error import *
 
 import wx
 from wx import xrc
