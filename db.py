@@ -14,7 +14,12 @@ At the moment, it's all done with a bunch of adhoc csv's :(
 
 """
 
-import sqlite
+from error import ErrorLibrarySQLite
+
+try:
+    import sqlite
+except:
+    raise ErrorLibrarySQLite
 
 class db:
     def __init__(self, name, database, **kargs):

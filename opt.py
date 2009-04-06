@@ -9,7 +9,6 @@ Class container for mutable constants and other data
 
 . These should be loadable/savable and changable.
 . save as a editable text file?
-. would this be better as a set of dictionaries?
 """
 
 import sys, os
@@ -53,8 +52,16 @@ class ruler:
     colour = (0,0,0)
     line_width = 1
 
+def saveOptions():
+    pass
+
+def loadOptions():
+    pass
+
+
 if __name__ == "__main__":
     # error checking
     #print dir(graphics.gene_colour)
     # export the options as a csv.
     pass
+

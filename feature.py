@@ -9,7 +9,7 @@ Not for distribution.
 
 import sys, os, csv
 
-import error, db, utils
+import error, utils
 
 validFeatureTypes = [
     "Point", "Span", "Peak", "Expression", # generic types
