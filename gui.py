@@ -30,7 +30,7 @@ class cfApp(wx.App):
         # errors should be put into a log;
         #sys.stderr = self # silence errors.
         #sys.stdout = self
-        print "chipFish (c) 2009, oAxiom, %s" % (str(time.time())) # log.
+        print "chipFish (c) 2009, oAxiom, %s" % (time.strftime("%a, %d %b %Y %H:%M:%S +0000", time.localtime())) # log.
 
         # set up and load the genome
         # (In future this will load the initial state here)
@@ -46,16 +46,14 @@ class cfApp(wx.App):
         # bind the gPanel;
         sizer = wx.BoxSizer(wx.VERTICAL)
         self._Drawer = gDraw.gDraw(self.g)
-        self.gui_panel = id=wx.xrc.XRCCTRL(self.main, "gui_panel")
+        self.gui_panel = wx.xrc.XRCCTRL(self.main, "gui_panel")
         gDrawPanel = wx.xrc.XRCCTRL(self.main, "gDrawPanel")
         self._Drawer.bindPanel(gDrawPanel) # bind the drawPanel to gDraw
         draw_panel = self._Drawer.getPanel()
         sizer.Add(draw_panel, 2, wx.EXPAND, 0) # add the panel to the gui
         gDrawPanel.SetSizer(sizer) # add it to the GUI
-        #self._Drawer.setLocation("3", 153639000, 153883000) # set the location of the genome.
         self._Drawer.setLocation("3", 153772000, 153850000) # set the location of the genome.
         self._Drawer.setLocation("3", 153844000, 153850000) # set the location of the genome.
-        #self._Drawer.setLocation("8", 49604255, 49639408) # set the location of the genome.
 
         # bind events to the GUI.
         self.Bind(wx.EVT_LEFT_DOWN, self._mouseLeftDown, draw_panel)
@@ -72,6 +70,7 @@ class cfApp(wx.App):
 
         self.main.Show()
         self.main.Maximize(True)
+        print "End %s" % time.strftime("%a, %d %b %Y %H:%M:%S +0000", time.localtime())
         return(True)
 
     #------------------------------------------------------------------
