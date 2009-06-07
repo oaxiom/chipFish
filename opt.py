@@ -17,6 +17,10 @@ import sys, os
 class generic:
     app_path = sys.path[0]
 
+class path:
+    glbase_location = os.path.realpath("../../glbase/") # this is relative to here.
+    glbase_package = os.path.realpath("../../") # this is relative to here.
+
 class debug:
     """
     containers for debugging options.
