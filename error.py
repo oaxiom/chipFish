@@ -69,9 +69,7 @@ class ErrorInvalidChromosome(Exception):
 
 class ErrorLibrarySQLite(Exception):
     """
-    Error: Invalid Chromosome name, only 1-999 and X, Y, M are valid chromsome names.
-    Attributes:
-        message - an explanation of the error.
+    Error: SQL backend not available.
     """
     def __init__(self):
         self.message = "Error: Database SQLite nota found or not available."
