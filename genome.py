@@ -68,10 +68,12 @@ class genome:
         #self.features.append(feature("known Gene", (os.path.join(self.path, "knownGene.txt")), "Gene")) # knownGne.txt
         self.features.append(feature("refseq", (os.path.join(self.path, "refseq.tsv")), "Gene")) # knownGne.txt
 
-    def addChromosome(self, number):
-        c = chr()
-        c.setNumber(number)
-        self.chrl.append(c)
+    def getListOfChromosomes(self):
+        """
+        return a list of the chromosome names
+        (And thus corresponding keys)
+        """
+        return(self.chrl)
 
     def bindFeature(self, featureFile, featureType):
         """

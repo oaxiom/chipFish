@@ -120,11 +120,6 @@ class gDraw:
 
         self.genome = genome
 
-        # testers
-        self.paintQ.append({"type": "gene", "strand": "+", "left": 12344, "right": 13455})
-        self.paintQ.append({"type": "lncRNA", "strand": "-", "left": 10000, "right": 11000})
-        self.paintQ.append({"type": "microRNA", "strand": "+", "left": 11050, "right": 11100})
-
     def _debug_draw_col_boxes(self):
         """
         (Internal)
@@ -172,7 +167,7 @@ class gDraw:
 
         # get the new paintQ:
         self.paintQ = self.genome.getAllFeaturesInRange(utils.formatLocation(self.chromosome, self.lbp, self.rbp))
-        print self.paintQ
+        #print self.paintQ
         return(True)
 
     def setDrawAttribute(self, attribute, value):
@@ -229,13 +224,17 @@ class gDraw:
         # work out a good scale representation
         # wether to draw at 100, 1000, 10000, 100000, 1000000 ...
 
+        # current view delta = self.delta
+
+        a = round(self.delta, 1) # get the nearest 1XXXXX .. XXX
+
         # ten thousands
-        for index, window_size in enumerate([100, 1000, 10000]):
+        for index, window_size in enumerate([a/100, a/10, a]):
 
             nearest = int(math.ceil(float(self.lbp+1) / window_size) * window_size)
             self.ctx.set_line_width(opt.ruler.line_width * index+0.5)
 
-            for real_offset in xrange(nearest, self.rbp, window_size):
+            for real_offset in xrange(nearest, self.rbp, int(window_size)):
                 screen_offset = (self.w * (float(real_offset - self.lbp) / self.delta))
                 self.ctx.move_to(screen_offset, 0)
                 self.ctx.line_to(screen_offset, opt.ruler.height_px * index+0.5)
@@ -450,7 +449,7 @@ class gDraw:
             if func_dict.has_key(item["type"]):
                 func_dict[item["type"]](item) # I can't believe this actually works!
 
-        #self.drawRuler()
+        self.drawRuler()
 
         # render and finish drawing.
         self.validDraw = False
@@ -472,6 +471,17 @@ class gDraw:
         else:
             return(False)
         return(True)
+
+    def isColliding(self, x, y):
+        """
+        returns a collision type (see boundbox)
+        or FALSE
+        """
+        for box in self.colBoxes:
+            c = box.collideB()
+            if c:
+                print c["type"]
+                return(c["type"])
 
 if __name__ == "__main__":
     a = gDraw()

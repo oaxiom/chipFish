@@ -2,16 +2,191 @@
 <resource xmlns="http://www.wxwindows.org/wxxrc" version="2.3.0.1">
 	<object class="wxFrame" name="mainFrame">
 		<style>wxDEFAULT_FRAME_STYLE|wxTAB_TRAVERSAL</style>
-		<size>520,424</size>
+		<size>1024,424</size>
 		<title></title>
 		<object class="wxSplitterWindow" name="m_splitter1">
 			<style>wxSP_3D</style>
-			<sashpos>196</sashpos>
+			<sashpos>236</sashpos>
 			<gravity>0</gravity>
 			<minsize>0</minsize>
 			<orientation>horizontal</orientation>
-			<object class="wxPanel" name="gDrawPanel">
+			<object class="wxPanel" name="upperPanel">
 				<style>wxTAB_TRAVERSAL</style>
+				<object class="wxBoxSizer">
+					<orient>wxVERTICAL</orient>
+					<object class="sizeritem">
+						<option>2</option>
+						<flag>wxEXPAND | wxALL</flag>
+						<border>2</border>
+						<object class="wxPanel" name="gDrawPanel">
+							<style>wxTAB_TRAVERSAL</style>
+						</object>
+					</object>
+					<object class="sizeritem">
+						<option>0</option>
+						<flag>wxEXPAND</flag>
+						<border>2</border>
+						<object class="wxStaticBoxSizer">
+							<orient>wxVERTICAL</orient>
+							<label>Navigation</label>
+							<object class="sizeritem">
+								<option>0</option>
+								<flag>wxALIGN_CENTER_HORIZONTAL</flag>
+								<border>2</border>
+								<object class="wxFlexGridSizer">
+									<rows>1</rows>
+									<cols>15</cols>
+									<vgap>0</vgap>
+									<hgap>0</hgap>
+									<growablecols></growablecols>
+									<growablerows></growablerows>
+									<object class="sizeritem">
+										<option>0</option>
+										<flag>wxALIGN_CENTER_HORIZONTAL|wxALL</flag>
+										<border>2</border>
+										<object class="wxButton" name="butViewBigLeft">
+											<size>30,-1</size>
+											<label>&lt;&lt;</label>
+											<default>0</default>
+										</object>
+									</object>
+									<object class="sizeritem">
+										<option>0</option>
+										<flag>wxALL</flag>
+										<border>2</border>
+										<object class="wxButton" name="butViewLeft">
+											<size>30,-1</size>
+											<label>&lt;</label>
+											<default>0</default>
+										</object>
+									</object>
+									<object class="sizeritem">
+										<option>0</option>
+										<flag>wxEXPAND | wxALL</flag>
+										<border>5</border>
+										<object class="wxStaticLine" name="m_staticline12">
+											<style>wxLI_VERTICAL</style>
+										</object>
+									</object>
+									<object class="sizeritem">
+										<option>0</option>
+										<flag>wxALL</flag>
+										<border>2</border>
+										<object class="wxButton" name="butViewRight">
+											<size>30,-1</size>
+											<label>&gt;</label>
+											<default>0</default>
+										</object>
+									</object>
+									<object class="sizeritem">
+										<option>0</option>
+										<flag>wxALL</flag>
+										<border>2</border>
+										<object class="wxButton" name="butViewBigRight">
+											<size>30,-1</size>
+											<label>&gt;&gt;</label>
+											<default>0</default>
+										</object>
+									</object>
+									<object class="sizeritem">
+										<option>0</option>
+										<flag>wxEXPAND | wxALL</flag>
+										<border>5</border>
+										<object class="wxStaticLine" name="m_staticline11">
+											<style>wxLI_VERTICAL</style>
+										</object>
+									</object>
+									<object class="sizeritem">
+										<option>0</option>
+										<flag>wxALL|wxEXPAND</flag>
+										<border>2</border>
+										<object class="wxTextCtrl" name="textGoToLoc">
+											<size>200,-1</size>
+											<value></value>
+											<maxlength>0</maxlength>
+										</object>
+									</object>
+									<object class="sizeritem">
+										<option>0</option>
+										<flag>wxALL</flag>
+										<border>2</border>
+										<object class="wxButton" name="butGoToLoc">
+											<size>50,-1</size>
+											<label>Go To</label>
+											<default>0</default>
+										</object>
+									</object>
+									<object class="sizeritem">
+										<option>0</option>
+										<flag>wxEXPAND | wxALL</flag>
+										<border>5</border>
+										<object class="wxStaticLine" name="m_staticline1">
+											<style>wxLI_VERTICAL</style>
+										</object>
+									</object>
+									<object class="sizeritem">
+										<option>0</option>
+										<flag>wxALL</flag>
+										<border>2</border>
+										<object class="wxButton" name="butZoomIn">
+											<size>70,-1</size>
+											<label>Zoom In</label>
+											<default>0</default>
+										</object>
+									</object>
+									<object class="sizeritem">
+										<option>0</option>
+										<flag>wxALL</flag>
+										<border>2</border>
+										<object class="wxButton" name="butZoomOut">
+											<size>70,-1</size>
+											<label>Zoom Out</label>
+											<default>0</default>
+										</object>
+									</object>
+									<object class="sizeritem">
+										<option>0</option>
+										<flag>wxEXPAND | wxALL</flag>
+										<border>5</border>
+										<object class="wxStaticLine" name="m_staticline13">
+											<style>wxLI_VERTICAL</style>
+										</object>
+									</object>
+									<object class="sizeritem">
+										<option>0</option>
+										<flag>wxALL</flag>
+										<border>2</border>
+										<object class="wxButton" name="butChrUp">
+											<size>40,-1</size>
+											<label>Prev</label>
+											<default>0</default>
+										</object>
+									</object>
+									<object class="sizeritem">
+										<option>0</option>
+										<flag>wxALL</flag>
+										<border>2</border>
+										<object class="wxChoice" name="choiceChromosome">
+											<size>60,-1</size>
+											<selection>0</selection>
+											<content />
+										</object>
+									</object>
+									<object class="sizeritem">
+										<option>0</option>
+										<flag>wxALL</flag>
+										<border>2</border>
+										<object class="wxButton" name="butChrDown">
+											<size>40,-1</size>
+											<label>Next</label>
+											<default>0</default>
+										</object>
+									</object>
+								</object>
+							</object>
+						</object>
+					</object>
+				</object>
 			</object>
 			<object class="wxPanel" name="gui_panel">
 				<style>wxTAB_TRAVERSAL</style>
@@ -20,119 +195,16 @@
 					<object class="sizeritem">
 						<option>1</option>
 						<flag>wxEXPAND</flag>
-						<border>5</border>
-						<object class="wxBoxSizer">
-							<orient>wxHORIZONTAL</orient>
+						<border>2</border>
+						<object class="wxStaticBoxSizer">
+							<orient>wxVERTICAL</orient>
+							<label>Tracks</label>
 							<object class="sizeritem">
 								<option>1</option>
-								<flag>wxEXPAND | wxALL</flag>
-								<border>5</border>
-								<object class="wxPanel" name="m_panel41">
-									<style>wxTAB_TRAVERSAL</style>
-								</object>
-							</object>
-						</object>
-					</object>
-					<object class="sizeritem">
-						<option>3</option>
-						<flag>wxEXPAND | wxALL</flag>
-						<border>0</border>
-						<object class="wxPanel" name="m_panel4">
-							<style>wxTAB_TRAVERSAL</style>
-							<object class="wxFlexGridSizer">
-								<rows>1</rows>
-								<cols>6</cols>
-								<vgap>0</vgap>
-								<hgap>0</hgap>
-								<growablecols></growablecols>
-								<growablerows></growablerows>
-								<object class="sizeritem">
-									<option>0</option>
-									<flag>wxALL</flag>
-									<border>5</border>
-									<object class="wxButton" name="butViewBigLeft">
-										<label>&lt;&lt;</label>
-										<default>0</default>
-									</object>
-								</object>
-								<object class="sizeritem">
-									<option>0</option>
-									<flag>wxALL</flag>
-									<border>5</border>
-									<object class="wxButton" name="butViewLeft">
-										<label>&lt;</label>
-										<default>0</default>
-									</object>
-								</object>
-								<object class="sizeritem">
-									<option>1</option>
-									<flag>wxEXPAND</flag>
-									<border>5</border>
-									<object class="wxBoxSizer">
-										<orient>wxVERTICAL</orient>
-										<object class="sizeritem">
-											<option>0</option>
-											<flag>wxALL</flag>
-											<border>5</border>
-											<object class="wxTextCtrl" name="textGoToLoc">
-												<value></value>
-												<maxlength>0</maxlength>
-											</object>
-										</object>
-										<object class="sizeritem">
-											<option>0</option>
-											<flag>wxALL</flag>
-											<border>5</border>
-											<object class="wxButton" name="butGoToLoc">
-												<label>Go To Location</label>
-												<default>0</default>
-											</object>
-										</object>
-									</object>
-								</object>
-								<object class="sizeritem">
-									<option>0</option>
-									<flag>wxALL</flag>
-									<border>5</border>
-									<object class="wxButton" name="butViewRight">
-										<label>&gt;</label>
-										<default>0</default>
-									</object>
-								</object>
-								<object class="sizeritem">
-									<option>0</option>
-									<flag>wxALL</flag>
-									<border>5</border>
-									<object class="wxButton" name="butViewBigRight">
-										<label>&gt;&gt;</label>
-										<default>0</default>
-									</object>
-								</object>
-								<object class="sizeritem">
-									<option>1</option>
-									<flag>wxEXPAND</flag>
-									<border>5</border>
-									<object class="wxBoxSizer">
-										<orient>wxVERTICAL</orient>
-										<object class="sizeritem">
-											<option>0</option>
-											<flag>wxALL</flag>
-											<border>5</border>
-											<object class="wxButton" name="butZoomIn">
-												<label>Zoom In</label>
-												<default>0</default>
-											</object>
-										</object>
-										<object class="sizeritem">
-											<option>0</option>
-											<flag>wxALL</flag>
-											<border>5</border>
-											<object class="wxButton" name="butZoomOut">
-												<label>Zoom Out</label>
-												<default>0</default>
-											</object>
-										</object>
-									</object>
+								<flag>wxALL|wxEXPAND|wxLEFT</flag>
+								<border>2</border>
+								<object class="wxTreeCtrl" name="m_treeCtrl2">
+									<style>wxTR_DEFAULT_STYLE</style>
 								</object>
 							</object>
 						</object>
@@ -142,7 +214,7 @@
 		</object>
 		<object class="wxStatusBar" name="statusBar">
 			<style>wxST_SIZEGRIP</style>
-			<fields>1</fields>
+			<fields>3</fields>
 		</object>
 		<object class="wxMenuBar" name="m_menubar">
 			<label>MainMenu</label>
@@ -151,9 +223,25 @@
 			</object>
 			<object class="wxMenu" name="edit">
 				<label>Edit</label>
+				<object class="wxMenuItem" name="cut">
+					<label>Cut</label>
+					<help></help>
+				</object>
+				<object class="wxMenuItem" name="copy">
+					<label>Copy</label>
+					<help></help>
+				</object>
+				<object class="wxMenuItem" name="paste">
+					<label>Paste</label>
+					<help></help>
+				</object>
 			</object>
 			<object class="wxMenu" name="help">
 				<label>Help</label>
+				<object class="wxMenuItem" name="about">
+					<label>About</label>
+					<help></help>
+				</object>
 			</object>
 		</object>
 	</object>
