@@ -16,7 +16,6 @@ import math, sys, time
 
 import opt, gDraw
 
-#from genome import *
 from error import *
 
 import wx
@@ -27,20 +26,16 @@ from wx import xrc
 # ----------------------------------------------------------------------
 
 # Find glbase
-sys.path.append("../../glbase/")
+sys.path.append("./glbase_wrapper/")
 
-# modify the start-up of glbase
-import config # some of the module names will clash...
-config.REnv.libraries_to_test = []
+# this is the startup of glbase_wrapper
 
 # get the libraries I want.
-from flags import *
-from genelist import genelist, load
-from microarray import microarray
-from genome import genome
-from taglist import taglist
-from seqfile import seqfile
-from peaklist import peaklist
+from glbase_data import * # brings load()
+from genelist import genelist
+#from microarray import microarray
+#from genome import genome
+#from peaklist import peaklist
 import utils
 
 # ----------------------------------------------------------------------
@@ -59,7 +54,6 @@ class cfApp(wx.App):
 
         # set up and load the genome
         # (In future this will load the initial state here)
-
         self.g = load("data/mm8.glb")
 
         # load the gui
@@ -77,7 +71,7 @@ class cfApp(wx.App):
         draw_panel = self.draw.getPanel()
         sizer.Add(draw_panel, 2, wx.EXPAND, 0) # add the panel to the gui
         gDrawPanel.SetSizer(sizer) # add it to the GUI
-        
+
         self.draw.setLocation("3", 153772000, 153850000) # set the location of the genome.
         self.draw.setLocation("3", 153844000, 153850000) # set the location of the genome.
 
