@@ -11,7 +11,6 @@ sys.path.append("../../../glbase") # in the final version it would be in ".."
 
 # modify the start-up of glbase
 import config # some of the module names will clash...
-config.REnv.libraries_to_test = []
 
 # get the libraries I want.
 from flags import *
