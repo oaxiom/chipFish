@@ -19,17 +19,18 @@ NOTES:
 . We're currently using the 'toy' text-rendering API.
     Is this adequate for our needs?
     - will only render UTF-8 fonts... Anything else requried?
-    that rules out greek symbols, Chinese, Cyrillic etc...?
+    that rules out greek symbols, Chinese, Cyrillic etc...? Right?
 """
 
 import sys, os, math
 
-import opt, utils
+import opt
 
 from error import *
 from constants import *
 from boundbox import bBox
 from operator import itemgetter
+from glbase_wrapper import location
 
 #----------------------------------------------------------------------
 # The Cairo interface.
@@ -166,7 +167,7 @@ class gDraw:
         self.deltaf = float(self.delta)
 
         # get the new paintQ:
-        self.paintQ = self.genome.getAllFeaturesInRange(utils.formatLocation(self.chromosome, self.lbp, self.rbp))
+        self.paintQ = self.genome.getAllDrawableFeaturesInRange(location(chr=self.chromosome, left=self.lbp, right=self.rbp))
         #print self.paintQ
         return(True)
 
@@ -326,17 +327,21 @@ class gDraw:
     def _drawGene(self, data):
         """
         draw Features of the type "Gene"
-        data should be a dict of the form: (a dict)
-        [chr, left, right,
-        exon_coords(local), strand, cds_start, cds_end]
+        should be an dict containing the following keys:
+        type: gene
+        loc: location span of gene
+        strand: strand of gene
+        cds_loc: cds loc span
+        exonStarts: list of exon start locations
+        exonEnds: list of ends
         """
         if not self.validDraw: raise ErrorCairoDraw
 
         #print "t:", ((data["left"]-self.lbp) / self.deltaf), ((data["right"]-self.lbp) / self.deltaf)
 
         # should turn this pos stuff into a macro
-        posLeft = self.w * ((data["start"]-self.lbp) / self.deltaf)
-        posRight = (self.w * ((data["end"]-self.lbp) / self.deltaf))
+        posLeft = self.w * ((data["loc"]["left"]-self.lbp) / self.deltaf) # = _realToLocal?
+        posRight = (self.w * ((data["loc"]["right"]-self.lbp) / self.deltaf))
         #print posLeft, posRight, self.delta
         gOff = opt.graphics.gene_height # height offsets
         cOff = opt.graphics.cds_height
@@ -353,14 +358,14 @@ class gDraw:
             tc.append({"c": item ,"t": "es"})
         for item in data["exonEnds"]:
             tc.append({"c": item, "t": "ee"})
-        tc.append({"c": data["cdsStart"], "t": "cdss"})
-        tc.append({"c": data["cdsEnd"], "t": "cdse"})
+        tc.append({"c": data["cds_loc"]["left"], "t": "cdss"})
+        tc.append({"c": data["cds_loc"]["right"], "t": "cdse"})
 
         tc = sorted(tc, key=itemgetter("c"))
 
         coords = []
-        coords.append(self._realToLocal(data["start"], 0))
-        coords.append(self._realToLocal(data["start"], +gOff))
+        coords.append(self._realToLocal(data["loc"]["left"], 0))
+        coords.append(self._realToLocal(data["loc"]["left"], +gOff))
         off = gOff
         for c in tc:
             if c["t"] == "cdss":
@@ -378,8 +383,8 @@ class gDraw:
                 coords.append(self._realToLocal(c["c"], +off))
                 coords.append(self._realToLocal(c["c"], 0))
 
-        coords.append(self._realToLocal(data["end"], +gOff))
-        coords.append(self._realToLocal(data["end"], 0))
+        coords.append(self._realToLocal(data["loc"]["right"], +gOff))
+        coords.append(self._realToLocal(data["loc"]["right"], 0))
 
         self.ctx.move_to(coords[0][0], coords[0][1])
         for index, item in enumerate(coords):
@@ -415,13 +420,14 @@ class gDraw:
         else:
             raise ErrorInvalidGeneDefinition
 
-
         return(True)
 
     def _paint(self, ctx):
         """
         (Internal)
         painter procedure. pass a valid Cairo context for drawing onto.
+
+        draws every object in paintQ
         """
         if ctx:
             self.validDraw = True
@@ -447,7 +453,7 @@ class gDraw:
 
         for item in self.paintQ:
             if func_dict.has_key(item["type"]):
-                func_dict[item["type"]](item) # I can't believe this actually works!
+                func_dict[item["type"]](item)
 
         self.drawRuler()
 
@@ -482,7 +488,3 @@ class gDraw:
             if c:
                 print c["type"]
                 return(c["type"])
-
-if __name__ == "__main__":
-    a = gDraw()
-    a._drawGene()

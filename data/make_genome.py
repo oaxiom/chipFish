@@ -1,24 +1,29 @@
 """
 'make' a genome
 
-build a refGene like list into a genome suitable for chipfish to display.
+turn refGene table (from mm8) into a genome.
 """
 
-import sys
+import sys, csv
 
-# find glbase and import it.
-sys.path.append("../../../glbase") # in the final version it would be in ".."
-
-# modify the start-up of glbase
-import config # some of the module names will clash...
-
-# get the libraries I want.
-from flags import *
-from genome import genome
+sys.path.append("../")  # get the glbase_wrapper
+import glbase_wrapper
 
 # Build the mm8 genome.
-illuminaFormat = {"loc": 0, "symbol": 1, "refseq": 5, "entrez": 6, "strand": 7, "name": 8}
+mm8_refGene_format = {
+    "strand": 3,
+    "loc": {"code": "location(chr=column[2], left=column[4], right=column[5])"},
+    "cds_loc": {"code": "location(chr=column[2], left=column[6], right=column[7])"},
+    "exonCount": 7,
+    "exonStarts": {"code": "[int(x) for x in column[8].strip(\",\").split(\",\")]"},
+    "exonEnds": {"code": "[int(x) for x in column[9].strip(\",\").split(\",\")]"},
+    "proteinID": 10,
+    #"alignID": line[11],
+    "name": 12,
+    "refseq": 1,
+    "dialect": csv.excel_tab
+    } # this is how it will come out of the db.
 
-mm8 = genome("mm8", "illumina_remapped.csv", format_override=illuminaFormat)
+mm8 = glbase_wrapper.genome(name="mm8", filename="mm8_refGene.tsv", format=mm8_refGene_format)
 print mm8
-mm8.save("mm8.glb")
+mm8.save("mm8_refGene.glb")

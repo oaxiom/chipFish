@@ -7,7 +7,7 @@ genelist pass through for chipFish, see the accompanying readme.txt for details.
 
 import sys, os
 
-sys.path.append("..")
+sys.path.append("..") # get the parent options
 import opt
 
 sys.path.append(opt.path.glbase_package)
