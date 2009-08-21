@@ -8,10 +8,10 @@ Not for distribution.
 Class containter for error handling.
 
 . remove the error class, and raise exceptions.
+. assertions to add
 """
 
 import sys, os
-
 
 # A generic error class.
 class error:

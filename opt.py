@@ -18,8 +18,9 @@ class generic:
     app_path = sys.path[0]
 
 class path:
-    glbase_location = os.path.realpath("../../glbase/") # this is relative to here.
-    glbase_package = os.path.realpath("../../") # this is relative to here.
+    glbase_location = os.path.realpath("./glbase_wrapper/glbase")
+    glbase_package = os.path.realpath("./glbase_wrapper/")
+    glbase_wrapper = os.path.realpath(".")
 
 class debug:
     """

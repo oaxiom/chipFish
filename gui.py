@@ -26,26 +26,21 @@ from wx import xrc
 # ----------------------------------------------------------------------
 
 # Find glbase
-sys.path.append("./glbase_wrapper/")
-
-# this is the startup of glbase_wrapper
-
-# get the libraries I want.
-from glbase_data import * # brings load()
-from genelist import genelist
-#from microarray import microarray
-#from genome import genome
-#from peaklist import peaklist
-import utils
+sys.path.append(opt.path.glbase_wrapper)
+from glbase_wrapper import *
 
 # ----------------------------------------------------------------------
 # Main GUI
 # ----------------------------------------------------------------------
 
 class cfApp(wx.App):
-    """
-    main frame of the application
-    """
+    class view:
+        chromosome = "3"
+        lbp = 153844000
+        rbp = 153850000
+        view_on = False
+        w = 800 # screen width?
+
     def OnInit(self):
         # errors should be put into a log;
         #sys.stderr = self # silence errors.
@@ -72,8 +67,7 @@ class cfApp(wx.App):
         sizer.Add(draw_panel, 2, wx.EXPAND, 0) # add the panel to the gui
         gDrawPanel.SetSizer(sizer) # add it to the GUI
 
-        self.draw.setLocation("3", 153772000, 153850000) # set the location of the genome.
-        self.draw.setLocation("3", 153844000, 153850000) # set the location of the genome.
+        self.draw.setLocation(self.view.chromosome, self.view.lbp, self.view.rbp) # set the location of the genome.
 
         # bind events to the GUI.
         self.Bind(wx.EVT_LEFT_DOWN, self._mouseLeftDown, draw_panel)
@@ -104,21 +98,18 @@ class cfApp(wx.App):
         redrawDisplay will not redraw the gui, it just redraws the
         gDrawPanel
         """
-        self.lastValidLocation = utils.formatLocation(self.draw.chromosome, self.draw.lbp, self.draw.rbp)
+        self.lastValidLocation = location(chr=self.draw.chromosome, left=self.draw.lbp, right=self.draw.rbp)
         if redrawDisplay:
             self.draw.forceRedraw()
         # text boxes.
-        self.textGoToLoc.SetValue(utils.formatLocation(self.draw.chromosome, self.draw.lbp, self.draw.rbp))
+        self.textGoToLoc.SetValue(location(chr=self.draw.chromosome, left=self.draw.lbp, right=self.draw.rbp))
 
     def _mouseLeftDown(self, event):
         """
         (Interal)
         Deal with mouse down presses
         """
-        print "mouse down"
-        #if self.D.isColliding():
-        #   print "!!!"
-        #self.drag = True
+        pass
 
     def _mouseLeftUp(self, event):
         """
@@ -132,12 +123,12 @@ class cfApp(wx.App):
 
     def OnBigViewLeft(self, event): # wxGlade: frame_mainFrame_parent.<event_handler>
         # move eft depending upon the scale.
-        self.draw.setLocation(self.D.chromosome, self.D.lbp - 10000, self.D.rbp - 10000)
+        self.draw.setLocation(self.view.chromosome, self.view.lbp - 10000, self.view.rbp - 10000)
         self._updateDisplay()
         event.Skip()
 
     def OnViewLeft(self, event): # wxGlade: frame_mainFrame_parent.<event_handler>
-        self.draw.setLocation(self.D.chromosome, self.D.lbp - 1000, self.D.rbp - 1000)
+        self.draw.setLocation(self.view.chromosome, self.view.lbp - 1000, self.view.rbp - 1000)
         self._updateDisplay()
         event.Skip()
 
@@ -146,22 +137,22 @@ class cfApp(wx.App):
         event.Skip()
 
     def OnViewRight(self, event): # wxGlade: frame_mainFrame_parent.<event_handler>
-        self.draw.setLocation(self.D.chromosome, self.D.lbp + 1000, self.D.rbp + 1000)
+        self.draw.setLocation(self.view.chromosome, self.view.lbp + 1000, self.view.rbp + 1000)
         self._updateDisplay()
         event.Skip()
 
     def OnViewBigRight(self, event): # wxGlade: frame_mainFrame_parent.<event_handler>
-        self.draw.setLocation(self.D.chromosome, self.D.lbp + 10000, self.D.rbp + 10000)
+        self.draw.setLocation(self.view.chromosome, self.view.lbp + 10000, self.view.rbp + 10000)
         self._updateDisplay()
         event.Skip()
 
     def OnViewBigLeft(self, event): # wxGlade: frame_mainFrame_parent.<event_handler>
-        self.draw.setLocation(self.D.chromosome, self.D.lbp - 10000, self.D.rbp - 10000)
+        self.draw.setLocation(self.view.chromosome, self.view.lbp - 10000, self.view.rbp - 10000)
         self._updateDisplay()
         event.Skip()
 
     def OnButZoomIn(self, event): # wxGlade: frame_mainFrame_parent.<event_handler>
-        if self.draw.delta > self.D.w:
+        if self.draw.delta > self.w:
             self.draw.setLocation(self.draw.chromosome, self.draw.lbp + 1000, self.draw.rbp - 1000)
         self._updateDisplay()
         event.Skip()
@@ -172,7 +163,7 @@ class cfApp(wx.App):
         event.Skip()
 
     def OnGotoLocationEdit(self, event): # wxGlade: frame_mainFrame_parent.<event_handler>
-        loc = utils.getLocation(self.textGoToLoc.GetValue())
+        loc = location(loc=self.textGoToLoc.GetValue())
         if loc:
             self.draw.setLocation(loc["chr"], loc["left"], loc["right"])
         else:
@@ -180,8 +171,3 @@ class cfApp(wx.App):
         self._updateDisplay()
         event.Skip()
 # end of mainFrame
-
-
-if __name__ == "__main__":
-    app = cfApp()
-    app.MainLoop()
