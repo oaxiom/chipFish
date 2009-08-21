@@ -121,6 +121,10 @@ class gDraw:
 
         self.genome = genome
 
+        self.chromosome = "1"
+        self.lbp = 1
+        self.rbp = 1000
+
     def _debug_draw_col_boxes(self):
         """
         (Internal)
@@ -158,8 +162,6 @@ class gDraw:
         """
         self.chromosome = str(chromosome)
         # test for valid chr.
-        # elif
-
         self.lbp = leftBasePair
         self.rbp = rightBasePair
         self.scale = (rightBasePair - leftBasePair) / 10000
@@ -302,7 +304,7 @@ class gDraw:
         Convert real genomic coords to local pixel coordinates.
         local to the location of the genome line.
         """
-        return(( (self.w * ((x-self.lbp) / self.deltaf), self.halfh + y) ))
+        return((self.w * ((x-self.lbp) / self.deltaf), self.halfh + y))
 
     def _getTextExtents(self, text):
         """
@@ -335,13 +337,14 @@ class gDraw:
         exonStarts: list of exon start locations
         exonEnds: list of ends
         """
+        print data
         if not self.validDraw: raise ErrorCairoDraw
 
         #print "t:", ((data["left"]-self.lbp) / self.deltaf), ((data["right"]-self.lbp) / self.deltaf)
 
         # should turn this pos stuff into a macro
-        posLeft = self.w * ((data["loc"]["left"]-self.lbp) / self.deltaf) # = _realToLocal?
-        posRight = (self.w * ((data["loc"]["right"]-self.lbp) / self.deltaf))
+        posLeft = self._realToLocal(data["loc"]["left"], 0)[0] # = _realToLocal?
+        posRight = self._realToLocal(data["loc"]["right"], 0)[0]
         #print posLeft, posRight, self.delta
         gOff = opt.graphics.gene_height # height offsets
         cOff = opt.graphics.cds_height
@@ -401,6 +404,7 @@ class gDraw:
 
         if data["strand"] == "+": # top strand
             # arrow.
+            print posLeft, self.halfh
             self.ctx.move_to(posLeft+10, self.halfh-20)
             self.ctx.line_to(posLeft+10, self.halfh-30)
             self.ctx.line_to(posLeft+20, self.halfh-20)
