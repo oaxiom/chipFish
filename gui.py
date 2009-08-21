@@ -34,13 +34,6 @@ from glbase_wrapper import *
 # ----------------------------------------------------------------------
 
 class cfApp(wx.App):
-    class view:
-        chromosome = "3"
-        lbp = 153844000
-        rbp = 153850000
-        view_on = False
-        w = 800 # screen width?
-
     def OnInit(self):
         # errors should be put into a log;
         #sys.stderr = self # silence errors.
@@ -49,7 +42,7 @@ class cfApp(wx.App):
 
         # set up and load the genome
         # (In future this will load the initial state here)
-        self.g = load("data/mm8.glb")
+        self.g = load("data/mm8_refGene.glb")
 
         # load the gui
         self.res = xrc.XmlResource('gui_parent.xrc')
@@ -67,7 +60,7 @@ class cfApp(wx.App):
         sizer.Add(draw_panel, 2, wx.EXPAND, 0) # add the panel to the gui
         gDrawPanel.SetSizer(sizer) # add it to the GUI
 
-        self.draw.setLocation(self.view.chromosome, self.view.lbp, self.view.rbp) # set the location of the genome.
+        self.draw.setLocation("6", 122666976, 122685608) # Nice view of Nanog
 
         # bind events to the GUI.
         self.Bind(wx.EVT_LEFT_DOWN, self._mouseLeftDown, draw_panel)
@@ -123,12 +116,12 @@ class cfApp(wx.App):
 
     def OnBigViewLeft(self, event): # wxGlade: frame_mainFrame_parent.<event_handler>
         # move eft depending upon the scale.
-        self.draw.setLocation(self.view.chromosome, self.view.lbp - 10000, self.view.rbp - 10000)
+        self.draw.setLocation(self.draw.chromosome, self.draw.lbp - 10000, self.draw.rbp - 10000)
         self._updateDisplay()
         event.Skip()
 
     def OnViewLeft(self, event): # wxGlade: frame_mainFrame_parent.<event_handler>
-        self.draw.setLocation(self.view.chromosome, self.view.lbp - 1000, self.view.rbp - 1000)
+        self.draw.setLocation(self.draw.chromosome, self.draw.lbp - 1000, self.draw.rbp - 1000)
         self._updateDisplay()
         event.Skip()
 
@@ -137,22 +130,22 @@ class cfApp(wx.App):
         event.Skip()
 
     def OnViewRight(self, event): # wxGlade: frame_mainFrame_parent.<event_handler>
-        self.draw.setLocation(self.view.chromosome, self.view.lbp + 1000, self.view.rbp + 1000)
+        self.draw.setLocation(self.draw.chromosome, self.draw.lbp + 1000, self.draw.rbp + 1000)
         self._updateDisplay()
         event.Skip()
 
     def OnViewBigRight(self, event): # wxGlade: frame_mainFrame_parent.<event_handler>
-        self.draw.setLocation(self.view.chromosome, self.view.lbp + 10000, self.view.rbp + 10000)
+        self.draw.setLocation(self.draw.chromosome, self.draw.lbp + 10000, self.draw.rbp + 10000)
         self._updateDisplay()
         event.Skip()
 
     def OnViewBigLeft(self, event): # wxGlade: frame_mainFrame_parent.<event_handler>
-        self.draw.setLocation(self.view.chromosome, self.view.lbp - 10000, self.view.rbp - 10000)
+        self.draw.setLocation(self.draw.chromosome, self.draw.lbp - 10000, self.draw.rbp - 10000)
         self._updateDisplay()
         event.Skip()
 
     def OnButZoomIn(self, event): # wxGlade: frame_mainFrame_parent.<event_handler>
-        if self.draw.delta > self.w:
+        if self.draw.delta > self.draw.w:
             self.draw.setLocation(self.draw.chromosome, self.draw.lbp + 1000, self.draw.rbp - 1000)
         self._updateDisplay()
         event.Skip()

@@ -57,9 +57,8 @@ class genome(glbase.genome):
         ret = []
         if self.dataByChr.has_key(location["chr"]):
             for item in self.dataByChr[location["chr"]]:
-                print location["left"], location["right"], item["loc"]["left"], item["loc"]["right"]
+                #print location["left"], location["right"], item["loc"]["left"], item["loc"]["right"]
                 if qcollide(location["left"], location["right"], item["loc"]["left"], item["loc"]["right"]):
-                    print item
                     """
                     {'loc': location: contents: {'chr': '3', 'right': 153791001, 'left': 153781632},
                     'name': 'Asb17',
