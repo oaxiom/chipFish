@@ -118,6 +118,7 @@ class gDraw:
         self.scale = 1
         self.colBoxes = [] # list of boundbox objects.
         self.paintQ = []
+        self.tracks = [] # currently visible tracks
 
         self.genome = genome
 
@@ -144,6 +145,12 @@ class gDraw:
         self.panel = drawPanel(panel, self.OnPaint)
         return(self.panel)
 
+    def bindTrack(self, track):
+        """
+        bind a drawing track extra to genome.
+        """
+        self.tracks.append(track)
+
     def setViewPortSize(self, w, h):
         """
         set the size of the viewport;
@@ -168,8 +175,15 @@ class gDraw:
         self.delta = self.rbp - self.lbp
         self.deltaf = float(self.delta)
 
+        self.curr_loc = location(chr=self.chromosome, left=self.lbp, right=self.rbp)
+
         # get the new paintQ:
-        self.paintQ = self.genome.getAllDrawableFeaturesInRange(location(chr=self.chromosome, left=self.lbp, right=self.rbp))
+        self.paintQ = self.genome.getAllDrawableFeaturesInRange(self.curr_loc)
+        for track in self.tracks:
+            try:
+                self.paintQ.append({"type": "graph", "array": track[self.curr_loc]})
+            except: # track probably doens't have this chr?
+                pass
         #print self.paintQ
         return(True)
 
@@ -313,6 +327,18 @@ class gDraw:
         """
         return(self.ctx.text_extents(text)[:4])
 
+    def _drawGraphTrack(self, data):
+        # get an available track slot
+        self._setPenColour( (0,0,0) )
+        coords = []
+        for index, value in enumerate(data["array"]):
+            coords.append(self._realToLocal(self.lbp + index, 30 - value))
+
+        self.ctx.move_to(coords[0][0], coords[0][1]) # start x,y
+        for index, item in enumerate(coords):
+            self.ctx.line_to(item[0], item[1])
+        self.ctx.stroke()
+
     def _drawText(self, x, y, font, text, size=12, colour=(0,0,0), style=None):
         """
         (Internal - helper)
@@ -450,7 +476,8 @@ class gDraw:
         func_dict = {
             "gene": self._drawGene,
             "lncRNA": self._drawGene,
-            "microRNA": self._drawGene
+            "microRNA": self._drawGene,
+            "graph": self._drawGraphTrack
         }
 
         self.drawChr(None)

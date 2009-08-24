@@ -20,6 +20,24 @@ class error:
         if bFatal:
             sys.exit()
 
+# ----------------------------------------------------------------------
+# Generic Assertion Error:
+
+class AssertionError(Exception):
+    """
+    Error
+        An assertion or requirement for a particular method
+        failed. This usually means some sort of category required
+        for the method is missing.
+    """
+    def __init__(self, message):
+        """
+        Output the error message and tidy up the traceback, and perform other stuff.
+        """
+        print "Error: %s" % (message)
+        if not config.DEBUG: # this only works in Py3k right?
+            self.__traceback__ = None
+
 # ---------------------------------------------------------------------
 # Exceptions
 
