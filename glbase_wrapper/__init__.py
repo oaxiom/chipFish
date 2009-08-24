@@ -23,10 +23,13 @@ import glbase # import like this to get around namespace issues
 from glbase.flags import * # just pass through.
 from glbase.location import location
 from glbase.helpers import * # pass through
+from glbase.delayedlist import delayedlist
 
 # get the wrapped versions.
 from genelist import genelist
 from genome import genome
 
+
 # make these functions available in the package
-__all__ = ["genelist", "location", "genome"] + dir(glbase.flags) + dir(glbase.helpers) # in future I want to get rid of dir() and control what gets exported.
+__all__ = ["genelist", "location", "genome", "delayedlist",
+    ] + dir(glbase.flags) + dir(glbase.helpers) # in future I want to get rid of dir() and control what gets exported.

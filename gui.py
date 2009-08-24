@@ -43,6 +43,7 @@ class cfApp(wx.App):
         # set up and load the genome
         # (In future this will load the initial state here)
         self.g = load("data/mm8_refGene.glb")
+        self.t = load("data/out.trk")
 
         # load the gui
         self.res = xrc.XmlResource('gui_parent.xrc')
@@ -60,7 +61,10 @@ class cfApp(wx.App):
         sizer.Add(draw_panel, 2, wx.EXPAND, 0) # add the panel to the gui
         gDrawPanel.SetSizer(sizer) # add it to the GUI
 
+        self.draw.bindTrack(self.t)
         self.draw.setLocation("6", 122666976, 122685608) # Nice view of Nanog
+        self.draw.setLocation("1", 3001251, 3001551) # testing the ChIP-seq track
+        self.draw.setLocation("17", 15064087, 15088782) # Interesting view of the ChIP-seq (Dll1?) chr17:15,064,087-15,088,782
 
         # bind events to the GUI.
         self.Bind(wx.EVT_LEFT_DOWN, self._mouseLeftDown, draw_panel)
