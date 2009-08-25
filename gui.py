@@ -29,6 +29,8 @@ from wx import xrc
 sys.path.append(opt.path.glbase_wrapper)
 from glbase_wrapper import *
 
+from track import track
+
 # ----------------------------------------------------------------------
 # Main GUI
 # ----------------------------------------------------------------------
@@ -43,7 +45,7 @@ class cfApp(wx.App):
         # set up and load the genome
         # (In future this will load the initial state here)
         self.g = load("data/mm8_refGene.glb")
-        self.t = load("data/out.trk")
+        self.t = track(dir_name="data/NSMash1/", delayed=True, stranded=False)
 
         # load the gui
         self.res = xrc.XmlResource('gui_parent.xrc')
@@ -64,7 +66,7 @@ class cfApp(wx.App):
         self.draw.bindTrack(self.t)
         self.draw.setLocation("6", 122666976, 122685608) # Nice view of Nanog
         self.draw.setLocation("1", 3001251, 3001551) # testing the ChIP-seq track
-        self.draw.setLocation("17", 15064087, 15088782) # Interesting view of the ChIP-seq (Dll1?) chr17:15,064,087-15,088,782
+        #self.draw.setLocation("17", 15064087, 15088782) # Interesting view of the ChIP-seq (Dll1?) chr17:15,064,087-15,088,782
 
         # bind events to the GUI.
         self.Bind(wx.EVT_LEFT_DOWN, self._mouseLeftDown, draw_panel)

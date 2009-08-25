@@ -27,7 +27,8 @@ def seqToTrk(infilenamepath, outfilenamepath):
 
     t = track(stranded=False, delayed=False) # strands not currently supported :(
 
-    gerald_format = {"loc": {"code": "location(chr=column[1], left=column[12], right=int(column[12])+25)"}, "strand": 13,
+    gerald_format = {"loc": {"code": "location(chr=column[10].strip(\".fa\"), left=column[12], right=int(column[12])+25)"},
+        "strand": 13,
         "dialect": csv.excel_tab}
     # strand is F/R ??
 
@@ -36,24 +37,21 @@ def seqToTrk(infilenamepath, outfilenamepath):
     m = 0
 
     for item in seqfile:
-        print item
-        t.add_location(item["loc"])
+        t.add_location(item["loc"], strand=item["strand"])
 
         n += 1
-        if n > 1000:
+        if n > 1000000:
             m += 1
             n = 0
             print "%s,000,000" % m
-            break
 
-    oh = open(os.path.realpath(outfilenamepath), "wb")
-    cPickle.dump(t, oh, -1)
-    oh.close()
+    t.save(outfilenamepath)
+    return(True)
 
 if __name__ == "__main__":
     # testing:
     print "Info: This may take a while..."
-    seqToTrk("/home/hutchinsa/ChIP_Raw/CMN019_121_unique_hits.txt", "../data/out.trk")
+    seqToTrk("/home/hutchinsa/ChIP_Raw/CMN019_121_unique_hits.txt", "../data/NSMash1/")
 
     """
     print "Command-line seqToTrk:"
