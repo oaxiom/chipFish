@@ -60,7 +60,12 @@ class track:
         No pre-defined file - I want a new database track.
         """
         # kill any previously exisiting file (Use with care!)
-        if os.path.exists(filename):
+        # make sure the directory is available:
+        path = os.path.split(filename)[0]
+        if not os.path.exists(path):
+            os.makedirs(path)
+
+        if os.path.exists(filename): # overwrite old file.
             os.remove(filename)
 
         self.__connection = sqlite3.connect(filename)
@@ -101,17 +106,21 @@ class track:
         c.close()
 
         # set up the block table describing the number of blocks present.
+        c.execute("CREATE TABLE blocksize (chrom INTEGER PRIMARY KEY, blockSize INTEGER)")
 
 
     def add_location(self, loc, strand="+"):
         c = self.__connection.cursor()
 
-
+        left_most_block = abs(math.floor(loc["left"] / self.block_size)
+        right_most_block= abs(math.ceil(loc["right"] / self.block_size)
+        
+        blocks_required = ["%s:%s" (loc["chr"], b) for b in xrange(left_most_block, right_most_block)]
 
         array_data = array('i', []) # build a block
         for item in xrange(self.block_size):
             array_data.append(0)
-        c.execute("INSERT INTO data VALUES (?,?,?,?,?)", ["1:11", 1, 11, 20, str(array_data)])
+        c.execute("INSERT INTO data VALUES (?,?,?,?,?)", ["%s:%s" % (loc["chr"], loc["left"]), 1, 11, 20, str(array_data)])
 
         self.__connection.commit()
 
