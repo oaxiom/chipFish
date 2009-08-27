@@ -45,7 +45,7 @@ class cfApp(wx.App):
         # set up and load the genome
         # (In future this will load the initial state here)
         self.g = load("data/mm8_refGene.glb")
-        self.t = track(dir_name="data/NSMash1/", delayed=True, stranded=False)
+        self.t = track(filename="data/NSMash1.trk")
 
         # load the gui
         self.res = xrc.XmlResource('gui_parent.xrc')
@@ -101,7 +101,7 @@ class cfApp(wx.App):
         if redrawDisplay:
             self.draw.forceRedraw()
         # text boxes.
-        self.textGoToLoc.SetValue(location(chr=self.draw.chromosome, left=self.draw.lbp, right=self.draw.rbp))
+        self.textGoToLoc.SetValue(str(location(chr=self.draw.chromosome, left=self.draw.lbp, right=self.draw.rbp)))
 
     def _mouseLeftDown(self, event):
         """
