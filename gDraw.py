@@ -181,7 +181,7 @@ class gDraw:
         self.paintQ = self.genome.getAllDrawableFeaturesInRange(self.curr_loc)
         for track in self.tracks:
             try:
-                self.paintQ.append({"type": "graph", "array": track[self.curr_loc]})
+                self.paintQ.append({"type": "graph", "array": track.get(self.curr_loc)})
             except: # track probably doens't have this chr?
                 pass
         #print self.paintQ
