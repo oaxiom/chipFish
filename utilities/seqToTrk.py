@@ -14,7 +14,7 @@ and not so easily stripped out.
 """
 
 
-import sys, os, csv, cPickle, time
+import sys, os, csv, time, cProfile, pstats
 
 sys.path.append(os.path.realpath("../"))
 from error import AssertionError
@@ -41,23 +41,35 @@ def seqToTrk(infilename, outfilename):
         t.add_location(item["loc"], strand=item["strand"])
 
         n += 1
-        if n > 1000000:
+        if n > 10000:
             m += 1
             n = 0
-            print "%s,000,000" % m
+            print "%s0,000" % m
+            #break
     e = time.time()
     # 1000 = averages 8-9 s
+    # 3.65 s cache.
+    # 1.01 s better cacheing, less commits
 
-    print "Took: %s s" % (e-s)
-
+    print "Finalise:"
     t.finalise()
-    t.show_debug_info()
+    print "Took: %s s" % (e-s)
     return(True)
 
 if __name__ == "__main__":
     # testing:
     print "Info: This may take a while..."
-    seqToTrk("/home/hutchinsa/ChIP_Raw/CMN019_121_unique_hits.txt", "../data/NSMash1.trk")
+    PROFILE = False
+    if PROFILE:
+        cProfile.run("seqToTrk(\"/home/hutchinsa/ChIP_Raw/CMN019_121_unique_hits.txt\", \"../data/NSMash1.trk\")", "seqToTrk.profile")
+
+        p = pstats.Stats( "seqToTrk.profile")
+
+        p.strip_dirs().sort_stats('time').print_stats()
+
+    else:
+        seqToTrk("/home/hutchinsa/ChIP_Raw/CMN019_121_unique_hits.txt", "../data/NSMash1.trk")
+
 
     """
     print "Command-line seqToTrk:"
