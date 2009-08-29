@@ -16,7 +16,8 @@ from glbase_wrapper import positive_strand_labels, negative_strand_labels
 
 from array import array
 
-TRACK_BLOCK_SIZE = 1000 # should go in opt, later
+TRACK_BLOCK_SIZE = 200 # should go in opt, later
+CACHE_SIZE = 10000000 # maximum number of blocks to keep in memory.
 
 class track:
     """
@@ -47,6 +48,9 @@ class track:
         self.strands = ["+"]
         if stranded: self.strands += ["-"]
 
+        self.cache = {}
+        self.cacheQ = []
+
         # set-up the tables
         if new:
             self.__setup_tables(filename) # return an empty track
@@ -76,11 +80,7 @@ class track:
         self.__connection = sqlite3.connect(filename)
         c = self.__connection.cursor()
 
-        c.execute("CREATE TABLE data (blockID TEXT PRIMARY KEY, chrom INTEGER, left INTEGER, right INTEGER, array BLOB)")
-
-        self.__connection.commit()
-        # set up the block table describing the number of blocks present.
-        c.execute("CREATE TABLE info (chrom INTEGER PRIMARY KEY, blockSize INTEGER)")
+        c.execute("CREATE TABLE data (blockID TEXT PRIMARY KEY, array BLOB)")
 
         self.__connection.commit()
         c.close()
@@ -102,7 +102,6 @@ class track:
         **Returns**
             True
         """
-
         left_most_block = int(abs(math.floor(loc["left"] / self.block_size)))
         right_most_block = int(abs(math.ceil((loc["right"]+1) / self.block_size)))
 
@@ -110,27 +109,29 @@ class track:
 
         for blockID in blocks_required:
             # this is the span location of the block
-            block_loc = location(chr=blockID.split(":")[0], left=blockID.split(":")[1], right=int(blockID.split(":")[1])+self.block_size-1)
+            #block_loc = location(chr=blockID.split(":")[0], left=blockID.split(":")[1], right=int(blockID.split(":")[1])+self.block_size-1)
 
             # check if the block already exists
             if not self.__has_block(blockID): # not present, make a new one.
-                self.__new_block(block_loc["chr"], block_loc["left"])
-            block = self.__get_block(blockID)
+                array_data = self.__new_block(blockID)
+            else:
+                array_data = self.__get_block(blockID)
 
-            array_data = self.__unformat_data(block[1]) # get back the usable data
-
+            bleft = int(blockID.split(":")[1])
+            lleft = int(loc["left"])
+            lright = int(loc["right"])
             # modify the data
             for pos in xrange(self.block_size): # iterate through the array.
-                local_pos = block_loc["left"] + pos
+                local_pos = bleft + pos # only require "left"
                 # some funny stuff here:
                 # right is inc'd by 1
                 # as that is what is usually expected from 10-20.
                 # (i.e. coords are NOT 0-based and are closed).
-                if local_pos < (loc["right"]+1): # still within block
-                    if local_pos >= loc["left"] and local_pos <= (loc["right"]+1): # within the span to increment.
-                        array_data[pos] += increment
+                if local_pos >= lleft and local_pos <= lright: # within the span to increment.
+                    array_data[pos] += increment
 
-            self.__modify_block(block, array_data) # load it back in.
+            self.__put_on_cache(blockID, array_data)
+            self.__flush_cache()
         #print "\n\nDebug:"
         #self.__see_block_counts()
         #self.__see_data()
@@ -143,6 +144,9 @@ class track:
         does not return the block, you must use __get_block()
         to get the actual block.
         """
+        if self.__on_cache(blockID):
+            return(True) # on cache, so must exist.
+
         has = False
         c = self.__connection.cursor()
         c.execute("SELECT blockID FROM data WHERE blockID=?", (blockID, ))
@@ -152,59 +156,86 @@ class track:
         c.close()
         return(has)
 
-    def __modify_block(self, old_block, new_data):
+    def __commit_block(self, blockID, data):
         """
         update the block with new data.
-
-        block = [blockID, chr, left, right, data]
+        commit block to db.
         """
-        # get the block data.
+        # see if tyhe block is in the database:
         c = self.__connection.cursor()
-        c.execute("UPDATE data SET array=? WHERE blockID=?", (self.__format_data(new_data), old_block[0]))
-        self.__connection.commit()
+        c.execute("SELECT blockID FROM data WHERE blockID=?", (blockID, ))
+        result = c.fetchone()
+
+        if result: # has a block already, modify it.
+            # update the block data.
+            c.execute("UPDATE data SET array=? WHERE blockID=?", (self.__format_data(data), blockID))
+        else:
+            c.execute("INSERT INTO data VALUES (?, ?)", (blockID, self.__format_data(data)))
         c.close()
 
-    def __new_block(self, chr, left, data=None):
+    def __new_block(self, blockID, data=None):
         """
         add a data block to the db in data table.
         returns only True, does not return the block.
         use self.__get_block() to get a block.
+
+        new_block DOES NOT WRITE INTO THE DB!
         """
         if not data: # fill a blank entry
             data = array('i', [])
             for n in xrange(self.block_size):
                 data.append(0)
 
-        c = self.__connection.cursor()
+        # stick this item on the cache
+        self.__put_on_cache(blockID, data)
 
-        blockID = "%s:%s" % (chr, left)
+        return(data)
 
-        c.execute("INSERT INTO data VALUES (?,?,?,?,?)", (blockID, chr, left, left+self.block_size-1, self.__format_data(data)))
+    def __on_cache(self, blockID):
+        """
+        see if block is on the cache, if so, return it.
+        """
+        if self.cache.has_key(blockID):
+            return(self.cache[blockID])
+        return(False)
 
-        # get old value:
-        c.execute("SELECT blockSize FROM info WHERE chrom=?", (chr, ))
-        result = c.fetchone()
+    def __flush_cache(self):
+        """
+        check the cache is not over the size limit. If it is, take the last n
+        entries commit to the db.
 
-        if result: # already present, modify:
-            c.execute("UPDATE info SET blockSize=? WHERE chrom=?", (result[0]+1, chr)) # result[0] = old block size
-        else:
-            c.execute("INSERT INTO info VALUES (?,?)", (chr, 1)) # make a new block
-
-        self.__connection.commit()
-        c.close()
+        """
+        while len(self.cacheQ) > CACHE_SIZE:
+            blockID = self.cacheQ.pop()
+            self.__commit_block(blockID, self.cache[blockID])
+            del self.cache[blockID]
 
         return(True)
+
+    def __put_on_cache(self, blockID, array_data):
+        """
+        put the item onto the cache
+        """
+        if not blockID in self.cacheQ: # not on cache
+            self.cacheQ.insert(0, blockID)
+        self.cache[blockID] = array_data
 
     def __get_block(self, blockID):
         """
         get the block identified by chr and left coordinates and return a Python Object.
         """
+        b = self.__on_cache(blockID)
+        if b:
+            return(b)
+
+        # not on the cache. get the block and put it on the cache.
         c = self.__connection.cursor()
-        c.execute("SELECT blockID, array FROM data WHERE blockID=?", (blockID, ))
+        c.execute("SELECT array FROM data WHERE blockID=?", (blockID, ))
         result = c.fetchone()
         c.close()
+
         if result:
-            return(result)
+            return(self.__unformat_data(result[0]))
         else:
             raise Exception, "No Block!"
 
@@ -219,24 +250,6 @@ class track:
         whatever stored as in db --> array('i', [])
         """
         return(eval(data))
-
-    def __see_block_counts(self):
-        c = self.__connection.cursor()
-        c.execute("SELECT * FROM info")
-        print "Info contents:-----"
-        for line in c:
-            print line
-        print "End----------------"
-        c.close()
-
-    def __see_data(self):
-        c = self.__connection.cursor()
-        c.execute("SELECT * FROM data")
-        print "Data contents:-----"
-        for line in c:
-            print line
-        print "End----------------"
-        c.close()
 
     def get(self, loc, strand="+"):
         """
@@ -272,7 +285,7 @@ class track:
             # check if the block already exists
             if self.__has_block(blockID): # it does, get it.
                 block = self.__get_block(blockID)
-                this_block_array_data = self.__unformat_data(block[1]) # get back the usable data
+                this_block_array_data = block # get back the usable data
             else: # not present, fake a block.
                 this_block_array_data = array('i', [0 for x in xrange(self.block_size)])
 
@@ -290,20 +303,33 @@ class track:
         finalise the database (shrink unused edit space)
         dump useless bits etc.
         sort the list by Chrom > left.
+        You must call this! to fianlise the db. Or get() will not work!
         """
+        for blockID in self.cache:
+            self.__commit_block(blockID, self.__format_data(self.cache[blockID]))
+        self.cache = {}
+        self.cacheQ = []
+        self.__connection.commit() # commit all the __commit_block()
+
         c = self.__connection.cursor()
         c.execute("VACUUM")
         self.__connection.commit()
-
-    def show_debug_info(self):
-        self.__see_block_counts()
 
 if __name__ == "__main__":
     # a few testers to see how it works.
 
     t = track(filename="data/test.trk", new=True)
-    #t.add_location(location(loc="chr1:10-20"))
+    t.add_location(location(loc="chr1:1-30"))
+    t.add_location(location(loc="chr1:1-30"))
+    t.add_location(location(loc="chr1:1-30"))
+    t.add_location(location(loc="chr1:1-30"))
+    t.add_location(location(loc="chr1:1-30"))
+    t.add_location(location(loc="chr1:1-30"))
+    t.add_location(location(loc="chr1:1-30"))
+    t.add_location(location(loc="chr1:1-30"))
+    """
     t.add_location(location(loc="chr1:10-22"))
+
     t.add_location(location(loc="chr1:10-21"))
     t.add_location(location(loc="chr1:10-20"))
     t.add_location(location(loc="chr1:10-19"))
@@ -331,12 +357,14 @@ if __name__ == "__main__":
     t.add_location(location(loc="chr2:11-21"), strand="-")
     t.add_location(location(loc="chr2:12-22"), strand="-")
     t.add_location(location(loc="chr2:25-26"), strand="-")
+    """
+    print "Finalise:"
+    t.finalise() # must call this
 
     print t.get(location(loc="chr1:1-26"))
     print t.get(location(loc="chr1:10-20"))
     print t.get(location(loc="chr1:20-25"))
     print t.get("chr1:10-20")
-    t.finalise()
 
     print "\nReload"
     t = track(filename="data/test.trk")
@@ -344,3 +372,4 @@ if __name__ == "__main__":
     print t.get(location(loc="chr1:10-20"))
     print t.get(location(loc="chr1:20-25"))
     print t.get("chr1:10-20")
+    print t.get("chr1:1-30")

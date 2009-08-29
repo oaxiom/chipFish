@@ -19,20 +19,15 @@ class location:
             # It's actually already a loc.
             # I want to copy it and leave.
             self._loc_string = "chr%s:%s-%s" % (loc["chr"].strip("chr").lower(), loc["left"], loc["right"])
+            self.loc = loc.loc
         else:
             if loc:
                 self._loc_string = loc.lower()
             else:
                 self._loc_string = "chr%s:%s-%s" % (chr.lower().strip("chr"), left, right)
-        self.loc = self._split(self._loc_string)
 
-    def _split(self, loc_string):
-        """
-        split the string into a dict [chr, left, right]
-        string of for chrN:left-right
-        """
-        t = loc_string.split(":")
-        return({"chr": t[0].strip("chr").upper(), "left":int(t[1].split("-")[0]), "right":int(t[1].split("-")[1])})
+            t = self._loc_string.split(":")
+            self.loc = {"chr": t[0].strip("chr").upper(), "left":int(t[1].split("-")[0]), "right":int(t[1].split("-")[1])}
 
     def __repr__(self):
         return("location: contents: %s" % self.loc)
