@@ -16,8 +16,9 @@ from glbase_wrapper import positive_strand_labels, negative_strand_labels
 
 from array import array
 
-TRACK_BLOCK_SIZE = 200 # should go in opt, later
-CACHE_SIZE = 10000000 # maximum number of blocks to keep in memory.
+TRACK_BLOCK_SIZE = 20 # should go in opt, later
+CACHE_SIZE = 100000 # maximum number of blocks to keep in memory.
+# these are equivalent to about 800 Mb's of memory.
 
 class track:
     """
@@ -100,7 +101,7 @@ class track:
             increment
 
         **Returns**
-            True
+            True, if completes succesfully, or exception.
         """
         left_most_block = int(abs(math.floor(loc["left"] / self.block_size)))
         right_most_block = int(abs(math.ceil((loc["right"]+1) / self.block_size)))
@@ -113,9 +114,7 @@ class track:
 
             # check if the block already exists
             if not self.__has_block(blockID): # not present, make a new one.
-                array_data = self.__new_block(blockID)
-            else:
-                array_data = self.__get_block(blockID)
+                self.__new_block(blockID)
 
             bleft = int(blockID.split(":")[1])
             lleft = int(loc["left"])
@@ -128,9 +127,8 @@ class track:
                 # as that is what is usually expected from 10-20.
                 # (i.e. coords are NOT 0-based and are closed).
                 if local_pos >= lleft and local_pos <= lright: # within the span to increment.
-                    array_data[pos] += increment
+                    self.cache[blockID][pos] += increment
 
-            self.__put_on_cache(blockID, array_data)
             self.__flush_cache()
         #print "\n\nDebug:"
         #self.__see_block_counts()
@@ -144,7 +142,7 @@ class track:
         does not return the block, you must use __get_block()
         to get the actual block.
         """
-        if self.__on_cache(blockID):
+        if self.cache.has_key(blockID):
             return(True) # on cache, so must exist.
 
         has = False
@@ -183,20 +181,14 @@ class track:
         """
         if not data: # fill a blank entry
             data = array('i', [])
-            for n in xrange(self.block_size):
-                data.append(0)
+            data.extend([0 for x in xrange(self.block_size)])
+            #for n in xrange(self.block_size):
+            #    data.append(0)
 
-        # stick this item on the cache
-        self.__put_on_cache(blockID, data)
+        if not blockID in self.cacheQ: # not on cache
+            self.cacheQ.insert(0, blockID) # put the ID at the front.
+        self.cache[blockID] = data
 
-        return(data)
-
-    def __on_cache(self, blockID):
-        """
-        see if block is on the cache, if so, return it.
-        """
-        if self.cache.has_key(blockID):
-            return(self.cache[blockID])
         return(False)
 
     def __flush_cache(self):
@@ -212,27 +204,21 @@ class track:
 
         return(True)
 
-    def __put_on_cache(self, blockID, array_data):
-        """
-        put the item onto the cache
-        """
-        if not blockID in self.cacheQ: # not on cache
-            self.cacheQ.insert(0, blockID)
-        self.cache[blockID] = array_data
-
     def __get_block(self, blockID):
         """
         get the block identified by chr and left coordinates and return a Python Object.
         """
-        b = self.__on_cache(blockID)
-        if b:
-            return(b)
+        print blockID
+        if self.cache.has_key(blockID):
+            return(self.cache[blockID])
 
+        print blockID
         # not on the cache. get the block and put it on the cache.
         c = self.__connection.cursor()
         c.execute("SELECT array FROM data WHERE blockID=?", (blockID, ))
         result = c.fetchone()
         c.close()
+        print result
 
         if result:
             return(self.__unformat_data(result[0]))
@@ -243,13 +229,16 @@ class track:
         """
         array('i', []) --> whatever it's stored as in db
         """
-        return(str(data))
+        return(data.tostring())
 
     def __unformat_data(self, data):
         """
         whatever stored as in db --> array('i', [])
         """
-        return(eval(data))
+        print ",",data, ":"
+        a = array('i')
+        a.fromstring(data)
+        return(a)
 
     def get(self, loc, strand="+"):
         """
@@ -289,6 +278,9 @@ class track:
             else: # not present, fake a block.
                 this_block_array_data = array('i', [0 for x in xrange(self.block_size)])
 
+            print "b", block
+            print self.__get_block(blockID)
+
             # modify the data
             for pos in xrange(self.block_size): # iterate through the array.
                 local_pos = block_loc["left"] + pos
@@ -306,7 +298,7 @@ class track:
         You must call this! to fianlise the db. Or get() will not work!
         """
         for blockID in self.cache:
-            self.__commit_block(blockID, self.__format_data(self.cache[blockID]))
+            self.__commit_block(blockID, self.cache[blockID])
         self.cache = {}
         self.cacheQ = []
         self.__connection.commit() # commit all the __commit_block()
@@ -327,7 +319,7 @@ if __name__ == "__main__":
     t.add_location(location(loc="chr1:1-30"))
     t.add_location(location(loc="chr1:1-30"))
     t.add_location(location(loc="chr1:1-30"))
-    """
+
     t.add_location(location(loc="chr1:10-22"))
 
     t.add_location(location(loc="chr1:10-21"))
@@ -357,7 +349,7 @@ if __name__ == "__main__":
     t.add_location(location(loc="chr2:11-21"), strand="-")
     t.add_location(location(loc="chr2:12-22"), strand="-")
     t.add_location(location(loc="chr2:25-26"), strand="-")
-    """
+
     print "Finalise:"
     t.finalise() # must call this
 

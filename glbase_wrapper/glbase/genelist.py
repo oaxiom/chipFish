@@ -243,10 +243,7 @@ class genelist:
         string
         """
         try: # see if the element is a float()
-            if column[format[key]].count(".") == 1: # don't do it if more than 1 '.'
-                return(float(value))
-            else:
-                raise ValueError # fail the try
+            return(float(value))
         except:
             try: # see if it's actually an int?
                 return(int(value))
