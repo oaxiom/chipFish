@@ -23,11 +23,12 @@ class location:
         else:
             if loc:
                 self._loc_string = loc.lower()
+                t = self._loc_string.split(":")
+                self.loc = {"chr": t[0].strip("chr").upper(), "left":int(t[1].split("-")[0]), "right":int(t[1].split("-")[1])}
             else:
-                self._loc_string = "chr%s:%s-%s" % (chr.lower().strip("chr"), left, right)
-
-            t = self._loc_string.split(":")
-            self.loc = {"chr": t[0].strip("chr").upper(), "left":int(t[1].split("-")[0]), "right":int(t[1].split("-")[1])}
+                #self._loc_string = "chr%s:%s-%s" % (chr.lower().strip("chr"), left, right)
+                #t = self._loc_string.split(":")
+                self.loc = {"chr": chr.strip("chr").upper(), "left": int(left), "right": int(right)}
 
     def __repr__(self):
         return("location: contents: %s" % self.loc)

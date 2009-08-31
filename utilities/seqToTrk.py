@@ -44,12 +44,15 @@ def seqToTrk(infilename, outfilename):
         if n > 10000:
             m += 1
             n = 0
-            print "%s0,000" % m
-            #break
+            print "%s00,000" % m
+            break
     e = time.time()
     # 1000 = averages 8-9 s
     # 3.65 s cache.
-    # 1.01 s better cacheing, less commits
+    # 0.61 s better cacheing, less commits
+    # 10,000 used to check now.
+    # 5.98 s.
+    #
 
     print "Finalise:"
     t.finalise()
