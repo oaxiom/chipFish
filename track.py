@@ -16,7 +16,7 @@ from glbase_wrapper import positive_strand_labels, negative_strand_labels
 
 from array import array
 
-TRACK_BLOCK_SIZE = 20 # should go in opt, later
+TRACK_BLOCK_SIZE = 2000 # should go in opt, later
 CACHE_SIZE = 100000 # maximum number of blocks to keep in memory.
 # these are equivalent to about 800 Mb's of memory.
 
@@ -79,9 +79,11 @@ class track:
             os.remove(filename)
 
         self.__connection = sqlite3.connect(filename)
+        self.__connection.text_factory = sqlite3.OptimizedUnicode
+
         c = self.__connection.cursor()
 
-        c.execute("CREATE TABLE data (blockID TEXT PRIMARY KEY, array BLOB)")
+        c.execute("CREATE TABLE data (blockID TEXT PRIMARY KEY, array TEXT)")
 
         self.__connection.commit()
         c.close()
@@ -164,11 +166,14 @@ class track:
         c.execute("SELECT blockID FROM data WHERE blockID=?", (blockID, ))
         result = c.fetchone()
 
+        d = self.__format_data(data)
+
         if result: # has a block already, modify it.
             # update the block data.
+
             c.execute("UPDATE data SET array=? WHERE blockID=?", (self.__format_data(data), blockID))
         else:
-            c.execute("INSERT INTO data VALUES (?, ?)", (blockID, self.__format_data(data)))
+            c.execute("INSERT INTO data VALUES (?, ?)", (blockID, d))
         c.close()
 
     def __new_block(self, blockID, data=None):
@@ -181,7 +186,7 @@ class track:
         """
         if not data: # fill a blank entry
             data = array('i', [])
-            data.extend([0 for x in xrange(self.block_size)])
+            data.extend([1 for x in xrange(self.block_size)])
             #for n in xrange(self.block_size):
             #    data.append(0)
 
@@ -208,17 +213,14 @@ class track:
         """
         get the block identified by chr and left coordinates and return a Python Object.
         """
-        print blockID
         if self.cache.has_key(blockID):
             return(self.cache[blockID])
 
-        print blockID
         # not on the cache. get the block and put it on the cache.
         c = self.__connection.cursor()
         c.execute("SELECT array FROM data WHERE blockID=?", (blockID, ))
         result = c.fetchone()
         c.close()
-        print result
 
         if result:
             return(self.__unformat_data(result[0]))
@@ -229,16 +231,21 @@ class track:
         """
         array('i', []) --> whatever it's stored as in db
         """
-        return(data.tostring())
+        #print data.tostring().encode("utf-8")
+        #print [d for d in data.tostring()]
+        #return(sqlite3.Binary(data.tostring()))
+        #return(str(data))
+        return(sqlite3.Binary(zlib.compress(data.tostring())))
 
     def __unformat_data(self, data):
         """
         whatever stored as in db --> array('i', [])
         """
-        print ",",data, ":"
+        #print "ret:",[d for d in data], ":"
         a = array('i')
-        a.fromstring(data)
+        a.fromstring(zlib.decompress(data))
         return(a)
+
 
     def get(self, loc, strand="+"):
         """
@@ -278,8 +285,8 @@ class track:
             else: # not present, fake a block.
                 this_block_array_data = array('i', [0 for x in xrange(self.block_size)])
 
-            print "b", block
-            print self.__get_block(blockID)
+            #print "b", block
+            #print self.__get_block(blockID)
 
             # modify the data
             for pos in xrange(self.block_size): # iterate through the array.
@@ -336,6 +343,7 @@ if __name__ == "__main__":
     t.add_location(location(loc="chr1:25-26"))
     # really boost one single location:
 
+    """
     for n in xrange(50):
         t.add_location(location(loc="chr1:11-12"))
         t.add_location(location(loc="chr1:12-13"))
@@ -349,6 +357,7 @@ if __name__ == "__main__":
     t.add_location(location(loc="chr2:11-21"), strand="-")
     t.add_location(location(loc="chr2:12-22"), strand="-")
     t.add_location(location(loc="chr2:25-26"), strand="-")
+    """
 
     print "Finalise:"
     t.finalise() # must call this
