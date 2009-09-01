@@ -41,18 +41,19 @@ def seqToTrk(infilename, outfilename):
         t.add_location(item["loc"], strand=item["strand"])
 
         n += 1
-        if n > 10000:
+        if n > 100000:
             m += 1
             n = 0
             print "%s00,000" % m
-            break
+            #break
     e = time.time()
     # 1000 = averages 8-9 s
     # 3.65 s cache.
     # 0.61 s better cacheing, less commits
     # 10,000 used to check now.
-    # 5.98 s.
-    #
+    # 5.98 s, 22.8Mb (Binary(array.tostring())
+    # 6.0 s 17.1 Mb (str/eval)
+    # 6.0 s 259kb (zlib/Binary()/tostring())
 
     print "Finalise:"
     t.finalise()
