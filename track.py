@@ -117,6 +117,12 @@ class track:
             # check if the block already exists
             if not self.__has_block(blockID): # not present, make a new one.
                 self.__new_block(blockID)
+            else:
+                if not blockID in self.cacheQ: # not on cache, add it;
+                    self.cacheQ.insert(0, blockID) # put the ID at the front.
+                    self.cache[blockID] = self.__get_block(blockID)
+            # block should now be on cache
+
 
             bleft = int(blockID.split(":")[1])
             lleft = int(loc["left"])
