@@ -26,7 +26,7 @@ class debug:
     """
     containers for debugging options.
     """
-    debug_version = True
+    debug_version = False
     if debug_version:
         draw_collision_boxes = True
     else:
@@ -42,9 +42,11 @@ class graphics:
     microRNA_height = 6
 
     screen_colour = (1,1,1,1)
-    gene_colour = (0,0,1)
+    gene_colour = (0.89,0.654,0.165) #E6A729
     lncrna_colour = (0.1, 0.8, 0.1)
     microRNA_colour = (0.6, 0.1, 0)
+
+    font = "Arial"
 
 class ruler:
     """
@@ -53,7 +55,7 @@ class ruler:
     font = "Arial"
     font_size = 6
     height_px = 10 # height of ruler in pixels.
-    text_height = 20 # distance from top of screen of the ruler text.
+    text_height = 10 # distance from top of screen of the ruler text.
     colour = (0,0,0)
     line_width = 1
 
