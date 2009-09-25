@@ -41,11 +41,11 @@ def seqToTrk(infilename, outfilename, **kargs):
         t.add_location(item["loc"], strand=item["strand"])
 
         n += 1
-        if n > 10000:
+        if n > 100000:
             m += 1
             n = 0
             print "%s00,000" % m
-            break
+            #break
     e = time.time()
     # 1000 = averages 8-9 s
     # 3.65 s cache.
