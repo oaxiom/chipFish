@@ -63,7 +63,7 @@ def seqToTrk(infilename, outfilename, **kargs):
 if __name__ == "__main__":
     # testing:
     print "Info: This may take a while..."
-    PROFILE = True
+    PROFILE = False
     if PROFILE:
         cProfile.run("seqToTrk(\"/home/hutchinsa/ChIP_Raw/CMN019_121_unique_hits.txt\", \"../data/NSMash1.trk\")", "seqToTrk.profile")
 
