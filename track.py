@@ -18,7 +18,9 @@ from array import array
 
 TRACK_BLOCK_SIZE = 2000 # should go in opt, later
 CACHE_SIZE = 100000 # maximum number of blocks to keep in memory.
-# these are equivalent to about 800 Mb's of memory.
+# these are equivalent to about 800 Mb's of memory on a Fedora box
+# On a 2Gb machine it is still usable, less may be a problem.
+# needs to be tested on a Windows and MACOSX machine.
 
 class track:
     """
@@ -77,6 +79,8 @@ class track:
 
         if os.path.exists(filename): # overwrite old file.
             os.remove(filename)
+            # This could potentially fail - I should report and fail
+            # nicely... At the moment it just throws an exception.
 
         self.__connection = sqlite3.connect(filename)
         self.__connection.text_factory = sqlite3.OptimizedUnicode
@@ -121,8 +125,7 @@ class track:
                 if not blockID in self.cacheQ: # not on cache, add it;
                     self.cacheQ.insert(0, blockID) # put the ID at the front.
                     self.cache[blockID] = self.__get_block(blockID)
-            # block should now be on cache
-
+            # block should now be on cache and accesable.
 
             bleft = int(blockID.split(":")[1])
             lleft = int(loc["left"])
@@ -138,9 +141,6 @@ class track:
                     self.cache[blockID][pos] += increment
 
             self.__flush_cache()
-        #print "\n\nDebug:"
-        #self.__see_block_counts()
-        #self.__see_data()
         return(True)
 
     def __has_block(self, blockID):
@@ -204,8 +204,8 @@ class track:
 
     def __flush_cache(self):
         """
-        check the cache is not over the size limit. If it is, take the last n
-        entries commit to the db.
+        check the cache is not over the size limit. If it is, take the last
+        n>CACHE_SIZE entries commit to the db.
 
         """
         while len(self.cacheQ) > CACHE_SIZE:
@@ -237,10 +237,6 @@ class track:
         """
         array('i', []) --> whatever it's stored as in db
         """
-        #print data.tostring().encode("utf-8")
-        #print [d for d in data.tostring()]
-        #return(sqlite3.Binary(data.tostring()))
-        #return(str(data))
         return(sqlite3.Binary(zlib.compress(data.tostring())))
 
     def __unformat_data(self, data):
@@ -251,7 +247,6 @@ class track:
         a = array('i')
         a.fromstring(zlib.decompress(data))
         return(a)
-
 
     def get(self, loc, strand="+"):
         """
@@ -288,7 +283,7 @@ class track:
             if self.__has_block(blockID): # it does, get it.
                 block = self.__get_block(blockID)
                 this_block_array_data = block # get back the usable data
-            else: # not present, fake a block.
+            else: # block not in db, fake a block instead.
                 this_block_array_data = array('i', [0 for x in xrange(self.block_size)])
 
             #print "b", block
@@ -307,8 +302,9 @@ class track:
         """
         finalise the database (shrink unused edit space)
         dump useless bits etc.
-        sort the list by Chrom > left.
-        You must call this! to fianlise the db. Or get() will not work!
+        You must call this! to finalise the db.
+        Or get() will not work!
+        This copies the cache onto disk and closes the db.
         """
         for blockID in self.cache:
             self.__commit_block(blockID, self.cache[blockID])

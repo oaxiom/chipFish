@@ -17,9 +17,9 @@ and not so easily stripped out.
 import sys, os, csv, time, cProfile, pstats
 
 sys.path.append(os.path.realpath("../"))
-from error import AssertionError
-from track import track
-from glbase_wrapper import delayedlist
+from error import AssertionError # these imports are why it can't be moved...
+from track import track # the chipFish track implementation.
+from glbase_wrapper import delayedlist # get delayedlist from glbase
 
 def seqToTrk(infilename, outfilename):
     assert os.path.realpath(infilename), "no filename specified"
@@ -72,7 +72,12 @@ if __name__ == "__main__":
         p.strip_dirs().sort_stats('time').print_stats()
 
     else:
-        seqToTrk("/home/hutchinsa/ChIP_Raw/CMN019_121_unique_hits.txt", "../data/NSMash1.trk")
+        pass
+
+    seqToTrk("/home/hutchinsa/ChIP_Raw/CMN019_121_unique_hits.txt", "../data/NSMash1.trk", name="NS5 cells Mash1")
+    seqToTrk("/home/hutchinsa/ChIP_Raw/CME030_154_unique_hits.txt", "../data/SpMash1.trk", name="Spinal Cord Mash1")
+    seqToTrk("/home/hutchinsa/ChIP_Raw/SCS843_053_reprocessed_unique_hits.txt", "../data/TcMash1.trk", name="Telencephalon Mash1")
+    seqToTrk("/home/hutchinsa/ChIP_Raw/CMN011_084_reprocessed_unique_hits.txt", "../data/NSGFP.trk", name="NS5 GFP Control")
 
 
     """
