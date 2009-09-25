@@ -21,7 +21,7 @@ from error import AssertionError # these imports are why it can't be moved...
 from track import track # the chipFish track implementation.
 from glbase_wrapper import delayedlist # get delayedlist from glbase
 
-def seqToTrk(infilename, outfilename):
+def seqToTrk(infilename, outfilename, **kargs):
     assert os.path.realpath(infilename), "no filename specified"
     assert os.path.realpath(outfilename), "no save filename specified"
 
@@ -34,7 +34,7 @@ def seqToTrk(infilename, outfilename):
     n = 0
     m = 0
 
-    t = track(filename=outfilename, stranded=False, new=True) # strands not currently supported :(
+    t = track(filename=outfilename, stranded=False, new=True, **kargs) # strands not currently supported :(
 
     s = time.time()
     for item in seqfile:
