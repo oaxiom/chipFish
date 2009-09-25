@@ -191,8 +191,8 @@ class track:
         new_block DOES NOT WRITE INTO THE DB!
         """
         if not data: # fill a blank entry
-            data = array('i', [])
-            data.extend([1 for x in xrange(self.block_size)])
+            data = array('i', [0 for x in xrange(self.block_size)])
+            #data.extend([1 for x in xrange(self.block_size)])
             #for n in xrange(self.block_size):
             #    data.append(0)
 
