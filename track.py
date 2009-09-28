@@ -9,24 +9,18 @@ Not for distribution.
 
 from __future__ import division
 
-import cPickle, sys, os, struct, ConfigParser, math, sqlite3, zlib # renamed to configparser in >2.6
+import cPickle, sys, os, struct, math, sqlite3, zlib
 
 from glbase_wrapper import location as location
 from glbase_wrapper import positive_strand_labels, negative_strand_labels
 
 from array import array
 
-TRACK_BLOCK_SIZE = 2000 # should go in opt, later
-CACHE_SIZE = 100000 # maximum number of blocks to keep in memory.
-# these are equivalent to about 800 Mb's of memory on a Fedora box
-# On a 2Gb machine it is still usable, less may be a problem.
-# needs to be tested on a Windows and MACOSX machine.
-
 class track:
     """
     track definition, used for things like sequence reads across the genome
     """
-    def __init__(self, name="None", new=False, stranded=True, filename=None, bin_format="i"):
+    def __init__(self, name="None", new=False, stranded=True, filename=None, array_format="i"):
         """
         **Arguments**
             name (string)
@@ -41,18 +35,10 @@ class track:
 
         """
         self.name = name
-        self.bin_format = bin_format
-
-        bin_len = {"i": struct.calcsize("i"), "l": struct.calcsize("l")}
-        self.bin_len = bin_len[self.bin_format]
-
-        self.block_size = TRACK_BLOCK_SIZE # size of the blocks
+        self.array_format = array_format
 
         self.strands = ["+"]
         if stranded: self.strands += ["-"]
-
-        self.cache = {}
-        self.cacheQ = []
 
         # set-up the tables
         if new:
@@ -74,7 +60,7 @@ class track:
         # kill any previously exisiting file (Use with care!)
         # make sure the directory is available:
         path = os.path.split(filename)[0]
-        if not os.path.exists(path):
+        if path and not os.path.exists(path):
             os.makedirs(path)
 
         if os.path.exists(filename): # overwrite old file.
@@ -87,10 +73,50 @@ class track:
 
         c = self.__connection.cursor()
 
-        c.execute("CREATE TABLE data (blockID TEXT PRIMARY KEY, array TEXT)")
+        c.execute("CREATE TABLE main (chromosome TEXT PRIMARY KEY, seq_reads INT)")
 
         self.__connection.commit()
         c.close()
+
+    def __add_chromosome(self, chromosome):
+        """
+        add a chromosome to the main table.
+        add a chromosome table.
+
+        returns True if succesfully created/already present.
+        """
+        c = self.__connection.cursor()
+        # check chromosome is not already present.
+        if self.__has_chromosome(chromosome):
+            return(True)
+
+        c.execute("INSERT INTO main VALUES (?, ?)", (chromosome, 0)) # add chr to master table.
+
+        # make the new chromsome table:
+        table_name = "chr_%s" % str(chromosome)
+        c.execute("CREATE TABLE %s (left INT, right INT, strand TEXT)" % (table_name, ))
+
+        # link new table to old table.
+        # how do I do that?!?!?
+
+        c.close()
+        return(True)
+
+    def __has_chromosome(self, chromosome):
+        """
+        do we have that chromosome?
+        """
+        c = self.__connection.cursor()
+
+        c.execute("SELECT chromosome FROM main WHERE chromosome=?", (chromosome, ))
+
+        result = c.fetchone()
+
+        c.close()
+
+        if result:
+            return(True)
+        return(False)
 
     def add_location(self, loc, strand="+", increment=1):
         """
@@ -109,194 +135,101 @@ class track:
         **Returns**
             True, if completes succesfully, or exception.
         """
-        left_most_block = int(abs(math.floor(loc["left"] / self.block_size)))
-        right_most_block = int(abs(math.ceil((loc["right"]+1) / self.block_size)))
+        if not self.__has_chromosome(loc["chr"]):
+            self.__add_chromosome(loc["chr"])
 
-        blocks_required = ["%s:%s" % (loc["chr"], b) for b in xrange(left_most_block * self.block_size, right_most_block * self.block_size, self.block_size)]
-
-        for blockID in blocks_required:
-            # this is the span location of the block
-            #block_loc = location(chr=blockID.split(":")[0], left=blockID.split(":")[1], right=int(blockID.split(":")[1])+self.block_size-1)
-
-            # check if the block already exists
-            if not self.__has_block(blockID): # not present, make a new one.
-                self.__new_block(blockID)
-            else:
-                if not blockID in self.cacheQ: # not on cache, add it;
-                    self.cacheQ.insert(0, blockID) # put the ID at the front.
-                    self.cache[blockID] = self.__get_block(blockID)
-            # block should now be on cache and accesable.
-
-            bleft = int(blockID.split(":")[1])
-            lleft = int(loc["left"])
-            lright = int(loc["right"])
-            # modify the data
-            for pos in xrange(self.block_size): # iterate through the array.
-                local_pos = bleft + pos # only require "left"
-                # some funny stuff here:
-                # right is inc'd by 1
-                # as that is what is usually expected from 10-20.
-                # (i.e. coords are NOT 0-based and are closed).
-                if local_pos >= lleft and local_pos <= lright: # within the span to increment.
-                    self.cache[blockID][pos] += increment
-
-            self.__flush_cache()
-        return(True)
-
-    def __has_block(self, blockID):
-        """
-        checks if the data base has that block already.
-        returns only True or False,
-        does not return the block, you must use __get_block()
-        to get the actual block.
-        """
-        if self.cache.has_key(blockID):
-            return(True) # on cache, so must exist.
-
-        has = False
         c = self.__connection.cursor()
-        c.execute("SELECT blockID FROM data WHERE blockID=?", (blockID, ))
-        result = c.fetchone()
-        if result:
-            has = True
-        c.close()
-        return(has)
 
-    def __commit_block(self, blockID, data):
-        """
-        update the block with new data.
-        commit block to db.
-        """
-        # see if tyhe block is in the database:
-        c = self.__connection.cursor()
-        c.execute("SELECT blockID FROM data WHERE blockID=?", (blockID, ))
-        result = c.fetchone()
+        # insert location into new array.
+        table_name = "chr_%s" % str(loc["chr"]) # stop injections.
 
-        d = self.__format_data(data)
+        # get the old number of seq_reads
+        c.execute("SELECT seq_reads FROM main WHERE chromosome=?", (loc["chr"], ))
+        current_seq_reads = c.fetchone()[0] # always returns a tuple
 
-        if result: # has a block already, modify it.
-            # update the block data.
+        c.execute("UPDATE main SET seq_reads=? WHERE chromosome=?", (current_seq_reads+1, loc["chr"]))
 
-            c.execute("UPDATE data SET array=? WHERE blockID=?", (self.__format_data(data), blockID))
-        else:
-            c.execute("INSERT INTO data VALUES (?, ?)", (blockID, d))
+        # add the location to the seq table:
+        c.execute("INSERT INTO %s VALUES (?, ?, ?)" % table_name, (loc["left"], loc["right"], strand))
+
         c.close()
 
-    def __new_block(self, blockID, data=None):
-        """
-        add a data block to the db in data table.
-        returns only True, does not return the block.
-        use self.__get_block() to get a block.
-
-        new_block DOES NOT WRITE INTO THE DB!
-        """
-        if not data: # fill a blank entry
-            data = array('i', [0 for x in xrange(self.block_size)])
-            #data.extend([1 for x in xrange(self.block_size)])
-            #for n in xrange(self.block_size):
-            #    data.append(0)
-
-        if not blockID in self.cacheQ: # not on cache
-            self.cacheQ.insert(0, blockID) # put the ID at the front.
-        self.cache[blockID] = data
-
-        return(False)
-
-    def __flush_cache(self):
-        """
-        check the cache is not over the size limit. If it is, take the last
-        n>CACHE_SIZE entries commit to the db.
-
-        """
-        while len(self.cacheQ) > CACHE_SIZE:
-            blockID = self.cacheQ.pop()
-            self.__commit_block(blockID, self.cache[blockID])
-            del self.cache[blockID]
-
-        return(True)
-
-    def __get_block(self, blockID):
-        """
-        get the block identified by chr and left coordinates and return a Python Object.
-        """
-        if self.cache.has_key(blockID):
-            return(self.cache[blockID])
-
-        # not on the cache. get the block and put it on the cache.
-        c = self.__connection.cursor()
-        c.execute("SELECT array FROM data WHERE blockID=?", (blockID, ))
-        result = c.fetchone()
-        c.close()
-
-        if result:
-            return(self.__unformat_data(result[0]))
-        else:
-            raise Exception, "No Block!"
-
-    def __format_data(self, data):
-        """
-        array('i', []) --> whatever it's stored as in db
-        """
-        return(sqlite3.Binary(zlib.compress(data.tostring())))
-
-    def __unformat_data(self, data):
-        """
-        whatever stored as in db --> array('i', [])
-        """
-        #print "ret:",[d for d in data], ":"
-        a = array('i')
-        a.fromstring(zlib.decompress(data))
-        return(a)
-
-    def get(self, loc, strand="+"):
+    def get_array(self, loc, strand=None, resolution=1, read_extend=0, **kargs):
         """
         **Purpose**
-            get the data between location 'loc'
+            get the data between location 'loc' and return it formatted as
+            a nbp resolution array
 
         **Arguments**
             loc (Required)
                 a valid location or string location.
 
-            strand (Optional, default = "+")
+            strand (Optional, default = None, ie. collect and merge both strands)
                 strand, but only valid for stranded tracks
+
+            resolution (Not Implemented)
+                nbp resolution required (you should probably send a float)
+
+            read_extend (Optional, default = 0, Not Implemented)
 
         **Returns**
             an 'array('i', [0, 1, 2 ... n])' contiginous array
         """
-        try:
-            if loc["chr"]: pass
-        except TypeError: # probably a location string. try to cooerce
-            loc = location(loc=loc)
+        # check if the array is already on the cache.
+        locs_required = [loc]
 
-        left_most_block = int(abs(math.floor(loc["left"] / self.block_size)))
-        right_most_block = int(abs(math.ceil((loc["right"]+1) / self.block_size)))
+        # get the reads only in the ranges required.
+        reads = []
+        for l in locs_required:
+            reads += self.get_reads(l, strand)
 
-        blocks_required = ["%s:%s" % (loc["chr"], b) for b in xrange(left_most_block * self.block_size, right_most_block * self.block_size, self.block_size)]
+        print resolution
+        print len(xrange(0, loc["right"]-loc["left"]+int(resolution), resolution))
 
-        ret_array = array('i', [])
+        # make an array
+        a = array(self.array_format, [0 for x in xrange(0, loc["right"]-loc["left"]+int(resolution), resolution)])
 
-        for blockID in blocks_required:
-            # this is the span location of the block
-            block_loc = location(chr=blockID.split(":")[0], left=blockID.split(":")[1], right=int(blockID.split(":")[1])+self.block_size-1)
+        for loc in locs_required:
+            for real_loc in xrange(loc["left"], loc["right"]+resolution, int(resolution)):
+                for r in reads:
+                    if real_loc >= r[0] and real_loc <= r[1]:
+                        a[int((real_loc-loc["left"])/resolution)] += 1
 
-            # check if the block already exists
-            if self.__has_block(blockID): # it does, get it.
-                block = self.__get_block(blockID)
-                this_block_array_data = block # get back the usable data
-            else: # block not in db, fake a block instead.
-                this_block_array_data = array('i', [0 for x in xrange(self.block_size)])
+        print "array_len", len(a)
 
-            #print "b", block
-            #print self.__get_block(blockID)
+        return(a)
 
-            # modify the data
-            for pos in xrange(self.block_size): # iterate through the array.
-                local_pos = block_loc["left"] + pos
-                # see add_location for details
-                if local_pos < (loc["right"]+1): # still within block
-                    if local_pos >= loc["left"] and local_pos <= (loc["right"]+1): # within the span to increment.
-                        ret_array.append(this_block_array_data[pos])
-        return(ret_array)
+    def get_reads(self, loc, strand=None):
+        """
+        **Purpose**
+            get all of the sequence reads between location 'loc' and return
+            it formatted as a list of tuples: (left, right, strand), seq reads.
+
+        **Arguments**
+            loc (Required)
+                a valid location or string location.
+
+            strand (Optional, default = 'None', ie. collect both strands)
+                collect only one strands data. specify + or - strand and
+                return only seq reads on that strand.
+
+        **Returns**
+            a list containing all of the reads between loc.
+        """
+        c = self.__connection.cursor()
+
+        table_name = "chr_%s" % loc["chr"]
+
+        if not strand:
+            c.execute("SELECT * FROM %s WHERE (?>=left AND ?<=right) OR (?>=left AND ?<=right) OR (left<=? AND right>=?) OR (?<=left AND ?>=right)" % table_name,
+                (loc["left"], loc["left"], loc["right"], loc["right"], loc["left"], loc["right"], loc["left"], loc["right"]))
+        else:
+            pass
+
+        result = c.fetchall()
+
+        c.close()
+        return(result)
 
     def finalise(self):
         """
@@ -306,73 +239,71 @@ class track:
         Or get() will not work!
         This copies the cache onto disk and closes the db.
         """
-        for blockID in self.cache:
-            self.__commit_block(blockID, self.cache[blockID])
-        self.cache = {}
-        self.cacheQ = []
-        self.__connection.commit() # commit all the __commit_block()
-
-        c = self.__connection.cursor()
-        c.execute("VACUUM")
+        # do a commit
         self.__connection.commit()
+        self.__connection.execute("VACUUM")
+        self.__connection.commit()
+
+    def _debug__print_all_tables(self):
+        c = self.__connection.cursor()
+        c.execute("SELECT * FROM main")
+        result = c.fetchall()
+
+        print "Main:"
+        for item in result:
+            print item
+
+        print "Chr_Tables:"
+        for item in result:
+            table_name = "chr_%s" % str(item[0])[0] # stop injections.
+            print " Table", table_name
+            c.execute("SELECT * FROM %s" % table_name)
+            chr_table_res = c.fetchall()
+            for i in chr_table_res:
+                print " ", i
+        c.close()
 
 if __name__ == "__main__":
     # a few testers to see how it works.
 
-    t = track(filename="data/test.trk", new=True)
+    t = track(filename="data/test_new.trk", new=True)
     t.add_location(location(loc="chr1:1-30"))
     t.add_location(location(loc="chr1:1-30"))
-    t.add_location(location(loc="chr1:1-30"))
-    t.add_location(location(loc="chr1:1-30"))
-    t.add_location(location(loc="chr1:1-30"))
-    t.add_location(location(loc="chr1:1-30"))
-    t.add_location(location(loc="chr1:1-30"))
-    t.add_location(location(loc="chr1:1-30"))
-
     t.add_location(location(loc="chr1:10-22"))
-
     t.add_location(location(loc="chr1:10-21"))
     t.add_location(location(loc="chr1:10-20"))
     t.add_location(location(loc="chr1:10-19"))
-    #t.add_location(location(loc="chr1:1-31"))
-
-    #print t.get("chr1:1-35")
-
     t.add_location(location(loc="chr1:11-21"))
     t.add_location(location(loc="chr1:12-22"))
+    t.add_location(location(loc="chr1:24-25"))
     t.add_location(location(loc="chr1:25-26"))
-    t.add_location(location(loc="chr1:25-26"))
-    t.add_location(location(loc="chr1:25-26"))
-    # really boost one single location:
+    t.add_location(location(loc="chr1:26-27"))
+    t.add_location(location(loc="chr1:26-26"))
+    t.add_location(location(loc="chr1:27-27"))
 
-    """
-    for n in xrange(50):
-        t.add_location(location(loc="chr1:11-12"))
-        t.add_location(location(loc="chr1:12-13"))
+    t.add_location(location(loc="chr1:1-100"), strand="+")
+    t.add_location(location(loc="chr1:26-100"), strand="+")
 
-    t.add_location(location(loc="chr1:10-20"), strand="-")
-    t.add_location(location(loc="chr1:11-21"), strand="-")
-    t.add_location(location(loc="chr1:12-22"), strand="-")
-    t.add_location(location(loc="chr1:25-26"), strand="-")
-
-    t.add_location(location(loc="chr2:10-20"), strand="-")
-    t.add_location(location(loc="chr2:11-21"), strand="-")
-    t.add_location(location(loc="chr2:12-22"), strand="-")
-    t.add_location(location(loc="chr2:25-26"), strand="-")
-    """
+    t.add_location(location(loc="chr2:100-200"), strand="-")
+    t.add_location(location(loc="chr2:110-210"), strand="-")
+    t.add_location(location(loc="chr2:120-220"), strand="-")
+    t.add_location(location(loc="chr2:250-260"), strand="-")
 
     print "Finalise:"
     t.finalise() # must call this
+    t._debug__print_all_tables()
 
-    print t.get(location(loc="chr1:1-26"))
-    print t.get(location(loc="chr1:10-20"))
-    print t.get(location(loc="chr1:20-25"))
-    print t.get("chr1:10-20")
+    # see the test_case for a formal test.
+    print t.get_reads(location(loc="chr1:1-26"))
+    print t.get_array(location(loc="chr1:1-26"))
+    print t.get_array(location(loc="chr1:10-20"))
+    print t.get_array(location(loc="chr1:20-25"))
 
     print "\nReload"
-    t = track(filename="data/test.trk")
-    print t.get(location(loc="chr1:1-26"))
-    print t.get(location(loc="chr1:10-20"))
-    print t.get(location(loc="chr1:20-25"))
-    print t.get("chr1:10-20")
-    print t.get("chr1:1-30")
+    t = track(filename="data/test_new.trk")
+    print t.get_reads(location(loc="chr1:1-26"))
+    print t.get_array(location(loc="chr1:1-26"))
+    print t.get_array(location(loc="chr1:10-20"))
+    print t.get_array(location(loc="chr1:20-25"))
+    print t.get_array(location(loc="chr1:20-25"), resolution=2)
+    print t.get_array(location(loc="chr1:20-25"), resolution=1.5)
