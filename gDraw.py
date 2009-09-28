@@ -133,6 +133,10 @@ class gDraw:
         self.lbp = 1
         self.rbp = 1000
 
+        # set up dummy values for the view
+        self.w = 100
+        self.h = 200
+
     def _debug_draw_col_boxes(self):
         """
         (Internal)
@@ -190,6 +194,8 @@ class gDraw:
         self.scale = (rightBasePair - leftBasePair) / 10000
         self.delta = self.rbp - self.lbp
         self.deltaf = float(self.delta)
+        self.bps_per_pixel = self.delta / float(self.w)
+        print self.bps_per_pixel, self.delta, self.w
 
         self.curr_loc = location(chr=self.chromosome, left=self.lbp, right=self.rbp)
 
@@ -198,7 +204,7 @@ class gDraw:
         for track in self.tracks:
             try:
                 self.paintQ.append({"type": "graph",
-                    "array": track["data"].get(self.curr_loc),
+                    "array": track["data"].get_array(location(loc=self.curr_loc), resolution=self.bps_per_pixel),
                     "track_location": track["track_location"],
                     "name": track["data"].name})
             except: # track probably doens't have this chr?
@@ -374,9 +380,10 @@ class gDraw:
         lastpx = -1
         for index, value in enumerate(track_data["array"]):
             loc = self._realToLocal(self.lbp + index, track_data["track_location"])
-            if int(loc[0]) > lastpx: # this means only draw one per pixel
-                lastpx = loc[0]
-                coords.append( (loc[0], loc[1] - 30 - value)) # +30 locks it to the base of the track
+            #if int(loc[0]) > lastpx: # this means only draw one per pixel
+            #    lastpx = loc[0]
+            #    coords.append( (index, loc[1] - 30 - value)) # +30 locks it to the base of the track
+            coords.append( (index, loc[1] - 30 - value)) # +30 locks it to the base of the track
 
         self.ctx.move_to(coords[0][0], coords[0][1]) # start x,y
         for index, item in enumerate(coords):

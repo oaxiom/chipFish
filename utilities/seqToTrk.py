@@ -41,10 +41,10 @@ def seqToTrk(infilename, outfilename, **kargs):
         t.add_location(item["loc"], strand=item["strand"])
 
         n += 1
-        if n > 100000:
+        if n > 1000000:
             m += 1
             n = 0
-            print "%s00,000" % m
+            print "%s,000,000" % m
             #break
     e = time.time()
     # 1000 = averages 8-9 s
@@ -54,6 +54,8 @@ def seqToTrk(infilename, outfilename, **kargs):
     # 5.98 s, 22.8Mb (Binary(array.tostring())
     # 6.0 s 17.1 Mb (str/eval)
     # 6.0 s 259kb (zlib/Binary()/tostring())
+    # track_new
+    # 2.5 s # overhead is almost all delayedlist now...
 
     print "Finalise:"
     t.finalise()
@@ -72,10 +74,10 @@ if __name__ == "__main__":
         p.strip_dirs().sort_stats('time').print_stats()
 
     else:
-        seqToTrk("/home/hutchinsa/ChIP_Raw/CMN019_121_unique_hits.txt", "../data/NSMash1.trk", name="NS5 cells Mash1")
-        seqToTrk("/home/hutchinsa/ChIP_Raw/CME030_154_unique_hits.txt", "../data/SpMash1.trk", name="Spinal Cord Mash1")
-        seqToTrk("/home/hutchinsa/ChIP_Raw/SCS843_053_reprocessed_unique_hits.txt", "../data/TcMash1.trk", name="Telencephalon Mash1")
-        seqToTrk("/home/hutchinsa/ChIP_Raw/CMN011_084_reprocessed_unique_hits.txt", "../data/NSGFP.trk", name="NS5 GFP Control")
+        seqToTrk("/home/hutchinsa/ChIP_Raw/CMN019_121_unique_hits.txt", "../data/NSMash1_new.trk", name="NS5 cells Mash1")
+        seqToTrk("/home/hutchinsa/ChIP_Raw/CME030_154_unique_hits.txt", "../data/SpMash1_new.trk", name="Spinal Cord Mash1")
+        seqToTrk("/home/hutchinsa/ChIP_Raw/SCS843_053_reprocessed_unique_hits.txt", "../data/TcMash1_new.trk", name="Telencephalon Mash1")
+        seqToTrk("/home/hutchinsa/ChIP_Raw/CMN011_084_reprocessed_unique_hits.txt", "../data/NSGFP_new.trk", name="NS5 GFP Control")
 
 
     """
