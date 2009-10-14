@@ -5,6 +5,10 @@ track, part of chipFish
 
 Not for distribution.
 
+TODO:
+-----
+. store the name (and other attribs?) in the db
+
 """
 
 from __future__ import division
@@ -24,7 +28,7 @@ class track:
         """
         **Arguments**
             name (string)
-                name for the track (defaults to "None")
+                name for the track (defaults to filename)
 
             stranded (True|False)
                 store one or both strands?
@@ -34,7 +38,11 @@ class track:
                 only respected if dir_name is set.
 
         """
-        self.name = name
+        if name:
+            self.name = name
+        else:
+            self.name = filename
+
         self.array_format = array_format
 
         self.strands = ["+"]
@@ -141,7 +149,7 @@ class track:
         c = self.__connection.cursor()
 
         # insert location into new array.
-        table_name = "chr_%s" % str(loc["chr"]) # stop injections.
+        table_name = "chr_%s" % str(loc["chr"])
 
         # get the old number of seq_reads
         c.execute("SELECT seq_reads FROM main WHERE chromosome=?", (loc["chr"], ))
@@ -166,6 +174,8 @@ class track:
 
             strand (Optional, default = None, ie. collect and merge both strands)
                 strand, but only valid for stranded tracks
+                if "+" return only that strand, if '-' return only the negative
+                strand (will recognise several forms of strand, e.g. F/R, +/-
 
             resolution (Not Implemented)
                 nbp resolution required (you should probably send a float)
@@ -174,6 +184,7 @@ class track:
 
         **Returns**
             an 'array('i', [0, 1, 2 ... n])' contiginous array
+            or a tuple containing two arrays, one for each strand.
         """
         # check if the array is already on the cache.
         locs_required = [loc]
@@ -183,21 +194,28 @@ class track:
         for l in locs_required:
             reads += self.get_reads(l, strand)
 
-        print resolution
-        print len(xrange(0, loc["right"]-loc["left"]+int(resolution), resolution))
+        #print resolution
+        #print len(xrange(0, loc["right"]-loc["left"]+int(resolution), resolution))
 
         # make an array
-        a = array(self.array_format, [0 for x in xrange(0, loc["right"]-loc["left"]+int(resolution), resolution)])
+        a = array(self.array_format, [0 for x in xrange(0, loc["right"]-loc["left"]+int(resolution), int(resolution))])
 
         for loc in locs_required:
-            for real_loc in xrange(loc["left"], loc["right"]+resolution, int(resolution)):
+            for real_loc in xrange(loc["left"], int(loc["right"]+resolution), int(resolution)):
                 for r in reads:
-                    if real_loc >= r[0] and real_loc <= r[1]:
+                    if r[2] in positive_strand_labels:
+                        left = r[0]
+                        right = r[1] + read_extend
+                    elif r[2] in negative_strand_labels:
+                        left = r[0] - read_extend
+                        right = r[1]
+
+                    if real_loc >= left and real_loc <= right:
                         a[int((real_loc-loc["left"])/resolution)] += 1
 
-        print "array_len", len(a)
+        #print "array_len", len(a)
 
-        return(a)
+        return(a) # py3k problem here...
 
     def get_reads(self, loc, strand=None):
         """
@@ -306,4 +324,6 @@ if __name__ == "__main__":
     print t.get_array(location(loc="chr1:10-20"))
     print t.get_array(location(loc="chr1:20-25"))
     print t.get_array(location(loc="chr1:20-25"), resolution=2)
+    print t.get_array(location(loc="chr1:20-25"), resolution=1.5)
+
     print t.get_array(location(loc="chr1:20-25"), resolution=1.5)

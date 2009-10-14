@@ -29,8 +29,11 @@ def seqToTrk(infilename, outfilename, **kargs):
         "strand": 13,
         "dialect": csv.excel_tab}
     # strand is F/R ??
+    mikkelsen_format = {"loc": {"code": "location(chr=column[0].strip(\".fa\"), left=column[1], right=int(column[2]))"},
+        "strand": 3,
+        "dialect": csv.excel_tab} # this is actually a bed?
 
-    seqfile = delayedlist(filename=os.path.realpath(infilename), format=gerald_format)
+    seqfile = delayedlist(filename=os.path.realpath(infilename), format=mikkelsen_format)
     n = 0
     m = 0
 
@@ -74,10 +77,26 @@ if __name__ == "__main__":
         p.strip_dirs().sort_stats('time').print_stats()
 
     else:
-        seqToTrk("/home/hutchinsa/ChIP_Raw/CMN019_121_unique_hits.txt", "../data/NSMash1_new.trk", name="NS5 cells Mash1")
-        seqToTrk("/home/hutchinsa/ChIP_Raw/CME030_154_unique_hits.txt", "../data/SpMash1_new.trk", name="Spinal Cord Mash1")
-        seqToTrk("/home/hutchinsa/ChIP_Raw/SCS843_053_reprocessed_unique_hits.txt", "../data/TcMash1_new.trk", name="Telencephalon Mash1")
-        seqToTrk("/home/hutchinsa/ChIP_Raw/CMN011_084_reprocessed_unique_hits.txt", "../data/NSGFP_new.trk", name="NS5 GFP Control")
+        #seqToTrk("/home/hutchinsa/ChIP_Raw/CMN019_121_unique_hits.txt", "../data/NSMash1_new.trk", name="NS5 cells Mash1")
+        #seqToTrk("/home/hutchinsa/ChIP_Raw/CME030_154_unique_hits.txt", "../data/SpMash1_new.trk", name="Spinal Cord Mash1")
+        #seqToTrk("/home/hutchinsa/ChIP_Raw/SCS843_053_reprocessed_unique_hits.txt", "../data/TcMash1_new.trk", name="Telencephalon Mash1")
+        #seqToTrk("/home/hutchinsa/ChIP_Raw/CMN011_084_reprocessed_unique_hits.txt", "../data/NSGFP_new.trk", name="NS5 GFP Control")
+        # The Mikkelsen histone ChIP-seq data:
+        # the name attribute is not actualyl implemented...
+        seqToTrk("/home/hutchinsa/Histone marks/NP_K4.txt", "../data/NS_H3K4me3.trk", name="NS5 GFP Control")
+        seqToTrk("/home/hutchinsa/Histone marks/NP_K27.txt", "../data/NS_H3K27me3.trk", name="NS5 GFP Control")
+        seqToTrk("/home/hutchinsa/Histone marks/NP_K36.txt", "../data/NS_H3K36me3.trk", name="NS5 GFP Control")
+        seqToTrk("/home/hutchinsa/Histone marks/NP_K9.txt", "../data/NS_H3K9me3.trk", name="NS5 GFP Control")
+
+        seqToTrk("/home/hutchinsa/Histone marks/ES_K4.txt", "../data/ES_H3K4me3.trk", name="NS5 GFP Control")
+        seqToTrk("/home/hutchinsa/Histone marks/ES_K27.txt", "../data/ES_H3K27me3.trk", name="NS5 GFP Control")
+        seqToTrk("/home/hutchinsa/Histone marks/ES_K36.txt", "../data/ES_H3K36me3.trk", name="NS5 GFP Control")
+        seqToTrk("/home/hutchinsa/Histone marks/ES_K9.txt", "../data/ES_H3K9me3.trk", name="NS5 GFP Control")
+
+        seqToTrk("/home/hutchinsa/Histone marks/MEF_K4.txt", "../data/MEF_H3K4me3.trk", name="NS5 GFP Control")
+        seqToTrk("/home/hutchinsa/Histone marks/MEF_K27.txt", "../data/MEF_H3K27me3.trk", name="NS5 GFP Control")
+        seqToTrk("/home/hutchinsa/Histone marks/MEF_K36.txt", "../data/MEF_H3K36me3.trk", name="NS5 GFP Control")
+        seqToTrk("/home/hutchinsa/Histone marks/MEF_K9.txt", "../data/MEF_H3K9me3.trk", name="NS5 GFP Control")
 
 
     """

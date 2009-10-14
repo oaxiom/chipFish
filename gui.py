@@ -63,13 +63,19 @@ class cfApp(wx.App):
         gDrawPanel.SetSizer(sizer) # add it to the GUI
 
         self.draw.bindTrack(track(filename="data/NSMash1_new.trk", name="NS5 Mash1 ChIP-seq"))
-        self.draw.bindTrack(track(filename="data/SpMash1_new.trk", name="Spinal Cord Mash1 ChIP-seq"))
-        self.draw.bindTrack(track(filename="data/TcMash1_new.trk", name="Telencephalon Mash1 ChIP-seq"))
-        self.draw.bindTrack(track(filename="data/NSGFP_new.trk", name="NS5 GFP Control"))
+        #self.draw.bindTrack(track(filename="data/SpMash1_new.trk", name="Spinal Cord Mash1 ChIP-seq"))
+        #self.draw.bindTrack(track(filename="data/TcMash1_new.trk", name="Telencephalon Mash1 ChIP-seq"))
+        self.draw.bindTrack(track(filename="data/NS_H3K4me3.trk", name="NS5 H3K4me3"))
+        self.draw.bindTrack(track(filename="data/NS_H3K27me3.trk", name="NS5 H3K27me3"))
+        self.draw.bindTrack(track(filename="data/NS_H3K36me3.trk", name="NS5 H3K36me3"))
 
-        self.draw.setLocation("6", 122666976, 122685608) # Nice view of Nanog
+        #self.draw.setLocation("6", 122666976, 122685608) # Nice view of Nanog
         #self.draw.setLocation("1", 3001251, 3001551) # testing the ChIP-seq track
-        self.draw.setLocation("17", 15074087, 15084782) # Interesting view of the ChIP-seq (Dll1?) chr17:15,064,087-15,088,782
+        #self.draw.setLocation("17", 15074087, 15084782) # Interesting view of the ChIP-seq (Dll1?) chr17:15,064,087-15,088,782
+        self.draw.setLocation("7", 28010095, 28012095) # Dll3
+        #self.draw.setLocation("3", 34850525, 34853525) # Sox2
+        #self.draw.setLocation("16", 91152965, 91156965) # Olig1
+        #self.draw.setLocation("5", 140855715, 140873715) # Lnfg
 
         # bind events to the GUI.
         self.Bind(wx.EVT_LEFT_DOWN, self._mouseLeftDown, draw_panel)
@@ -137,6 +143,9 @@ class cfApp(wx.App):
         event.Skip()
 
     def OnJumpToGenomicLoc(self, event): # wxGlade: frame_mainFrame_parent.<event_handler>
+        string_loc = self.textGoToLoc.text
+        print text_loc
+        #self.draw.setLocation(self.
         self._updateDisplay()
         event.Skip()
 

@@ -59,6 +59,12 @@ class ruler:
     colour = (0,0,0)
     line_width = 1
 
+class track:
+    """
+    options for the tracks
+    """
+    height_px = 80
+
 def saveOptions():
     pass
 
