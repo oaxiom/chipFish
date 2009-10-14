@@ -68,11 +68,13 @@ class cfApp(wx.App):
         self.draw.bindTrack(track(filename="data/NS_H3K4me3.trk", name="NS5 H3K4me3"))
         self.draw.bindTrack(track(filename="data/NS_H3K27me3.trk", name="NS5 H3K27me3"))
         self.draw.bindTrack(track(filename="data/NS_H3K36me3.trk", name="NS5 H3K36me3"))
+        self.draw.bindTrack(track(filename="data/ES_H3K36me3.trk", name="ES H3K4me3"))
+        self.draw.bindTrack(track(filename="data/MEF_H3K36me3.trk", name="MEF H3K4me3"))
 
         #self.draw.setLocation("6", 122666976, 122685608) # Nice view of Nanog
         #self.draw.setLocation("1", 3001251, 3001551) # testing the ChIP-seq track
-        #self.draw.setLocation("17", 15074087, 15084782) # Interesting view of the ChIP-seq (Dll1?) chr17:15,064,087-15,088,782
-        self.draw.setLocation("7", 28010095, 28012095) # Dll3
+        self.draw.setLocation("17", 15074087, 15084782) # Interesting view of the ChIP-seq (Dll1?) chr17:15,064,087-15,088,782
+        #self.draw.setLocation("7", 28010095, 28012095) # Dll3
         #self.draw.setLocation("3", 34850525, 34853525) # Sox2
         #self.draw.setLocation("16", 91152965, 91156965) # Olig1
         #self.draw.setLocation("5", 140855715, 140873715) # Lnfg
