@@ -35,7 +35,6 @@ from boundbox import bBox
 from operator import itemgetter
 from glbase_wrapper import location
 
-TRACK_HEIGHT = 50 # in pixels.
 MAX_TRACKS = 10 # maximum number of tracks
 
 #----------------------------------------------------------------------
@@ -169,7 +168,7 @@ class gDraw:
         for index, track in enumerate(self.trackBoxes):
             if not track:
                 self.trackBoxes[index] = True
-                return(-(index * TRACK_HEIGHT)) # 60 = genome track
+                return(-(index * opt.track.height_px)) # 60 = genome track
 
     def setViewPortSize(self, w, h):
         """
@@ -202,13 +201,13 @@ class gDraw:
         # get the new paintQ:
         self.paintQ = self.genome.getAllDrawableFeaturesInRange(self.curr_loc)
         for track in self.tracks:
-            try:
-                self.paintQ.append({"type": "graph",
-                    "array": track["data"].get_array(location(loc=self.curr_loc), resolution=self.bps_per_pixel),
-                    "track_location": track["track_location"],
-                    "name": track["data"].name})
-            except: # track probably doens't have this chr?
-                pass
+            #try:
+            self.paintQ.append({"type": "graph",
+                "array": track["data"].get_array(location(loc=self.curr_loc), resolution=self.bps_per_pixel, read_extend=150),
+                "track_location": track["track_location"],
+                "name": track["data"].name})
+            #except: # track probably doens't have this chr?
+            #    pass
         self.paintQ.reverse()
         print [i["type"] for i in self.paintQ]
         return(True)
@@ -368,7 +367,7 @@ class gDraw:
         # get an available track slot
         self._setPenColour( (0.95,0.95,0.95) )
         base_loc = self._realToLocal(0, track_location)
-        self.ctx.rectangle(0, base_loc[1]-TRACK_HEIGHT-30, self.w, TRACK_HEIGHT-2) # 30 = half genomic track size
+        self.ctx.rectangle(0, base_loc[1]-opt.track.height_px, self.w, opt.track.height_px-2) # 30 = half genomic track size
         self.ctx.fill()
 
     def _drawGraphTrack(self, track_data):
@@ -383,13 +382,13 @@ class gDraw:
             #if int(loc[0]) > lastpx: # this means only draw one per pixel
             #    lastpx = loc[0]
             #    coords.append( (index, loc[1] - 30 - value)) # +30 locks it to the base of the track
-            coords.append( (index, loc[1] - 30 - value)) # +30 locks it to the base of the track
+            coords.append( (index, loc[1] - value)) # +30 locks it to the base of the track
 
         self.ctx.move_to(coords[0][0], coords[0][1]) # start x,y
         for index, item in enumerate(coords):
             self.ctx.line_to(item[0], item[1])
         self.ctx.stroke()
-        self._drawText(0, loc[1] - 15 - TRACK_HEIGHT, opt.graphics.font, track_data["name"])
+        self._drawText(0, loc[1] - 15 , opt.graphics.font, track_data["name"])
 
     def _drawText(self, x, y, font, text, size=12, colour=(0,0,0), style=None):
         """
