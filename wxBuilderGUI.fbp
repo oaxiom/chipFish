@@ -1263,6 +1263,21 @@
                     <property name="label">File</property>
                     <property name="name">file</property>
                     <property name="permission">protected</property>
+                    <object class="wxMenuItem" expanded="1">
+                        <property name="bitmap"></property>
+                        <property name="checked">0</property>
+                        <property name="enabled">1</property>
+                        <property name="help"></property>
+                        <property name="id">ID_EXIT</property>
+                        <property name="kind">wxITEM_NORMAL</property>
+                        <property name="label">Exit</property>
+                        <property name="name">exit</property>
+                        <property name="permission">none</property>
+                        <property name="shortcut">Alt-F4</property>
+                        <property name="unchecked_bitmap"></property>
+                        <event name="OnMenuSelection"></event>
+                        <event name="OnUpdateUI"></event>
+                    </object>
                 </object>
                 <object class="wxMenu" expanded="1">
                     <property name="label">Edit</property>
@@ -1313,6 +1328,39 @@
                         <event name="OnMenuSelection"></event>
                         <event name="OnUpdateUI"></event>
                     </object>
+                    <object class="separator" expanded="1">
+                        <property name="permission">none</property>
+                    </object>
+                    <object class="wxMenuItem" expanded="1">
+                        <property name="bitmap"></property>
+                        <property name="checked">0</property>
+                        <property name="enabled">1</property>
+                        <property name="help"></property>
+                        <property name="id">ID_FIND_GENE</property>
+                        <property name="kind">wxITEM_NORMAL</property>
+                        <property name="label">Find Gene</property>
+                        <property name="name">findGene</property>
+                        <property name="permission">none</property>
+                        <property name="shortcut">Ctrl-F</property>
+                        <property name="unchecked_bitmap"></property>
+                        <event name="OnMenuSelection"></event>
+                        <event name="OnUpdateUI"></event>
+                    </object>
+                </object>
+                <object class="wxMenu" expanded="1">
+                    <property name="label">Genome</property>
+                    <property name="name">genome</property>
+                    <property name="permission">protected</property>
+                </object>
+                <object class="wxMenu" expanded="1">
+                    <property name="label">Analysis</property>
+                    <property name="name">analysis</property>
+                    <property name="permission">protected</property>
+                </object>
+                <object class="wxMenu" expanded="1">
+                    <property name="label">Tools</property>
+                    <property name="name">tools</property>
+                    <property name="permission">protected</property>
                 </object>
                 <object class="wxMenu" expanded="1">
                     <property name="label">Help</property>

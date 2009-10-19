@@ -220,6 +220,10 @@
 			<label>MainMenu</label>
 			<object class="wxMenu" name="file">
 				<label>File</label>
+				<object class="wxMenuItem" name="exit">
+					<label>Exit\tAlt-F4</label>
+					<help></help>
+				</object>
 			</object>
 			<object class="wxMenu" name="edit">
 				<label>Edit</label>
@@ -235,6 +239,20 @@
 					<label>Paste</label>
 					<help></help>
 				</object>
+				<object class="separator" />
+				<object class="wxMenuItem" name="findGene">
+					<label>Find Gene\tCtrl-F</label>
+					<help></help>
+				</object>
+			</object>
+			<object class="wxMenu" name="genome">
+				<label>Genome</label>
+			</object>
+			<object class="wxMenu" name="analysis">
+				<label>Analysis</label>
+			</object>
+			<object class="wxMenu" name="tools">
+				<label>Tools</label>
 			</object>
 			<object class="wxMenu" name="help">
 				<label>Help</label>

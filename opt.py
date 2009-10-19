@@ -8,16 +8,25 @@ Not for distribution.
 Class container for mutable constants and other data
 
 . These should be loadable/savable and changable.
-. save as a editable text file?
+. save as a editable text file (No, this is the editable file).
+. But perhaps an editor is required? - If I get funding!
+. This is actually more accurately consts and options together?
 """
 
 import sys, os
 
 # generic options
 class generic:
+    """
+    some very generic options and constants.
+    """
     app_path = sys.path[0]
+    VERSION = "0.01 ALPHA"
 
 class path:
+    """
+    some common path locations.
+    """
     glbase_location = os.path.realpath("./glbase_wrapper/glbase")
     glbase_package = os.path.realpath("./glbase_wrapper/")
     glbase_wrapper = os.path.realpath(".")
@@ -34,7 +43,7 @@ class debug:
 
 class graphics:
     """
-    general graphics options.
+    graphics options.
     """
     gene_height = 8        # width to draw the genes
     cds_height = 12
@@ -70,11 +79,3 @@ def saveOptions():
 
 def loadOptions():
     pass
-
-
-if __name__ == "__main__":
-    # error checking
-    #print dir(graphics.gene_colour)
-    # export the options as a csv.
-    pass
-

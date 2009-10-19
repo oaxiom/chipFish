@@ -7,7 +7,8 @@ Not for distribution.
 
 NOTES:
 ------
-. This needs to be split, at the moment a lot of interface code is spilling
+. This needs to be split into two
+    at the moment a lot of interface code is spilling
     over into gDraw. needs to be split into a strictly drawing backend,
     and an interface class.
 . gDraw is a wrapper for whatever vector-draw backend is in use.
@@ -25,6 +26,8 @@ NOTES:
     that rules out greek symbols, Chinese, Cyrillic etc...? Right?
 """
 
+from __future__ import division
+
 import sys, os, math
 
 import opt
@@ -36,6 +39,7 @@ from operator import itemgetter
 from glbase_wrapper import location
 
 MAX_TRACKS = 10 # maximum number of tracks
+valid_move_modes = frozenset(["left", "right", "zoomin", "zoomout"])
 
 #----------------------------------------------------------------------
 # The Cairo interface.
@@ -190,11 +194,16 @@ class gDraw:
         # test for valid chr.
         self.lbp = leftBasePair
         self.rbp = rightBasePair
-        self.scale = (rightBasePair - leftBasePair) / 10000
+        self.__rebuildDisplay()
+
+    def __rebuildDisplay(self):
+        """
+        rebuild and draw the display.
+        """
+        #self.scale = (self.rbp - self.lbp) / 10000
         self.delta = self.rbp - self.lbp
         self.deltaf = float(self.delta)
         self.bps_per_pixel = self.delta / float(self.w)
-        print self.bps_per_pixel, self.delta, self.w
 
         self.curr_loc = location(chr=self.chromosome, left=self.lbp, right=self.rbp)
 
@@ -209,8 +218,43 @@ class gDraw:
             #except: # track probably doens't have this chr?
             #    pass
         self.paintQ.reverse()
-        print [i["type"] for i in self.paintQ]
         return(True)
+
+    def move(self, mode="centre", percent=5):
+        """
+        move the view by a fixed percent according to 'mode'
+        valid modes are:
+            left = left
+            right = right
+            zoomout = zoom out
+            zoomin = zoom in
+        will move the display by n percent.
+        """
+        if mode not in valid_move_modes:
+            return(False)
+            
+        # get the current bp move percent.
+        move_percent = int((self.lbp - self.rbp) / percent)
+        
+        if mode == "right":
+            self.lbp -= move_percent
+            self.rbp -= move_percent
+        elif mode == "left":
+            self.lbp += move_percent
+            self.rbp += move_percent
+        elif mode == "zoomout":
+            self.lbp -= move_percent
+            self.rbp += move_percent
+        elif mode == "zoomin":
+            self.lbp += move_percent
+            self.rbp -= move_percent
+            if self.lbp >= self.rbp: # check not zoomed in too far.
+                mid_point = self.rbp + self.lbp / 2
+                self.lbp = mid_point - 1
+                self.rbp = mid_point + 1
+        self.__rebuildDisplay()
+        return(True)
+       
 
     def setDrawAttribute(self, attribute, value):
         """
