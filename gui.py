@@ -14,7 +14,7 @@ TODO:
 
 import math, sys, time
 
-import opt, gDraw
+import opt, gDraw, glbase_wrapper
 
 from error import *
 
@@ -65,11 +65,11 @@ class cfApp(wx.App):
         self.draw.bindTrack(track(filename="data/NSMash1_new.trk", name="NS5 Mash1 ChIP-seq"))
         #self.draw.bindTrack(track(filename="data/SpMash1_new.trk", name="Spinal Cord Mash1 ChIP-seq"))
         #self.draw.bindTrack(track(filename="data/TcMash1_new.trk", name="Telencephalon Mash1 ChIP-seq"))
-        self.draw.bindTrack(track(filename="data/NS_H3K4me3.trk", name="NS5 H3K4me3"))
-        self.draw.bindTrack(track(filename="data/NS_H3K27me3.trk", name="NS5 H3K27me3"))
-        self.draw.bindTrack(track(filename="data/NS_H3K36me3.trk", name="NS5 H3K36me3"))
-        self.draw.bindTrack(track(filename="data/ES_H3K36me3.trk", name="ES H3K4me3"))
-        self.draw.bindTrack(track(filename="data/MEF_H3K36me3.trk", name="MEF H3K4me3"))
+        #self.draw.bindTrack(track(filename="data/NS_H3K4me3.trk", name="NS5 H3K4me3"))
+        #self.draw.bindTrack(track(filename="data/NS_H3K27me3.trk", name="NS5 H3K27me3"))
+        #self.draw.bindTrack(track(filename="data/NS_H3K36me3.trk", name="NS5 H3K36me3"))
+        #self.draw.bindTrack(track(filename="data/ES_H3K36me3.trk", name="ES H3K4me3"))
+        #self.draw.bindTrack(track(filename="data/MEF_H3K36me3.trk", name="MEF H3K4me3"))
 
         #self.draw.setLocation("6", 122666976, 122685608) # Nice view of Nanog
         #self.draw.setLocation("1", 3001251, 3001551) # testing the ChIP-seq track
@@ -88,7 +88,10 @@ class cfApp(wx.App):
         self.Bind(wx.EVT_BUTTON, self.OnViewBigLeft, wx.xrc.XRCCTRL(self.main, "butViewBigLeft"))
         self.Bind(wx.EVT_BUTTON, self.OnButZoomIn, wx.xrc.XRCCTRL(self.main, "butZoomIn"))
         self.Bind(wx.EVT_BUTTON, self.OnButZoomOut, wx.xrc.XRCCTRL(self.main, "butZoomOut"))
-
+        self.Bind(wx.EVT_BUTTON, self.OnGotoLocationEdit, wx.xrc.XRCCTRL(self.main, "butGoToLoc"))
+        
+        # menu events should get by ID: ID_ABOUT
+        self.Bind(wx.EVT_MENU, self.OnMenuAbout, wx.xrc.XRCCTRL(self.main, "about"))
         # get changable elements from the gui and store them locally.
         # (See _updateDisplay())
         self.textGoToLoc = wx.xrc.XRCCTRL(self.main, "textGoToLoc")
@@ -133,56 +136,70 @@ class cfApp(wx.App):
     #------------------------------------------------------------------
     # Events
 
-    def OnBigViewLeft(self, event): # wxGlade: frame_mainFrame_parent.<event_handler>
+    def OnBigViewLeft(self, event): 
         # move eft depending upon the scale.
         self.draw.setLocation(self.draw.chromosome, self.draw.lbp - 10000, self.draw.rbp - 10000)
         self._updateDisplay()
         event.Skip()
 
-    def OnViewLeft(self, event): # wxGlade: frame_mainFrame_parent.<event_handler>
-        self.draw.setLocation(self.draw.chromosome, self.draw.lbp - 1000, self.draw.rbp - 1000)
-        self._updateDisplay()
-        event.Skip()
-
-    def OnJumpToGenomicLoc(self, event): # wxGlade: frame_mainFrame_parent.<event_handler>
+    def OnJumpToGenomicLoc(self, event): 
         string_loc = self.textGoToLoc.text
         print text_loc
         #self.draw.setLocation(self.
         self._updateDisplay()
         event.Skip()
 
-    def OnViewRight(self, event): # wxGlade: frame_mainFrame_parent.<event_handler>
-        self.draw.setLocation(self.draw.chromosome, self.draw.lbp + 1000, self.draw.rbp + 1000)
+    def OnViewRight(self, event): 
+        self.draw.move("right", 10)
         self._updateDisplay()
         event.Skip()
 
-    def OnViewBigRight(self, event): # wxGlade: frame_mainFrame_parent.<event_handler>
-        self.draw.setLocation(self.draw.chromosome, self.draw.lbp + 10000, self.draw.rbp + 10000)
+    def OnViewBigRight(self, event): 
+        self.draw.move("right", 20)
         self._updateDisplay()
         event.Skip()
 
-    def OnViewBigLeft(self, event): # wxGlade: frame_mainFrame_parent.<event_handler>
-        self.draw.setLocation(self.draw.chromosome, self.draw.lbp - 10000, self.draw.rbp - 10000)
+    def OnViewLeft(self, event): 
+        self.draw.move("left", 10)
         self._updateDisplay()
         event.Skip()
 
-    def OnButZoomIn(self, event): # wxGlade: frame_mainFrame_parent.<event_handler>
-        if self.draw.delta > self.draw.w:
-            self.draw.setLocation(self.draw.chromosome, self.draw.lbp + 1000, self.draw.rbp - 1000)
+    def OnViewBigLeft(self, event): 
+        self.draw.move("left", 20)
         self._updateDisplay()
         event.Skip()
 
-    def OnButZoomOut(self, event): # wxGlade: frame_mainFrame_parent.<event_handler>
-        self.draw.setLocation(self.draw.chromosome, self.draw.lbp - 1000, self.draw.rbp + 1000)
+    def OnButZoomIn(self, event): 
+        self.draw.move("zoomin", 10)
         self._updateDisplay()
         event.Skip()
 
-    def OnGotoLocationEdit(self, event): # wxGlade: frame_mainFrame_parent.<event_handler>
-        loc = location(loc=self.textGoToLoc.GetValue())
-        if loc:
-            self.draw.setLocation(loc["chr"], loc["left"], loc["right"])
-        else:
+    def OnButZoomOut(self, event): 
+        self.draw.move("zoomout", 10)
+        self._updateDisplay()
+        event.Skip()
+
+    def OnGotoLocationEdit(self, event): 
+        try:
+            loc = location(loc=self.textGoToLoc.GetValue())
+            
+            if loc:
+                self.draw.setLocation(loc["chr"], loc["left"], loc["right"])
+            else:
+                raise TypeError
+        except (TypeError, IndexError):
+            # colour the textBox Red;
             pass
         self._updateDisplay()
         event.Skip()
+        
+    # ------------------------------------------------------------------
+    # menu events
+    def OnMenuAbout(self, event):
+        info = wx.AboutDialogInfo()
+        info.SetName("chipFish")
+        info.SetVersion("chipfish: %s, glbase: %s" %(opt.generic.VERSION, glbase_wrapper.VERSION))
+        info.AddDeveloper("Andrew Hutchins")
+        info.SetWebSite("http://www.oaxiom.com")
+        wx.AboutBox(info)
 # end of mainFrame

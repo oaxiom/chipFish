@@ -24,6 +24,7 @@ from glbase.flags import * # just pass through.
 from glbase.location import location
 from glbase.helpers import * # pass through
 from glbase.delayedlist import delayedlist
+from glbase.config import VERSION
 
 # get the wrapped versions.
 from genelist import genelist
@@ -31,5 +32,5 @@ from genome import genome
 
 
 # make these functions available in the package
-__all__ = ["genelist", "location", "genome", "delayedlist",
+__all__ = ["genelist", "location", "genome", "delayedlist", "VERSION",
     ] + dir(glbase.flags) + dir(glbase.helpers) # in future I want to get rid of dir() and control what gets exported.
