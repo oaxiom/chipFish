@@ -72,7 +72,8 @@ class track:
     """
     options for the tracks
     """
-    height_px = 80
+    height_px = 150
+    genome_base_offset = 60 # offset from the genome track to the first track.
 
 def saveOptions():
     pass

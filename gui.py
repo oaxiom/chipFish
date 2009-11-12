@@ -63,8 +63,8 @@ class cfApp(wx.App):
         gDrawPanel.SetSizer(sizer) # add it to the GUI
 
         self.draw.bindTrack(track(filename="data/NSMash1_new.trk", name="NS5 Mash1 ChIP-seq"))
-        #self.draw.bindTrack(track(filename="data/SpMash1_new.trk", name="Spinal Cord Mash1 ChIP-seq"))
-        #self.draw.bindTrack(track(filename="data/TcMash1_new.trk", name="Telencephalon Mash1 ChIP-seq"))
+        self.draw.bindTrack(track(filename="data/SpMash1_new.trk", name="Spinal Cord Mash1 ChIP-seq"))
+        self.draw.bindTrack(track(filename="data/TcMash1_new.trk", name="Telencephalon Mash1 ChIP-seq"))
         #self.draw.bindTrack(track(filename="data/NS_H3K4me3.trk", name="NS5 H3K4me3"))
         #self.draw.bindTrack(track(filename="data/NS_H3K27me3.trk", name="NS5 H3K27me3"))
         #self.draw.bindTrack(track(filename="data/NS_H3K36me3.trk", name="NS5 H3K36me3"))
@@ -89,7 +89,7 @@ class cfApp(wx.App):
         self.Bind(wx.EVT_BUTTON, self.OnButZoomIn, wx.xrc.XRCCTRL(self.main, "butZoomIn"))
         self.Bind(wx.EVT_BUTTON, self.OnButZoomOut, wx.xrc.XRCCTRL(self.main, "butZoomOut"))
         self.Bind(wx.EVT_BUTTON, self.OnGotoLocationEdit, wx.xrc.XRCCTRL(self.main, "butGoToLoc"))
-        
+
         # menu events should get by ID: ID_ABOUT
         self.Bind(wx.EVT_MENU, self.OnMenuAbout, wx.xrc.XRCCTRL(self.main, "about"))
         # get changable elements from the gui and store them locally.
@@ -136,53 +136,53 @@ class cfApp(wx.App):
     #------------------------------------------------------------------
     # Events
 
-    def OnBigViewLeft(self, event): 
+    def OnBigViewLeft(self, event):
         # move eft depending upon the scale.
         self.draw.setLocation(self.draw.chromosome, self.draw.lbp - 10000, self.draw.rbp - 10000)
         self._updateDisplay()
         event.Skip()
 
-    def OnJumpToGenomicLoc(self, event): 
+    def OnJumpToGenomicLoc(self, event):
         string_loc = self.textGoToLoc.text
         print text_loc
         #self.draw.setLocation(self.
         self._updateDisplay()
         event.Skip()
 
-    def OnViewRight(self, event): 
+    def OnViewRight(self, event):
         self.draw.move("right", 10)
         self._updateDisplay()
         event.Skip()
 
-    def OnViewBigRight(self, event): 
+    def OnViewBigRight(self, event):
         self.draw.move("right", 20)
         self._updateDisplay()
         event.Skip()
 
-    def OnViewLeft(self, event): 
+    def OnViewLeft(self, event):
         self.draw.move("left", 10)
         self._updateDisplay()
         event.Skip()
 
-    def OnViewBigLeft(self, event): 
+    def OnViewBigLeft(self, event):
         self.draw.move("left", 20)
         self._updateDisplay()
         event.Skip()
 
-    def OnButZoomIn(self, event): 
+    def OnButZoomIn(self, event):
         self.draw.move("zoomin", 10)
         self._updateDisplay()
         event.Skip()
 
-    def OnButZoomOut(self, event): 
+    def OnButZoomOut(self, event):
         self.draw.move("zoomout", 10)
         self._updateDisplay()
         event.Skip()
 
-    def OnGotoLocationEdit(self, event): 
+    def OnGotoLocationEdit(self, event):
         try:
             loc = location(loc=self.textGoToLoc.GetValue())
-            
+
             if loc:
                 self.draw.setLocation(loc["chr"], loc["left"], loc["right"])
             else:
@@ -192,13 +192,15 @@ class cfApp(wx.App):
             pass
         self._updateDisplay()
         event.Skip()
-        
+
     # ------------------------------------------------------------------
     # menu events
     def OnMenuAbout(self, event):
         info = wx.AboutDialogInfo()
-        info.SetName("chipFish")
-        info.SetVersion("chipfish: %s, glbase: %s" %(opt.generic.VERSION, glbase_wrapper.VERSION))
+        info.SetName("ChipFish")
+        info.SetDescription("Genomic Data and Analysis, in a salty and vinegary package.\nWrapped in newspaper with mayonnaise")
+        info.SetCopyright("(c) 2009-2010 oAxiom")
+        info.SetVersion("\n\nchipfish: %s\n glbase: %s" %(opt.generic.VERSION, glbase_wrapper.VERSION))
         info.AddDeveloper("Andrew Hutchins")
         info.SetWebSite("http://www.oaxiom.com")
         wx.AboutBox(info)
