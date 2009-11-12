@@ -33,7 +33,7 @@ def seqToTrk(infilename, outfilename, **kargs):
         "strand": 3,
         "dialect": csv.excel_tab} # this is actually a bed?
 
-    seqfile = delayedlist(filename=os.path.realpath(infilename), format=mikkelsen_format)
+    seqfile = delayedlist(filename=os.path.realpath(infilename), format=gerald_format)
     n = 0
     m = 0
 
@@ -80,9 +80,18 @@ if __name__ == "__main__":
         #seqToTrk("/home/hutchinsa/ChIP_Raw/CMN019_121_unique_hits.txt", "../data/NSMash1_new.trk", name="NS5 cells Mash1")
         #seqToTrk("/home/hutchinsa/ChIP_Raw/CME030_154_unique_hits.txt", "../data/SpMash1_new.trk", name="Spinal Cord Mash1")
         #seqToTrk("/home/hutchinsa/ChIP_Raw/SCS843_053_reprocessed_unique_hits.txt", "../data/TcMash1_new.trk", name="Telencephalon Mash1")
-        #seqToTrk("/home/hutchinsa/ChIP_Raw/CMN011_084_reprocessed_unique_hits.txt", "../data/NSGFP_new.trk", name="NS5 GFP Control")
+        seqToTrk("/home/hutchinsa/ChIP_Raw/CMN010_010_reprocessed_unique_hits.txt", "../data/NSGFP_new.trk")
+        #seqToTrk("/home/hutchinsa/ChIP_Raw/CME031_031_unique_hits.txt", "../data/SpInput_new.trk")
+        seqToTrk("/home/hutchinsa/ChIP_Raw/SCS844_844_reprocessed_unique_hits.txt", "../data/TcInput_new.trk")
+        #seqToTrk("/home/hutchinsa/ChIP_Raw/CME023_095_reprocessed_unique_hits.txt", "../data/ESRcor1.trk")
+        #seqToTrk("/home/hutchinsa/ChIP_Raw/CME024_096_reprocessed_unique_hits.txt", "../data/ESRcor2.trk")
+        #seqToTrk("/home/hutchinsa/ChIP_Raw/CME025_097_reprocessed_unique_hits.txt", "../data/ESRcor3.trk")
+        #seqToTrk("/home/hutchinsa/ChIP_Raw/CME026_099_reprocessed_unique_hits.txt", "../data/ESRest.trk")
+        #seqToTrk("/home/hutchinsa/ChIP_Raw/CME027_100_reprocessed_unique_hits.txt", "../data/ESSin3a.trk")
+        #seqToTrk("/home/hutchinsa/ChIP_Raw/CME028_101_reprocessed_unique_hits.txt", "../data/ESSin3b.trk")
         # The Mikkelsen histone ChIP-seq data:
         # the name attribute is not actualyl implemented...
+        """
         seqToTrk("/home/hutchinsa/Histone marks/NP_K4.txt", "../data/NS_H3K4me3.trk", name="NS5 GFP Control")
         seqToTrk("/home/hutchinsa/Histone marks/NP_K27.txt", "../data/NS_H3K27me3.trk", name="NS5 GFP Control")
         seqToTrk("/home/hutchinsa/Histone marks/NP_K36.txt", "../data/NS_H3K36me3.trk", name="NS5 GFP Control")
@@ -97,7 +106,7 @@ if __name__ == "__main__":
         seqToTrk("/home/hutchinsa/Histone marks/MEF_K27.txt", "../data/MEF_H3K27me3.trk", name="NS5 GFP Control")
         seqToTrk("/home/hutchinsa/Histone marks/MEF_K36.txt", "../data/MEF_H3K36me3.trk", name="NS5 GFP Control")
         seqToTrk("/home/hutchinsa/Histone marks/MEF_K9.txt", "../data/MEF_H3K9me3.trk", name="NS5 GFP Control")
-
+        """
 
     """
     print "Command-line seqToTrk:"

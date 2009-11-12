@@ -20,6 +20,8 @@ from glbase_wrapper import positive_strand_labels, negative_strand_labels
 
 from array import array
 
+TRACK_CACHE_SIZE = 10 # number of track segments to cache.
+
 class track:
     """
     track definition, used for things like sequence reads across the genome
@@ -53,6 +55,7 @@ class track:
             self.__setup_tables(filename) # return an empty track
         else:
             self.__load_tables(filename)
+        self.__c = None
 
     def __load_tables(self, filename):
         """
@@ -177,10 +180,15 @@ class track:
                 if "+" return only that strand, if '-' return only the negative
                 strand (will recognise several forms of strand, e.g. F/R, +/-
 
-            resolution (Not Implemented)
-                nbp resolution required (you should probably send a float)
+            resolution (default = 1bp)
+                nbp resolution required (you should probably send a float for accurate rendering)
 
-            read_extend (Optional, default = 0, Not Implemented)
+            read_extend (Optional, default = 0)
+                extend the read length to 'fill in the peak'
+                if the original reads are 36bp, then add ~70bp to give an
+                estimated size of the peak.
+                If the reads are end-based, then set this to the estimated
+                size of the DNA shear.
 
         **Returns**
             an 'array('i', [0, 1, 2 ... n])' contiginous array
@@ -197,7 +205,9 @@ class track:
         #print resolution
         #print len(xrange(0, loc["right"]-loc["left"]+int(resolution), resolution))
 
-        # make an array
+        # resample the array to 1px:xbp resolution,
+
+        # make a single array
         a = array(self.array_format, [0 for x in xrange(0, loc["right"]-loc["left"]+int(resolution), int(resolution))])
 
         for loc in locs_required:
@@ -211,11 +221,14 @@ class track:
                         right = r[1]
 
                     if real_loc >= left and real_loc <= right:
-                        a[int((real_loc-loc["left"])/resolution)] += 1
+                        if resolution <= 1: # force 1bp read
+                            a[real_loc-loc["left"]] += 1
+                        else:
+                            a[int((real_loc-loc["left"])/resolution)] += 1
 
         #print "array_len", len(a)
 
-        return(a) # py3k problem here...
+        return(a)
 
     def get_reads(self, loc, strand=None):
         """
@@ -234,19 +247,26 @@ class track:
         **Returns**
             a list containing all of the reads between loc.
         """
-        c = self.__connection.cursor()
+        if not self.__c:
+            self.__c = self.__connection.cursor()
 
         table_name = "chr_%s" % loc["chr"]
 
         if not strand:
-            c.execute("SELECT * FROM %s WHERE (?>=left AND ?<=right) OR (?>=left AND ?<=right) OR (left<=? AND right>=?) OR (?<=left AND ?>=right)" % table_name,
+            # ~4.11 s 946 reads
+            self.__c.execute("SELECT * FROM %s WHERE (?>=left AND ?<=right) OR (?>=left AND ?<=right) OR (left<=? AND right>=?) OR (?<=left AND ?>=right)" % table_name,
                 (loc["left"], loc["left"], loc["right"], loc["right"], loc["left"], loc["right"], loc["left"], loc["right"]))
+            #self.__c.execute("SELECT left, right, strand FROM %s WHERE (left<=? AND right>=?) OR (?<=left AND ?>=right) OR (?>=left AND ?<=right) OR (?>=left AND ?<=right)" % table_name,
+            #    (loc["left"], loc["right"], loc["left"], loc["right"], loc["left"], loc["left"],loc["right"], loc["right"]))
+            # pseudo code:
+            # if left - dbright < 0 and :
+            #span = loc["right"] - loc["left"]
+            #self.__c.execute("SELECT left, right, strand FROM %s WHERE (?-left > -1 AND ?-left<?) OR (?-right>-1 AND ?-right<?)" % table_name,
+            #    (loc["right"], loc["right"], span, loc["left"], loc["left"], span))
         else:
             pass
 
-        result = c.fetchall()
-
-        c.close()
+        result = self.__c.fetchall()
         return(result)
 
     def finalise(self):
@@ -283,6 +303,28 @@ class track:
 
 if __name__ == "__main__":
     # a few testers to see how it works.
+
+    t = track(filename="data/SpMash1_new.trk")
+    # speed tester
+
+    from random import randint
+    import time
+    from numpy import mean, std
+
+    chroms = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,"X", "Y"]
+    results = []
+    lens = [] # sanity checking.
+
+    for s in xrange(10): # number of samples
+        s = time.time()
+        for n in xrange(10):
+            r = t.get_reads(location(loc="chr5:114423935-114444335"))# % (chroms[randint(0, len(chroms)-1)])))
+        e = time.time()
+        results.append(e - s)
+    print "Took: mean %s +- %s" % (mean(results), std(results))
+    print "number of reads:", len(r)
+
+    """
 
     t = track(filename="data/test_new.trk", new=True)
     t.add_location(location(loc="chr1:1-30"))
@@ -327,3 +369,4 @@ if __name__ == "__main__":
     print t.get_array(location(loc="chr1:20-25"), resolution=1.5)
 
     print t.get_array(location(loc="chr1:20-25"), resolution=1.5)
+    """

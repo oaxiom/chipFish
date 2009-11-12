@@ -172,7 +172,7 @@ class gDraw:
         for index, track in enumerate(self.trackBoxes):
             if not track:
                 self.trackBoxes[index] = True
-                return(-(index * opt.track.height_px)) # 60 = genome track
+                return(-(index * opt.track.height_px)-opt.track.genome_base_offset) # 60 = genome track
 
     def setViewPortSize(self, w, h):
         """
@@ -232,10 +232,10 @@ class gDraw:
         """
         if mode not in valid_move_modes:
             return(False)
-            
+
         # get the current bp move percent.
         move_percent = int((self.lbp - self.rbp) / percent)
-        
+
         if mode == "right":
             self.lbp -= move_percent
             self.rbp -= move_percent
@@ -254,7 +254,7 @@ class gDraw:
                 self.rbp = mid_point + 1
         self.__rebuildDisplay()
         return(True)
-       
+
 
     def setDrawAttribute(self, attribute, value):
         """
