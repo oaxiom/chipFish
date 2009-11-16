@@ -194,6 +194,8 @@ class track:
             an 'array('i', [0, 1, 2 ... n])' contiginous array
             or a tuple containing two arrays, one for each strand.
         """
+        if strand: raise NotImplementedError
+
         # check if the array is already on the cache.
         locs_required = [loc]
 
@@ -201,11 +203,6 @@ class track:
         reads = []
         for l in locs_required:
             reads += self.get_reads(l, strand)
-
-        #print resolution
-        #print len(xrange(0, loc["right"]-loc["left"]+int(resolution), resolution))
-
-        # resample the array to 1px:xbp resolution,
 
         # make a single array
         a = array(self.array_format, [0 for x in xrange(0, loc["right"]-loc["left"]+int(resolution), int(resolution))])
@@ -230,6 +227,73 @@ class track:
 
         return(a)
 
+    def get_array_chromosome(self, chromosome, strand=None, resolution=1, read_extend=0, **kargs):
+        """
+        **Purpose**
+            get the entire array data for the chromosome
+
+        **Arguments**
+            chromosome (Required)
+                a number '1', string "1", or X, Y
+
+            strand (Optional, default = None, ie. collect and merge both strands)
+                strand, but only valid for stranded tracks
+                if "+" return only that strand, if '-' return only the negative
+                strand (will recognise several forms of strand, e.g. F/R, +/-
+
+            resolution (default = 1bp)
+                nbp resolution required (you should probably send a float for accurate rendering)
+
+            read_extend (Optional, default = 0)
+                extend the read length to 'fill in the peak'
+                if the original reads are 36bp, then add ~70bp to give an
+                estimated size of the peak.
+                If the reads are end-based, then set this to the estimated
+                size of the DNA shear.
+
+        **Returns**
+            an 'array('i', [0, 1, 2 ... n])' contiginous array
+            or a tuple containing two arrays, one for each strand.
+        """
+        if strand: raise NotImplementedError
+
+        if not self.__c:
+            self.__c = self.__connection.cursor()
+        table_name = "chr_%s" % chromosome
+        self.__c.execute("SELECT * FROM %s" % table_name)
+        reads = self.__c.fetchall()
+
+        # I need to find the right most read to estimate the size of the track array.
+        right_most = 0
+        for i in reads:
+            if right_most < i[1]+read_extend:
+                right_most = i[1]+read_extend
+
+        # make an array.
+        a = array(self.array_format, [0 for x in xrange(0, right_most+int(resolution), int(resolution))])
+
+        for r in reads:
+            # read_extend
+            if r[2] in positive_strand_labels:
+                left = r[0]
+                right = r[1] + read_extend
+            elif r[2] in negative_strand_labels:
+                left = r[0] - read_extend
+                right = r[1]
+
+            # check for array wrap arounds:
+            if left < 0: left = 0
+
+            for loc in xrange(left, right, 1):
+                if resolution <= 1: # force 1bp read
+                    a[loc] += 1
+                else:
+                    a[int(loc/resolution)] += 1
+
+        #print "array_len", len(a)
+
+        return(a)
+
     def get_reads(self, loc, strand=None):
         """
         **Purpose**
@@ -247,6 +311,8 @@ class track:
         **Returns**
             a list containing all of the reads between loc.
         """
+        if strand: raise NotImplementedError
+
         if not self.__c:
             self.__c = self.__connection.cursor()
 
@@ -304,6 +370,7 @@ class track:
 if __name__ == "__main__":
     # a few testers to see how it works.
 
+    """
     t = track(filename="data/SpMash1_new.trk")
     # speed tester
 
@@ -325,7 +392,6 @@ if __name__ == "__main__":
     print "number of reads:", len(r)
 
     """
-
     t = track(filename="data/test_new.trk", new=True)
     t.add_location(location(loc="chr1:1-30"))
     t.add_location(location(loc="chr1:1-30"))
@@ -369,4 +435,5 @@ if __name__ == "__main__":
     print t.get_array(location(loc="chr1:20-25"), resolution=1.5)
 
     print t.get_array(location(loc="chr1:20-25"), resolution=1.5)
-    """
+
+    print t.get_array_chromosome("1")
