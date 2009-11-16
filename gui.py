@@ -91,7 +91,8 @@ class cfApp(wx.App):
         self.Bind(wx.EVT_BUTTON, self.OnGotoLocationEdit, wx.xrc.XRCCTRL(self.main, "butGoToLoc"))
 
         # menu events should get by ID: ID_ABOUT
-        self.Bind(wx.EVT_MENU, self.OnMenuAbout, wx.xrc.XRCCTRL(self.main, "about"))
+        self.Bind(wx.EVT_MENU, self.OnMenuAbout, id=xrc.XRCID("about"))
+        self.Bind(wx.EVT_MENU, self.OnMenuQuit, id=xrc.XRCID("quit"))
         # get changable elements from the gui and store them locally.
         # (See _updateDisplay())
         self.textGoToLoc = wx.xrc.XRCCTRL(self.main, "textGoToLoc")
@@ -204,4 +205,12 @@ class cfApp(wx.App):
         info.AddDeveloper("Andrew Hutchins")
         info.SetWebSite("http://www.oaxiom.com")
         wx.AboutBox(info)
+
+    def OnMenuQuit(self, event):
+        # check to see if we want to save our work
+
+        # any other user cleanups.
+
+        # and die:
+        sys.quit()
 # end of mainFrame
