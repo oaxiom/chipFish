@@ -180,7 +180,7 @@ class track:
                 if "+" return only that strand, if '-' return only the negative
                 strand (will recognise several forms of strand, e.g. F/R, +/-
 
-            resolution (default = 1bp)
+            resolution (Optional, default = 1bp)
                 nbp resolution required (you should probably send a float for accurate rendering)
 
             read_extend (Optional, default = 0)
@@ -197,9 +197,12 @@ class track:
         if strand: raise NotImplementedError
 
         # check if the array is already on the cache.
-        locs_required = [loc]
+        extended_loc = location(loc=str(loc)) # this should be fixed in a later version of glbase...
+        extended_loc.expand(read_extend) # this behaviour may not work in a future version?
+        locs_required = [extended_loc] # make sure to include the read_extend, but don't modify the location to get.
 
         # get the reads only in the ranges required.
+        # at the moment this is not implemented.
         reads = []
         for l in locs_required:
             reads += self.get_reads(l, strand)
@@ -207,8 +210,29 @@ class track:
         # make a single array
         a = array(self.array_format, [0 for x in xrange(0, loc["right"]-loc["left"]+int(resolution), int(resolution))])
 
-        for loc in locs_required:
-            for real_loc in xrange(loc["left"], int(loc["right"]+resolution), int(resolution)):
+        for r in reads:
+
+            if r[2] in positive_strand_labels:
+                read_left = r[0]
+                read_right = r[1] + read_extend
+            elif r[2] in negative_strand_labels:
+                read_left = r[0] - read_extend
+                read_right = r[1]
+
+            for rloc in xrange(read_left, read_right, int(resolution)):
+                array_relative_location = int((rloc - read_extend - loc["left"]) / resolution) # convert relative to the array
+
+                if array_relative_location >= 0 and array_relative_location < len(a): # within array
+                    if resolution <= 1: # force 1bp read
+                        a[array_relative_location] += 1
+                    else:
+                        a[array_relative_location] += 1
+
+
+            """
+            for real_loc in xrange(loc["left"]+read_extend, int(loc["right"]+read_extend+resolution), int(resolution)):
+                print real_loc
+                print real_loc-loc["left"]-read_extend
                 for r in reads:
                     if r[2] in positive_strand_labels:
                         left = r[0]
@@ -219,13 +243,15 @@ class track:
 
                     if real_loc >= left and real_loc <= right:
                         if resolution <= 1: # force 1bp read
-                            a[real_loc-loc["left"]] += 1
+                            a[real_loc-loc["left"]-read_extend] += 1
                         else:
-                            a[int((real_loc-loc["left"])/resolution)] += 1
+                            a[int((real_loc-loc["left"]-read_extend)/resolution)] += 1
+            """
 
         #print "array_len", len(a)
 
         return(a)
+
 
     def get_array_chromosome(self, chromosome, strand=None, resolution=1, read_extend=0, **kargs):
         """
@@ -436,4 +462,4 @@ if __name__ == "__main__":
 
     print t.get_array(location(loc="chr1:20-25"), resolution=1.5)
 
-    print t.get_array_chromosome("1")
+    #print t.get_array_chromosome("1")

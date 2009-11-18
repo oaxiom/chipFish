@@ -1,7 +1,7 @@
 """
 main, part of chipFish
 
-(c) 2008-2009 oAxiom
+(c) 2008-2010 oAxiom
 
 Not for distribution.
 
