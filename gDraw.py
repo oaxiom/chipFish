@@ -332,16 +332,31 @@ class gDraw:
         self.colBoxes.append(bBox((0,0,self.w, opt.ruler.text_height), (0,0), None, None))
         return(True)
 
-    def exportPostScript(self, _filename):
-        pass
+    def exportImage(self, filename, type=None):
+        """
+        **Purpose**
 
-    def exportDXF(self, _filename):
-        pass
+            export the current Cairo image as a 'type'
+            the image type will be guessed from the filename.
+            If no obvious extension is given then the string value in 'types'
+            will be used.
+            Finally, if that doens't make sense then it will default to a png
 
-    def exportPNG(self, _filename):
-        pass
+        **Arguments**
 
-    def exportBMP(self, _filename):
+            filename (Required)
+                filename and path (and extension) to the file to save
+
+            type (Optional)
+                the type of file to save as, this will override the
+                extension in the filename. If not type is given and
+                the extension doesn't make any sense then a png will be
+                used.
+
+        **Result**
+            returns the actual filename used to save.
+            and a file saved in filename
+        """
         pass
 
     def getPanel(self):
@@ -359,8 +374,9 @@ class gDraw:
 
     def OnPaint(self, event):
         """
-        Call to get Cairo to paint, this is done automatically if bound
-        to a Panel.
+        **Event**
+            Call to get Cairo to paint, this is done automatically if bound
+            to a Panel. You do not need to call this explicitly.
         """
         # override;
         try:
