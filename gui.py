@@ -40,7 +40,7 @@ class cfApp(wx.App):
         # errors should be put into a log;
         #sys.stderr = self # silence errors.
         #sys.stdout = self
-        print "chipFish (c) 2009, oAxiom, %s" % (time.strftime("%a, %d %b %Y %H:%M:%S +0000", time.localtime())) # log.
+        print "chipFish (c) 2009, oAxiom, %s" % (time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())) # log.
 
         # set up and load the genome
         # (In future this will load the initial state here)
@@ -65,7 +65,7 @@ class cfApp(wx.App):
         self.draw.bindTrack(track(filename="data/NSMash1_new.trk", name="NS5 Mash1 ChIP-seq"))
         self.draw.bindTrack(track(filename="data/SpMash1_new.trk", name="Spinal Cord Mash1 ChIP-seq"))
         self.draw.bindTrack(track(filename="data/TcMash1_new.trk", name="Telencephalon Mash1 ChIP-seq"))
-        #self.draw.bindTrack(track(filename="data/NS_H3K4me3.trk", name="NS5 H3K4me3"))
+        self.draw.bindTrack(track(filename="data/NS_H3K4me3.trk", name="NS5 H3K4me3"))
         #self.draw.bindTrack(track(filename="data/NS_H3K27me3.trk", name="NS5 H3K27me3"))
         #self.draw.bindTrack(track(filename="data/NS_H3K36me3.trk", name="NS5 H3K36me3"))
         #self.draw.bindTrack(track(filename="data/ES_H3K36me3.trk", name="ES H3K4me3"))
@@ -102,7 +102,7 @@ class cfApp(wx.App):
         self.main.Maximize(True)
         # force a redraw:
         self._updateDisplay()
-        print "End %s" % time.strftime("%a, %d %b %Y %H:%M:%S +0000", time.localtime())
+        print "End %s" % time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())
         return(True)
 
     #------------------------------------------------------------------
@@ -136,12 +136,6 @@ class cfApp(wx.App):
 
     #------------------------------------------------------------------
     # Events
-
-    def OnBigViewLeft(self, event):
-        # move eft depending upon the scale.
-        self.draw.setLocation(self.draw.chromosome, self.draw.lbp - 10000, self.draw.rbp - 10000)
-        self._updateDisplay()
-        event.Skip()
 
     def OnJumpToGenomicLoc(self, event):
         string_loc = self.textGoToLoc.text

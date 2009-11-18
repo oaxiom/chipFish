@@ -281,7 +281,7 @@ class track:
             an 'array('i', [0, 1, 2 ... n])' contiginous array
             or a tuple containing two arrays, one for each strand.
         """
-        if strand: raise NotImplementedError
+        if strand: raise NotImplementedError, "Eh... strand not supported yet..."
 
         if not self.__c:
             self.__c = self.__connection.cursor()
@@ -311,7 +311,8 @@ class track:
             if left < 0: left = 0
 
             for loc in xrange(left, right, 1):
-                if resolution <= 1: # force 1bp read
+                if resolution <= 1: # force 1bp read # this may be incorrect as it may add the read several times until it increments?
+                    # this is the source of the artivacts when resolution < 1.0?
                     a[loc] += 1
                 else:
                     a[int(loc/resolution)] += 1
