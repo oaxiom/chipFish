@@ -1353,6 +1353,44 @@
                     <property name="permission">protected</property>
                 </object>
                 <object class="wxMenu" expanded="1">
+                    <property name="label">Bookmarks</property>
+                    <property name="name">bookmarks</property>
+                    <property name="permission">protected</property>
+                    <object class="wxMenuItem" expanded="1">
+                        <property name="bitmap"></property>
+                        <property name="checked">0</property>
+                        <property name="enabled">1</property>
+                        <property name="help"></property>
+                        <property name="id">ID_BOOKMARK_THIS_LOCATION</property>
+                        <property name="kind">wxITEM_NORMAL</property>
+                        <property name="label">Bookmark This Location</property>
+                        <property name="name">bookmarkThisLocation</property>
+                        <property name="permission">none</property>
+                        <property name="shortcut"></property>
+                        <property name="unchecked_bitmap"></property>
+                        <event name="OnMenuSelection"></event>
+                        <event name="OnUpdateUI"></event>
+                    </object>
+                    <object class="wxMenuItem" expanded="1">
+                        <property name="bitmap"></property>
+                        <property name="checked">0</property>
+                        <property name="enabled">1</property>
+                        <property name="help"></property>
+                        <property name="id">ID_ORGANISE_BOOKMARKS</property>
+                        <property name="kind">wxITEM_NORMAL</property>
+                        <property name="label">Organise Bookmarks</property>
+                        <property name="name">organiseBookmarks</property>
+                        <property name="permission">none</property>
+                        <property name="shortcut"></property>
+                        <property name="unchecked_bitmap"></property>
+                        <event name="OnMenuSelection"></event>
+                        <event name="OnUpdateUI"></event>
+                    </object>
+                    <object class="separator" expanded="1">
+                        <property name="permission">none</property>
+                    </object>
+                </object>
+                <object class="wxMenu" expanded="1">
                     <property name="label">Analysis</property>
                     <property name="name">analysis</property>
                     <property name="permission">protected</property>
