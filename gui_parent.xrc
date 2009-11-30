@@ -248,6 +248,18 @@
 			<object class="wxMenu" name="genome">
 				<label>Genome</label>
 			</object>
+			<object class="wxMenu" name="bookmarks">
+				<label>Bookmarks</label>
+				<object class="wxMenuItem" name="bookmarkThisLocation">
+					<label>Bookmark This Location</label>
+					<help></help>
+				</object>
+				<object class="wxMenuItem" name="organiseBookmarks">
+					<label>Organise Bookmarks</label>
+					<help></help>
+				</object>
+				<object class="separator" />
+			</object>
 			<object class="wxMenu" name="analysis">
 				<label>Analysis</label>
 			</object>

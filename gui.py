@@ -79,6 +79,14 @@ class cfApp(wx.App):
         #self.draw.setLocation("16", 91152965, 91156965) # Olig1
         #self.draw.setLocation("5", 140855715, 140873715) # Lnfg
 
+        # menu names:
+        # Boomarks root:
+        # bookmarks
+        # bookmarkThisLocation ID_BOOKMARK_THIS_LOCATION
+        # ID_ORGANISE_BOOKMARKS organiseBookmarks
+        # findGene
+        
+
         # bind events to the GUI.
         self.Bind(wx.EVT_LEFT_DOWN, self._mouseLeftDown, draw_panel)
         self.Bind(wx.EVT_LEFT_UP, self._mouseLeftUp, draw_panel)
