@@ -25,12 +25,15 @@ from glbase.location import location
 from glbase.helpers import * # pass through
 from glbase.delayedlist import delayedlist
 from glbase.config import VERSION
+from glbase.track import track
+sys.path.append("glbase/tools/") # seqToTrk is not exported by glbase in rev 131.
+#from seqToTrk import seqToTrk # throws an error for some reason?
 
 # get the wrapped versions.
 from genelist import genelist
 from genome import genome
 
-
 # make these functions available in the package
 __all__ = ["genelist", "location", "genome", "delayedlist", "VERSION",
+    "track", #"seqToTrk"
     ] + dir(glbase.flags) + dir(glbase.helpers) # in future I want to get rid of dir() and control what gets exported.

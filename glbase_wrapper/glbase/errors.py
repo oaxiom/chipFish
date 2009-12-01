@@ -25,6 +25,21 @@ class AssertionError(Exception):
         if not config.DEBUG: # this only works in Py3k right?
             self.__traceback__ = None
 
+class ArgumentError(Exception):
+    """
+    Error
+        An assertion or requirement for a particular method
+        failed. This usually means some sort of category required
+        for the method is missing.
+    """
+    def __init__(self, function, argument):
+        """
+        Output the error message and tidy up the traceback, and perform other stuff.
+        """
+        print "Error: Function '%s' - argument '%s' not supported" % (function, argument)
+        if not config.DEBUG: # this only works in Py3k right?
+            self.__traceback__ = None
+
 class UnRecognisedCSVFormatError(Exception):
     """
     Error
@@ -111,15 +126,14 @@ class LibraryNotFoundError(Exception):
         A required library is not found.
     """
     def __init__(self, message, traceback):
-        print "Error: %s" % (message)
+        print "Error: Library Not Found: %s" % (message)
 
 class UnrecognisedFileFormatError(Exception):
     """
     Error
-        The csv is not recognised, and produces an error somewhere inside
-        _loadCSV(). Print a selection of output based on what glbase
-        expects the CSV to look like, hopefully this explains what may be
-        going wrong with the CSV.
+        File is not recognised, but not in loadCSV.
+        Just print some diagnostic stuff, but not so fancy as
+        UnRecognisedCSVFormatError
     """
     def __init__(self, message, file_handle, format):
         """
@@ -138,3 +152,35 @@ class UnrecognisedFileFormatError(Exception):
         print "-----------------------"
         print "Error: %s" % (message)
         print
+
+class NotSupportedError(Exception):
+    """
+    Error
+        Some Command somewhere is not supported.
+        For example, delayedlist.collide() only
+        implements "and" and the "logic" commands are not supported.
+    """
+    def __init__(self, message):
+        """
+        Output the error message and tidy up the traceback, and perform other stuff.
+        """
+        print "Error: Not Supported: %s" % (message)
+        if not config.DEBUG: # this only works in Py3k right?
+            self.__traceback__ = None
+
+class DrawNoMatchingKeys_Special(Exception):
+    """
+    Error
+        A specific error in draw.py this is required to make draw.py
+        completely silent.
+    """
+    def __init__(self, function, argument):
+        """
+        Output the error message and tidy up the traceback, and perform other stuff.
+        """
+        print "(Internal) _heatmap_and_plot()"
+        print "Error: No suitable matching key between the microarray and the peaklist"
+        print "       valid keys are: refseq entrez loc tss_loc array_systematic_name"
+        print "       Both the microarray and the peaklist must have both keys"
+        if not config.DEBUG: # this only works in Py3k right?
+            self.__traceback__ = None

@@ -8,10 +8,10 @@ TODO:
 
 """
 
-import sys, os, csv, utils
+import sys, os, csv
+import config, utils
 
 from genelist import genelist
-from fastalist import fastalist
 from flags import *
 from errors import AssertionError
 
@@ -32,7 +32,11 @@ class genome(genelist):
             format specifer, see flags.py and helpers.py and the
             documentation on how to write a valid format specifier
 
-        sequence (Not Implemented)
+        sequence_path (Optional, default=None)
+            provide a path to the fasta sequence files.
+            If you provide the fasta chromosome files for the
+            correct genome assembly then you can extract genomic
+            sequence using getSequence() and getSequences()
 
         **Result**
 
@@ -40,19 +44,23 @@ class genome(genelist):
         the format specifier.
         If no filename is specified it returns an empty genome.
         """
-        genelist.__init__(self)
+        valig_args = ["filename", "format", "sequence_path"]
+        for k in kargs:
+            if k not in valig_args:
+                raise ArgumentError, (self.__init__, k)
+
+        genelist.__init__(self) # inherit
 
         if filename:
             self.name = name
             self.filename = filename
-            if kargs.has_key("format"):
+            if "format" in kargs:
                 format = kargs["format"]
             else:
-                # this is my custom list, rather than a real UCSC list.
-                format = default
+                format = default # sniffer
 
             # sniff the file to see if it's a tsv or a csv.
-            if format.has_key("sniffer"):
+            if "sniffer" in format:
                 oh = open(filename, "rU")
                 reader = csv.reader(oh)
                 for item in reader:
@@ -60,9 +68,10 @@ class genome(genelist):
                         format["dialect"] = csv.excel_tab
                     break
                 oh.close()
+
             self.loadCSV(filename=filename, format=format) # use the standard loader.
 
-            if not self.linearData[0].has_key("tss_loc"):
+            if not "tss_loc" in self.linearData[0]:
                 # the list does not have a tss_loc key,
                 # I need to build it myself from the loc and strand tags
                 for item in self.linearData:
@@ -71,13 +80,13 @@ class genome(genelist):
                         item["tss_loc"] = location(chr=cloc["chr"], left=cloc["left"], right=cloc["left"])
                     elif item["strand"] in negative_strand_labels:
                         item["tss_loc"] = location(chr=cloc["chr"], left=cloc["right"], right=cloc["right"])
-            self._optimiseData()
-            if kargs.has_key("path_to_genome_fasta"):
-                self.loadGenomicSequence(kargs["path_to_genome_fasta"])
-            else:
-                self.fasta = None
 
-        self.bHasBoundSequence = False # no sequence
+            self._optimiseData()
+        if "sequence_path" in kargs:
+            self.bindSequence(kargs["sequence_path"])
+        else:
+            self.bHasBoundSequence = False
+
         self._optimiseData()
 
     def __str__(self):
@@ -118,12 +127,12 @@ class genome(genelist):
             }
         for key, value in args.iteritems():
             if key == "key": # not a documented way to do it, but if you want to just search by key. pass a tuple of the form (actual_key, data)
-                if self.linearData[0].has_key(value[0]):
+                if value[0] in self.linearData[0]:
                     return(func_dict[value[0]](value[0], value[1]))
                 else:
                     return(None)
             else: # the normal documented way
-                if self.linearData[0].has_key(key):
+                if key in self.linearData[0]:
                     func_dict[key](key, value)
             return(None)
 
@@ -132,13 +141,8 @@ class genome(genelist):
         get a list of annotations from a geneList based on key that is common between the two lists.
         keepAll == keep even the unmapped ones.
         """
-        if not self.linearData[0].has_key(key):
-            print "Error: Genome does not have search key: %s" % key
-            return(None) # check both lists have the key
-
-        if not geneList[0].has_key(key):
-            print "Error: Genome does not have search key: %s" % key
-            return(None)
+        assert key in self.linearData[0], "Error: Genome does not have search key: %s" % key
+        assert key in geneList.linearData[0], "Error: Genome does not have search key: %s" % key
 
         omit = 0
 
@@ -147,7 +151,7 @@ class genome(genelist):
             mockEntry[key] = ""
 
         newl = []
-        for item in geneList:
+        for item in geneList.linearData:
             gene = self.findGenes(key=(key, item[key]))
             if gene:
                 newl.append(gene)
@@ -210,6 +214,7 @@ class genome(genelist):
 
         self.fasta_dir = os.path.realpath(path)
         fastas = os.listdir(self.fasta_dir)
+        assert len(fastas) > 0, "no fasta files found"
         self.seq = {}
         self.seq_data = {}
         for f in fastas:
@@ -251,11 +256,16 @@ class genome(genelist):
 
         returns a string containing the sequence at 'coords'
         """
-        assert kargs.has_key("loc") or kargs.has_key("coords"), "No valid coords or loc specified"
-        assert self.seq, "No Available genome FASTA file"
+        valid_args = ["coords", "loc", "strand"]
+        for key in kargs:
+            assert key in valid_args, "getSequence() - Argument '%s' is not recognised" % key
 
-        if kargs.has_key("loc"): loc = kargs["loc"]
-        elif kargs.has_key("coords"): loc = kargs["coords"]
+        assert "loc" in kargs or "coords" in kargs, "No valid coords or loc specified"
+        assert self.bHasBoundSequence, "No Available genome FASTA files"
+
+        if "loc" in kargs: loc = kargs["loc"]
+        elif "coords" in kargs: loc = kargs["coords"]
+        assert isinstance(loc, location), "'loc' must be a proper genome location"
 
         left = loc["left"]
         right = loc["right"]
@@ -276,7 +286,7 @@ class genome(genelist):
             bonus += 1
 
         #ret = self.seq[chrom].read(delta + (delta /self.seq_data[chrom]["linelength"])) #.replace("\n", "")
-        if kargs.has_key("strand"):
+        if "strand" in kargs:
             if kargs["strand"] in negative_strand_labels:
                 ret = utils.rc(ret)
         return(ret)
@@ -321,18 +331,23 @@ class genome(genelist):
         returns a copy of the original genelist-like object
         with the new key "seq" containing the sequence.
         """
-        assert kargs.has_key("genelist"), "Required argument: 'list' is missing or malformed"
-        assert kargs.has_key("loc_key"), "Required argument: 'loc_key' is missing or malformed"
+        valid_args = ["genelist", "loc_key", "strand_key", "deltaleft", "deltaright", "delta"]
+        for key in kargs:
+            assert key in valid_args, "getSequences - Argument '%s' is not recognised" % key
+
+        assert self.bHasBoundSequence, "No Available genome FASTA files"
+        assert "genelist" in kargs, "Required argument: 'list' is missing or malformed"
+        assert "loc_key" in kargs, "Required argument: 'loc_key' is missing or malformed"
 
         newl = kargs["genelist"].__copy__()
         loc_key = kargs["loc_key"]
 
         strand_key = None
-        if kargs.has_key("strand_key"):
+        if "strand_key" in kargs:
             strand_key = kargs["strand_key"]
 
         for item in newl.linearData:
-            if kargs.has_key("delta"):
+            if "delta" in kargs:
                 delta = kargs["delta"]
                 item[loc_key].expand(delta)
                 newloc = item[loc_key]
@@ -348,5 +363,6 @@ class genome(genelist):
             item["seq"] = seq
 
         newl._optimiseData
+        if not config.SILENT: print "Info: Got sequences"
         newl._history.append("Added DNA sequence")
         return(newl)

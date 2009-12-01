@@ -49,3 +49,6 @@ typical_headers = frozenset(["chipseq_loc", "loc", "chr", "#",
 "=====================================================================", # stupid sissrs format garbage.
 "======================================================================="] # stupid sissrs format garbage.
 ) # typical header labels;
+
+positive_strand_labels = frozenset(["+", "1", "f", "F"])
+negative_strand_labels = frozenset(["-", "0", "r", "R"])

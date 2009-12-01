@@ -93,9 +93,7 @@ class motif:
                     q.remove(q[i])
 
                 newSeq = "".join(new)
-                print new
             res.append(re.compile(newSeq))
-        print res
         return(res)
 
     def __str__(self):
@@ -112,11 +110,16 @@ class motif:
         score each fasta sequence for a match for a particular motif
         then output the result as a movingAverage graph.
 
+        Scans both strands, but returns only a single score per sequence
+        in the list (ie score = forward + reverse).
+
         **Arguments**
 
         genelist
             genelist with sequence data attached, must be in a "seq", "sequence"
-            "f", or similar key.
+            "f". If you load a fasta, the sequence is loaded into "seq".
+            You can send a list of genelists as well, and these will all be plotted
+            on the graph.
 
         random_fasta (Optional, default=None)
             a random or list of random_fasta lists to act as a comparison.
@@ -124,65 +127,73 @@ class motif:
         filename
             filename of the resulting image file.
 
-        window (Optional, default = 5%)
+        window (Optional, default = 10% of the first list in 'genelist')
             the moving window average size
 
         resample_random (Optional, default = True)
             resample the random fasta lists so that they equal the size
-            of the original list.
+            of the original list. Set to False if you don't want to do this.
 
         **Result**
 
         returns None and a figure saved to filename
         """
+        valid_args = ["genelist", "random_fasta", "filename", "window", "resample_random"]
+        for key in kargs:
+            assert key in valid_args, "scanMotifFrequency() - Argument '%s' not recognised" % key
+
         # draw a moving average plot
         assert filename, "you must specify a filename to save the graph to"
         assert genelist, "you must provide a genelist"
 
-        window = int(len(genelist) * 0.10) # 5% of the list
+        # turn genelist into a vanilla list if it is not already.
+        if not isinstance(genelist, list):
+            genelist = [genelist]
+
+        window = int(len(genelist[0]) * 0.10) # 10% of the list
         if kargs.has_key("window"):
             window = int(kargs["window"])
 
         motif = self.getRegEx()
-        bWarningDoneAlready = False
+        __bWarningDoneAlready = False
 
         if kargs.has_key("random_fasta"):
-            fasta_lists = kargs["random_fasta"]
+            random_fastas = kargs["random_fasta"]
             if kargs.has_key("resample_random") and (not kargs["resample_random"]):
                 pass # resample_random = True by default
             else: # default resample:
                 new_fasta_list = []
-                for item in fasta_lists:
-                    if len(genelist) > len(item):
+                for item in random_fastas:
+                    if len(genelist[0]) > len(item):
                         # just print a warning
                         # Although, make sure only to print it once so I don't look stupid.
-                        if not bWarningDoneAlready:
+                        if not __bWarningDoneAlready:
                             print "Warning: The genelist is larger than the random lists, resampling will result in duplidate entries"
-                            bWarningDoneAlready = True
+                            __bWarningDoneAlready = True
                         list_size = len(item)
                     else:
-                        list_size = len(genelist)
+                        list_size = len(genelist[0])
 
                     # and then resample anyway
                     newl = new_gl() # get a new and empty list # newgl is an empty genelist
 
-                    while len(newl) != len(genelist):
+                    while len(newl) != len(genelist[0]): # don't use random.sample() as this can bodge larger sample lists (naughty!!)
                         r = random.randint(0, list_size-1)
                         newl.linearData.append(item.linearData[r])
                     newl._optimiseData()
                     new_fasta_list.append(newl)
 
-                fasta_lists = new_fasta_list
-            fasta_lists = [genelist] + fasta_lists
+                random_fastas = new_fasta_list
+            fasta_lists = genelist + random_fastas
         else:
-            fasta_lists = [genelist]
+            fasta_lists = genelist
 
         # get the seq key:
-        if "seq" in genelist.getKeys():
+        if "seq" in genelist[0].getKeys():
             seq_key = "seq"
-        elif "f" in genelist.getKeys():
+        elif "f" in genelist[0].getKeys():
             seq_key = "f"
-        elif "sequence" in genelist.getKeys():
+        elif "sequence" in genelist[0].getKeys():
             seq_key = "sequence"
         else:
             raise AssertionError, "the genelist does not appear to have a sequence attached" # fake an assert
@@ -200,5 +211,5 @@ class motif:
             labels.append(fasta.name)
             motif_result.append(utils.movingAverage(res, window, False))
 
-        actual_filename = self.draw._qplot(motif_result, filename=filename, labels=labels)
+        actual_filename = self.draw._qplotxy(motif_result, filename=filename, labels=labels)
         print "Info: Saved figure %s" % actual_filename

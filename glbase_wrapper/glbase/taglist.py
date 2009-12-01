@@ -27,7 +27,9 @@ class taglist(genelist):
         print "       Load a taglist using the taglist = load(file) method."
 
     def _loadCSV(self, **kargs):
-        """ Override this internal method """
+        """
+        Override the internal method
+        """
         pass
 
     def drawHeatmap(self, **kargs):
@@ -44,8 +46,8 @@ class taglist(genelist):
 
         **Result**
 
-        * returns True if succesful, None if it fails.
-        * Saves a png file to 'filename'
+            * returns True if succesful, None if it fails.
+            * Saves a png file to 'filename'
         """
         # arrange the data:
         set_names = []

@@ -13,19 +13,19 @@ import utils, config
 
 from location import location
 
-positive_strand_labels = frozenset(["+", "1", "f", "F"])
-negative_strand_labels = frozenset(["-", "0", "r", "R"])
-
 # ----------------------------------------------------------------------
 # Some helper functions
 
-def load(filename):
+def glload(filename):
     """
     load a pickle.
     """
-    oh = open(filename, "rb")
+    assert os.path.exists(os.path.realpath(filename)), "File '%s' not found" % filename
+
+    oh = open(os.path.realpath(filename), "rb")
     newl = cPickle.load(oh)
     oh.close()
+    if not config.SILENT: print "Info: Loaded '%s' binary file" % (filename)
     return(newl)
 
 def change_drawing_mode(self, mode):
@@ -37,16 +37,12 @@ def change_drawing_mode(self, mode):
     recognised_modes = ["png", "ps", "eps"]
     self.output_mode = "png"
 
-    assert mode in recognised_modes, "Draw output mode %s is not recognised" % mode
+    assert mode in recognised_modes, "Draw output mode '%s' is not recognised" % mode
 
     if mode == "png":
         config.DEFAULT_DRAWER = "png"
     elif mode == "eps" or mode == "ps":
         config.DEFAULT_DRAWER = "eps"
-    else:
-        print "Error: Draw Output mode: %s not recognised" % mode
-        config.DEFAULT_DRAWER = "png"
-        return(False)
     return(True)
 
 # ----------------------------------------------------------------------
@@ -147,8 +143,5 @@ def strandSorter(chr, left, right, strand):
     elif strand in negative_strand_labels:
         return(location(chr=chr, left=right, right=right))
     return(None)
-
-def barSplitter(value):
-    return(value.split("|"))
 
 # various other helpers for normalisation etc..

@@ -7,19 +7,24 @@ part of glbase.
 This class is an internal class that implemnts a more convenient way to manipulate
 genomic coordiantes.
 
+TODO:
+. add a 'in' code clause e.g.:
+    if 1000 in location: (see if 1000 > left & < right)
+    if a_location in b_location: (exectute a collide())
+
 """
+
+import copy
 
 from errors import AssertionError
 
 class location:
     def __init__(self, loc=None, chr=None, left=None, right=None):
-        assert loc or (chr and left and right), "must specify a location, location cannot be empty"
-
         if isinstance(loc, location):
             # It's actually already a loc.
             # I want to copy it and leave.
             self._loc_string = "chr%s:%s-%s" % (loc["chr"].strip("chr").lower(), loc["left"], loc["right"])
-            self.loc = loc.loc
+            self.loc = copy.copy(loc.loc)
         else:
             if loc:
                 self._loc_string = loc.lower()
@@ -31,15 +36,16 @@ class location:
                 self.loc = {"chr": chr.strip("chr").upper(), "left": int(left), "right": int(right)}
 
     def __repr__(self):
-        return("location: contents: %s" % self.loc)
+        self._loc_string = self._merge(self.loc) # only update when accessed.
+        return("<location %s>" % (self._loc_string))
 
     def __len__(self):
         self._loc_string = self._merge(self.loc) # only update when accessed.
-        return(len(self._loc_string))
+        return(len(self._loc_string)) # this should be length of span!?!?!
 
     def split(self, value=None):
-        # ignores the 'value' argument completely and returns the dictionary
-        return(self.loc)
+        # ignores the 'value' argument completely and returns a three-ple
+        return( (self.loc["chr"], self.loc["left"], self.loc["right"]) )
 
     def _merge(self, loc_dict):
         try:
@@ -63,27 +69,37 @@ class location:
         self._loc_string = self._merge(self.loc) # only update when accessed.
         return(self._loc_string)
 
+    """
+    these methods below should copy the location and send a modified version back.
+    """
     def expand(self, base_pairs):
         self.loc["left"] -= base_pairs
         self.loc["right"] += base_pairs
+        return(self)
 
     def expandLeft(self, base_pairs):
         self.loc["left"] -= base_pairs
+        return(self)
 
     def expandRight(self, base_pairs):
         self.loc["right"] += base_pairs
+        return(self)
 
     def shrink(self, base_pairs):
         self.loc["left"] += base_pairs
         self.loc["right"] -= base_pairs
+        return(self)
 
     def shrinkLeft(self, base_pairs):
         self.loc["left"] += base_pairs
+        return(self)
 
     def shrinkRight(self, base_pairs):
         self.loc["right"] -= base_pairs
+        return(self)
 
     def pointify(self):
         centre = (self.loc["left"] + self.loc["right"]) / 2
         self.loc = {"chr": self.loc["chr"], "left": centre, "right": centre}
+        return(self)
 

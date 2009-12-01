@@ -1,9 +1,5 @@
 """
-track, part of chipFish
-
-(c) 2008-2009 oAxiom
-
-Not for distribution.
+track, part of glbase
 
 TODO:
 -----
@@ -15,10 +11,10 @@ from __future__ import division
 
 import cPickle, sys, os, struct, math, sqlite3, zlib
 
-from glbase_wrapper import location as location
-from glbase_wrapper import positive_strand_labels, negative_strand_labels
+from location import location
+from data import positive_strand_labels, negative_strand_labels
 
-from array import array
+from array import array # Carray
 
 TRACK_CACHE_SIZE = 10 # number of track segments to cache.
 
