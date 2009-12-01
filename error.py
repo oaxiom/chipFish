@@ -93,3 +93,31 @@ class ErrorLibrarySQLite(Exception):
         self.message = "Error: Database SQLite nota found or not available."
     def __str__(self):
         return(repr(self.message))
+
+class ErrorUserDataNotFound(Exception):
+    """
+    Error: the user data cannot be found or is otherwise mangled"
+    """
+    def __init__(self):
+        self.message = "Error: The per-user data is not available or mangled."
+    def __str__(self):
+        return(repr(self.message))
+
+class ErrorUserDataReadOnly(Exception):
+    """
+    Error: The user config is inaccesible.
+    """
+    def __init__(self):
+        self.message = "Error: The per-user data is read-only."
+    def __str__(self):
+        return(repr(self.message))
+
+class ErrorOSNotSupported(Exception):
+    """
+    Error: The user config is inaccesible.
+    """
+    def __init__(self):
+        import platform
+        self.message = "Error: The OS '%s' is not currently supported" % platform.platform()
+    def __str__(self):
+        return(repr(self.message))
