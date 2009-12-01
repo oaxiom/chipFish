@@ -44,7 +44,7 @@ class cfApp(wx.App):
 
         # set up and load the genome
         # (In future this will load the initial state here)
-        self.g = load("data/mm8_refGene.glb")
+        self.g = glload("data/mm8_refGene.glb")
 
         # load the gui
         self.res = xrc.XmlResource('gui_parent.xrc')
@@ -85,7 +85,7 @@ class cfApp(wx.App):
         # bookmarkThisLocation ID_BOOKMARK_THIS_LOCATION
         # ID_ORGANISE_BOOKMARKS organiseBookmarks
         # findGene
-        
+
 
         # bind events to the GUI.
         self.Bind(wx.EVT_LEFT_DOWN, self._mouseLeftDown, draw_panel)

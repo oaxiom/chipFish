@@ -11,10 +11,12 @@ degenerate character N=[ATCG]
 
 import sys, os, numpy, string, csv, random, math
 
+from errors import AssertionError
+
 def library(args):
     """
     lovely generator...
-    I'm still not sure how this works...
+    I'm still not sure exactly how this works...
     """
     if not args:
         yield ""
@@ -57,6 +59,10 @@ def expandDegenerateMotifs(motif):
 def iti(_fm, _fmcpos, _cl, _list): # my iterator
     """
     This is possibly the best piece of code I've ever made!
+    Mainly because it's almost entirely unitelligable....
+    It's some sort of iterator to to generate
+    N-mers.
+    I think this has been replaced by regexs now.
     fm = a triple of the form (number to flip, location, seq_at_pos)
     """
     # do some set up
@@ -104,18 +110,6 @@ def movingAverage(listIn, window=20, normalise=False, bAbsiscaCorrect=True):
         else:
             y.append(score)
     return(x, y)
-
-def lineariseData(data):
-    """
-    bin the data into 1 elements. returns a list
-    """
-    maxx = max(data)
-    minx = min(data)
-    res = [0 for x in xrange(minx-1, maxx+1, 1)]
-    for item in data:
-        print item-minx
-        res[item-minx] += 1
-    return(res)
 
 def osc(last, type):
     """
@@ -311,31 +305,6 @@ def expandElementRightOnly_degenerate_n(_element, _preserve=True): #
 
     return  lib
 
-def NewlinesToFASTA(infile, outfile):
-    """
-    infile outfile are strings
-
-    Converts a series of newlines into FASTA format with a unique >NAME
-    input
-    infile, outfile
-    returns
-    None
-    """
-
-    openfile = open(infile, "rb")
-    savefile = open(outfile, "wb")
-    n = 0
-    for line in openfile:
-        n+=1
-        savefile.write('>'+str(n)+'\r\n')
-        savefile.write(line)
-
-class Node:
-    def __init__(self, name):
-        """ Temp Node class to load the FASTA data """
-        self.name = name
-        self.seq = ""
-
 def convertCSVtoFASTA(csvfilename, outfile, sequenceCol, fastaNameCol = None):
     """
     csvfilename = the csv filename to load without the path, assumed to be in environment.mouseGenomePath
@@ -405,27 +374,23 @@ def convertFASTAtoDict(filename):
     """
     assert os.path.exists(filename), "filename %s not found" % filename
 
-    try:
-        openfile = open(filename, "rb")
-    except IOError:
-        print "Error opening File"
-        sys.exit()
+    openfile = open(filename, "rU")
 
     result = []
     record = ""
-    entry = Node("empty")
+    #entry = {"seq": "", "name": "empty"}
     for line in openfile:
         if line[:1] != ">": # not a FASTA block, so add this line to the sequence
-            entry.seq += line.lower().replace('\r', '').replace("\n", "") # strip out the new line WINDOWS specific!
+            entry["seq"] += line.lower().replace('\r', '').replace("\n", "") # strip out the new line WINDOWS specific!
 
         if line[:1] == ">": # fasta start block
+            entry = {"seq": "", "name": "empty"} # make a new node
             # start recording
+            entry["name"] = line.replace(">", "")
             # add the old Node to the list
-            if entry.name != "empty":
+            if entry["name"] != "empty":
                 # convert the list to a tuple
-                result.append({"name": entry.name.replace("\r\n", ""), "f": entry.seq, "r": rc(entry.seq)})
-                del entry
-            entry = Node(line) # make a new node
+                result.append(entry)
     return(result)
 
 def scanNumberOfBasePairs(fastafilehandle):
@@ -705,84 +670,6 @@ def FASTAToLIST(filename):
 def repeatMask(DNA_seq):
     return(DNA_seq.replace("a", "n").replace("c", "n").replace("g", "n").replace("t", "n").replace("N", "n"))
 
-def getXRandomRows_eq_spaced(path, _in, _out, X, FA_prefix=""):
-    print "getXRandomRows_eq_spaced(",path,", ",_in,", ",_out, ",", X, FA_prefix,")"
-    ih = open(os.path.join(path, _in), "rb")
-    oh = open(os.path.join(path, _out), "wb")
-
-    reader = csv.reader(ih)
-    writer = csv.writer(oh)
-
-    copy = []
-    for line in reader:
-        copy.append(line)
-
-    count = len(copy)
-    topGrab = int((count/2) / (X/3))
-    botGrab = int((count/2) / ((X/3)*2))
-    print X, count, "=", topGrab, botGrab
-
-    # top half:
-    for i in xrange(0, count/2, topGrab):
-        faName = '>_'+str(i)+'_'+FA_prefix
-        line = copy[i]
-        writer.writerow(line+[faName]) # CSV summary
-
-    for i in xrange(count/2, count, botGrab):
-        faName = '>_'+str(i)+'_'+FA_prefix
-        line = copy[i]
-        writer.writerow(line+[faName]) # CSV summary
-    ih.close()
-    oh.close()
-
-def getXRandomRows(path, _in, _out, X):
-    """
-    get X random rows from a csv
-    """
-    print "getXRandomRows(",path, _in, _out, X, ")"
-    ih = open(os.path.join(path, _in), "rb")
-    oh = open(os.path.join(path, _out), "wb")
-
-    reader = csv.reader(ih)
-    writer = csv.writer(oh)
-
-    copy = [] # copy to mem
-    for line in reader:
-        copy.append(line)
-
-    count = len(copy)-1
-
-    for i in xrange(X):
-        line = copy[random.randint(0, count)]
-        print line
-        writer.writerow(line) # CSV summary
-
-    ih.close()
-    oh.close()
-
-def removeAllXFromFile(path, _in, _out, X, newX):
-    print "removeAllXFromFile(",path,", ",_in,", ",_out, ",", X, newX,")"
-    ih = open(os.path.join(path, _in), "rb")
-    oh = open(os.path.join(path, _out), "wb")
-
-    for line in ih:
-        nline = line.replace(X, newX)
-        oh.write(nline)
-    ih.close()
-    oh.close()
-
-def saveListAsCsv(path, filename, l, header=None):
-    oh = open(os.path.join(path, filename), "wb")
-    writer = csv.writer(oh)
-
-    if header:
-        writer.writerow(header)
-
-    for item in l:
-        writer.writerow(item)
-
-    oh.close()
-
 def loadTSVAsLIST(file):
     oh = open(file, "rU")
     reader = csv.reader(oh, dialect=csv.excel_tab)
@@ -828,22 +715,6 @@ def renameDuplicatesFromCSV(path, csvfile, outfile, column_no = 3, bKeepEmptyCol
                 if bKeepEmptyCols: writer.writerow(line)
     inf.close()
     outf.close()
-
-def makeListUnique(non_unique_list):
-    """
-    append _1 .. _n to duplicates based on the column no
-    """
-    ulist = []
-    nFound = {}
-
-    for entry in non_unique_list:
-        if entry in ulist:
-            ulist.append("%s_%s" % (entry, nFound[entry]))
-            nFound[entry] += 1
-        else:
-            ulist.append(entry)
-            nFound[entry] = 1
-    return(ulist)
 
 """
     It's hard to believe, but these custom routines below are 10x as

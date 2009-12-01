@@ -13,27 +13,37 @@ from errors import AssertionError
 class peaklist(genelist):
     def __init__(self, **kargs):
         """
+        **Purpose**
+
         Problems all over here: Why does the start-up not match other start ups?
         bad bad bad
 
         **Arguments**
+            filename (Optional, if not specified, returns an empty peaklist)
+                filename of the file to load.
 
-            None
+            format (Optional, defaults to sniffer)
+                An optional format specifier
 
+            Name (Optional, defaults to filename)
+                override the name, if not specified, use the file name instead.
+
+        **Returns**
+            a valid peaklist.
         """
 
-        format_override = default
+        format_override = default # from flags.
         genelist.__init__(self)
-        if kargs.has_key("format"):
+        if "format" in kargs and kargs["format"]:
              format_override = kargs["format"]
 
         # defaults:
 
-        for k in kargs:
-            if k == "name":
-                self.name = kargs["name"]
-            elif k == "filename":
-                self.loadCSV(filename=kargs["filename"], format=format_override)
+        if "filename" in kargs and kargs["filename"]:
+            self.loadCSV(filename=kargs["filename"], format=format_override)
+
+        if "name" in kargs and kargs["name"]:
+            self.name = kargs["name"]
 
     def __repr__(self):
         return("glbase.peaklist")
@@ -58,7 +68,7 @@ class peaklist(genelist):
         newl = self.__copy__()
         newl.linearData = []
         for item in self:
-            if item.has_key("loc"):
+            if "loc" in item:
                 loc = deepcopy(item["loc"])
                 loc.pointify()
                 new_item = deepcopy(item)
@@ -68,10 +78,11 @@ class peaklist(genelist):
         self._history.append("Pointified (locations converted to a single base pair, in the middle of the coordinates)")
         return(newl)
 
-    def frequencyAgainstArray(self, **kargs):
+    def frequencyAgainstArray(self, filename=None, microarray=None, **kargs):
         """
         Draw an peaklist and compare against an array.
-        Draws a three panel
+        Draws a three panel figure showing an array heatmap, the binding events
+        and a moving average of the binding events.
 
         **Arguments**
 
@@ -82,7 +93,15 @@ class peaklist(genelist):
 
             filename
 
-                a file name to the iamge as, including the path.
+                a file name for the image including the path.
+
+            window (Optional)
+
+                size of the sliding window to use.
+
+            bracket (Optional)
+
+                bracket the data within a range (e.g. (0,2))
 
         **Result**
 
@@ -91,19 +110,21 @@ class peaklist(genelist):
             plots a multi-panel image of the array and a moving average plot of the density of
             chip-seq peaks. Saves the image to filename.
         """
-        # reqd args enforcer.
-        req_args = ["filename", "microarray"]
-        res = [i for i in req_args if i not in kargs]
-        if res:
-            print "Error: in method frequencyAgainstArray(), these required arguments are missing: %s" % (", ".join(res))
-            sys.quit()
-        # end of the enforcer.
+        valid_args = ["filename", "microarray", "window", "bracket"]
+        for key in kargs:
+            assert key in valid_args, "unrecognised argument %s" % key
 
-        kargs["array_data"] = kargs["microarray"]
+        assert filename, "must specify a filename to save as"
+        assert microarray, "must provide a microarray list"
+
+        # reload/override not really a good way to do this...
+        # I should reload a new dict... As I may inadvertantly override another argument?
+        kargs["filename"] = filename
+        kargs["array_data"] = microarray
         kargs["peak_data"] = self
-        kargs["row_names"] = kargs["microarray"]["name"]
-        kargs["col_names"] = kargs["microarray"].getConditionNames()
-        if not kargs.has_key("bracket"): kargs["bracket"] = [0, 1]
+        kargs["row_names"] = microarray["name"]
+        kargs["col_names"] = microarray.getConditionNames()
+        if not "bracket" in kargs: kargs["bracket"] = [0, 1]
 
         actual_filename = self.draw._heatmap_and_plot(**kargs)
 

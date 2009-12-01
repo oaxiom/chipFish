@@ -23,27 +23,28 @@ except:
 
 # ----------------------------------------------------------------------
 # Test for availability of the core non-standard libs.
+# These need to be available as the subsequent load/checking is weak/non-existant.
 
 try:
     import numpy
     config.NUMPY_AVAIL = True
 except:
-    raise LibraryNotFoundError, "Error: Fatal - Numpy is not available or not installed."
+    raise LibraryNotFoundError, "Fatal - Numpy is not available or not installed."
 
 try:
     import scipy
     config.SCIPY_AVAIL = True
 except:
-    raise LibraryNotFoundError, "Error: Fatal - Scipy is not available or not installed."
+    raise LibraryNotFoundError, "Fatal - Scipy is not available or not installed."
 
 try:
     import matplotlib
     config.MATPLOTLIB_AVAIL = True
 except:
-    raise LibraryNotFoundError, "Error: Fatal - matplotlib not available or not installed."
+    raise LibraryNotFoundError, "Fatal - matplotlib not available or not installed."
 
 # ----------------------------------------------------------------------
-# Now import the rest of my libraries.
+# Now import the rest of my libraries - assumes here they are available.
 
 from flags import *
 from helpers import *
@@ -56,12 +57,14 @@ from delayedlist import delayedlist
 from peaklist import peaklist
 from glglob import glglob
 from element import motif
-import draw
+import draw # draw is available?
 import utils
+
+if not config.SILENT: print "Glbase: Version: %s, %s" % (config.VERSION, config.DATE)
 
 # export all of the libraries, methods and helpers.
 __all__ = ["genelist", "flags", "microarray", "genome",
-            "taglist", "draw", "utils", "load",
+            "taglist", "draw", "utils", "glload",
             "peaklist", "glglob", "motif",
             "location"] + dir() # in future I want to get rid of dir() and control what gets exported.
 

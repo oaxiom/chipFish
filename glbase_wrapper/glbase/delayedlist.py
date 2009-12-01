@@ -19,7 +19,7 @@ from draw import draw
 from taglist import taglist
 from genelist import genelist
 from history import historyContainer
-from errors import AssertionError
+from errors import AssertionError, NotSupportedError
 
 # try to load non-standard libs.
 try:
@@ -39,7 +39,7 @@ class delayedlist(genelist):
 
         assert filename, "No Filename"
         assert os.path.exists(filename), "%s not found" % (filename)
-        assert kargs.has_key("format"), "You must provide a format for delayedlist. I cannot guess its format."
+        assert "format" in kargs, "You must provide a format for delayedlist. I cannot guess its format."
 
         self.path = os.path.split(os.path.realpath(filename))[0]
         self.filename = os.path.split(os.path.realpath(filename))[1]
@@ -55,13 +55,14 @@ class delayedlist(genelist):
         only "and" can be performed.
         """
         self._optimiseData()
+        if "logic" in kargs: raise NotSupportedError, "'logic' commands not supported for delayedlist.collide()"
 
-        assert kargs.has_key("peaklist") or kargs.has_key("genelist") or kargs.has_key("microarray"), "You must provide a genelist-like object"
-        assert kargs.has_key("loc_key"), "You must provide a 'loc_key' name"
-        if kargs.has_key("peaklist"): gene_list = kargs["peaklist"]
-        elif kargs.has_key("genelist"): gene_list = kargs["genelist"]
-        elif kargs.has_key("microarray"): gene_list = kargs["microarray"]
-        assert gene_list[0].has_key(kargs["loc_key"])
+        assert "peaklist" in kargs or "genelist" in kargs or "microarray" in kargs, "You must provide a genelist-like object"
+        assert "loc_key" in kargs, "You must provide a 'loc_key' name"
+        if "peaklist" in kargs: gene_list = kargs["peaklist"]
+        elif "genelist" in kargs: gene_list = kargs["genelist"]
+        elif "microarray" in kargs: gene_list = kargs["microarray"]
+        assert kargs["loc_key"] in gene_list[0].has_key()
         assert self.__iter__().next().has_key(kargs["loc_key"]) # get an item and test it
         self._optimiseData()
 

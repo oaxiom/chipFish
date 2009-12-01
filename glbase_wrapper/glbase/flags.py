@@ -6,7 +6,7 @@ flags.py
 
 import utils, csv, cPickle
 
-from helpers import strandSorter, barSplitter
+from helpers import strandSorter
 from location import location
 from data import ignorekeys, typical_headers
 
@@ -60,7 +60,9 @@ default = {"sniffer": 0} # the default, it loads your file based on the heading 
 sniffer = default # alternative name
 
 # standard lists:
-format_bed = {"loc": {"code": "utils.coordsToLocation(column[0], column[1], column[2])"}, "strand": 4, "dialect": csv.excel_tab,
+format_bed = {"loc": {"code": "location(chr=column[0], left=column[1], right=column[2])"}, "strand": 4, "dialect": csv.excel_tab,
+    "skiplines": -1}
+format_bed_no_strand = {"loc": {"code": "location(chr=column[0], left=column[1], right=column[2])"}, "dialect": csv.excel_tab,
     "skiplines": -1}
 
 format_fasta = {"special": "fasta"}
@@ -79,11 +81,15 @@ format_macs_output = {"loc": {"code": "location(chr=column[0], left=column[1], r
     "skiplines": 13, "dialect": csv.excel_tab}
 
 # Load in CCAT files:
-format_ccat_output = {"loc": {"code": "location(chr=column[0], left=column[1], right=column[2])"}, "dialect": csv.excel_tab,
-    "tag_height": {"code": "int(barSplitter(column[3])[0])"}, "skiplines": -1}
+# CCAT1.3 file format:
+# <chromosome> <position of the peak> <start of region> <end of region> <read counts in ChIP library> <read counts in re-sampled control library> <the fold-change against control>
 
-format_ccat_output_csv = {"loc": {"code": "location(chr=column[0], left=column[1], right=column[2])"},
-    "tag_height": {"code": "int(barSplitter(column[3])[0])"}, "fold_change": {"code": "barSplitter(3)[2]"}, "skiplines": -1}
+
+format_ccat_output = {"loc": {"code": "location(chr=column[0], left=column[1], right=column[1])"}, "dialect": csv.excel_tab,
+    "tag_height": 4, "fold": 6, "skiplines": -1}
+
+format_ccat_output_csv = {"loc": {"code": "location(chr=column[0], left=column[1], right=column[1])"},
+    "tag_height": 4, "fold": 6, "fold_change": {"code": "barSplitter(3)[2]"}, "skiplines": -1}
 
 # load in SISSRS file.
 format_sissrs_output = {"loc": {"code": "location(chr=column[0], left=column[1], right=column[2])"}, "tag_height": 3,
@@ -97,20 +103,13 @@ format_array_tsv = {"refseq": 0, "entrez": 1, "symbol": 2,
 format_array_csv = {"refseq": 0, "entrez": 1, "symbol": 2,
         "conditions": {"code": "column[4:]"}, "array_systematic_name": 1, "duplicates_key": False}
 
-# this is for genome: loads an intersect of knownGeneList vs refseq
-format_genomeA = {"loc": "location(chr=column[0], column[2], column[3])",
-        "strand": 1, "name": 2, "description": 3,
-        "refseq": 4, "entrez": 5, "tss_loc": {"code": "strandSorter(column[0], column[2], column[3], column[1])"}}
-
-format_genomeB = {"loc": {"code": "location(chr=column[0], left=column[2], right=column[3])"}, "strand": 1, "name": 4,
-    "description": 5, "refseq": 6, "entrez": 7,"dialect": csv.excel_tab,
-    "tss_loc": {"code": "strandSorter(column[0], column[2], column[3], column[1])"}}
-
-format_genomeC = {"loc": {"code": "location(chr=column[0], left=column[2], right=column[3])"},
-        "strand": 1, "name": 2, "dialect": csv.excel_tab,
-        "refseq": 3, "entrez": 4, "tss_loc": {"code": "strandSorter(column[0], column[2], column[3], column[1])"}}
+# mm8 refGene table from UCSC:
+format_mm8_refgene = {"loc": {"code": "location(chr=column[0], left=column[2], right=column[3])"},
+        "strand": 1, "name": 4, "description": 5, "dialect" : csv.excel_tab,
+        "refseq": 6, "tss_loc": {"code": "strandSorter(column[0], column[2], column[3], column[1])"}
+        }
 
 # hg18 default refseq export.
 format_hg18_refseq = {"loc": {"code": "location(chr=column[0], left=column[1], right=column[2])"},
         "strand": 5, "dialect": csv.excel_tab,
-        "refseq": 3, "tss_loc": {"code": "strandSorter(column[0], column[1], column[2], column[5])"}}
+        "refseq": 3, "tss_loc": {"code": "strandSorter(column[0], column[2], column[3], column[1])"}}

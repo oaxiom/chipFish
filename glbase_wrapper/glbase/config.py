@@ -10,8 +10,8 @@ config must be imported before any other glbase library.
 # container for global environment variables.
 
 # The current version of GLbase
-VERSION = "0.12"
-DATE = "20th Jul 2009"
+VERSION = "0.141"
+DATE = "17th Nov 2009"
 
 # Set me to True to get more output from the scripts.
 VERBOSE = False
@@ -32,4 +32,3 @@ PRINT_LAST_ITEM = True
 
 DEFAULT_DPI = 150
 DEFAULT_DRAWER = "png"
-

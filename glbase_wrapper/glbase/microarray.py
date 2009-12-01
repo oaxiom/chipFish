@@ -13,30 +13,71 @@ TODO
 * move the "draw" stuff into a seperate heritable class. [partially implemented]
 * to draw, do things like: array.draw.heatmap()
 * normaliseToCondition has a bug which is currently bodged over - if the background = 0.0 then it will DivByZero Error.
+* a 'expression' class that contains useful methods to deal with microarray data, rather than the
+    very thin implementation here of a list buried in conditions
+    (surely a numpy array would be more approporiate?)
+* scipy.cluster relies of recursion to perform the clustering.
+    On large sized arrays it chokes horribly.
 """
 
-import sys, os, csv, string, math
+import sys, os, csv, string, math, copy
 
-from numpy import array
+from numpy import array, arange, meshgrid, zeros, linspace, mean
 from array import array as qarray
-from copy import deepcopy
 
 import config
 from flags import *
 from genelist import genelist
 from draw import draw
-if config.MATPLOTLIB_AVAIL:
-    import matplotlib.pyplot as plot
+from progress import progressbar
+
+import matplotlib.pyplot as plot
+from pylab import bivariate_normal, griddata # comes from where?
+import matplotlib.cm as cm
 
 class microarray(genelist):
-    """
-    Container class for microarray data.
-    expects array data in a particular format.
-    [RefSeq, EntrezGene, Symbol (or Empty), loc (or Empty), condition1, condition2 ...]
+    def __init__(self, filename=None, **kargs):
+        """
+        **Purpose**
 
-    Inherits list-like behaviour from geneList
-    """
-    def __init__(self, filename, **kargs):
+            A container class for microarray data.
+            Useful functions for manipulating microarray data in
+            relation to other genelists.
+            Inherits all genelist methods and implements several microarray
+            specific methods.
+
+            microarray in glbase is ver underpowered and requires normalised
+            and easily manipulatable data. Examples for normalisation are
+            genespring output, or output from R and PMA.
+
+            This may change in the future as when/if I need more microarray heavy
+            lifting.
+
+        **Arguments**
+
+            filename (Required)
+
+                the filename of the microarray to load.
+
+            format (Optional)
+
+                a format specifier.
+                Must include some form of {"conditions": {"code": "column[4:]"}}
+                to specifiy the location of the numeric array data.
+
+        **Returns**
+
+            A microarray instance.
+
+        """
+        valig_args = ["filename", "format"]
+        for k in kargs:
+            if k not in valig_args:
+                raise ArgumentError, (self.__init__, k)
+
+        assert filename, "no filename specified"
+        assert os.path.exists(os.path.realpath(filename)), "'%s' not found" % filename
+
         genelist.__init__(self)
 
         format = None
@@ -47,8 +88,10 @@ class microarray(genelist):
                 self.name = kargs[k]
             if k == "format":
                 format = kargs[k] # override the default format.
+                assert "conditions" in kargs["format"], "you must provide a 'conditions' entry in the format specifier"
 
         if not format:
+            # this is the export fomrat from GeneSpring 7.
             format = {"refseq": 2, "entrez": 1, "name": 3,
                     "conditions": {"code": "column[4:]"}, "array_systematic_name": 0,
                     "duplicates_key": False} # use the sniffer first time around?
@@ -57,7 +100,7 @@ class microarray(genelist):
 
         # reopen the file to get the condition headers.
         oh = open(filename, "rU")
-        if format.has_key("dialect"):
+        if "dialect" in format:
             reader = csv.reader(oh, dialect=format["dialect"])
         else:
             reader = csv.reader(oh)
@@ -81,6 +124,9 @@ class microarray(genelist):
                 conditions[i] = float(c)
 
         self._optimiseData()
+
+    def __repr__(self):
+        return("glbase.microarray")
 
     def findGene(self, **kargs):
         """
@@ -112,69 +158,128 @@ class microarray(genelist):
         """
         (Override)
         (Internal)
-        Add optional microarray optimisations
+        Add microarray optimisations
         """
-        genelist._optimiseData(self) # do the parent
+        genelist._optimiseData(self) # do the parent optimise.
 
         # generate a serialised version of the array conditions.
-        con_names = self.condition_names
         data = {}
-        for array_set in self["conditions"]:
-            for index, name in enumerate(con_names):
-                if not data.has_key(name):
+        for array_data in self["conditions"]:
+            for index, name in enumerate(self.condition_names):
+                if not name in data:
                     data[name] = []
-                data[name].append(float(array_set[index])) # get the particular column
+                data[name].append(float(array_data[index])) # get the particular column
         self.serialisedArrayDataDict = data
 
+        # access aray data by name:
+        #self.serialisedArrayDataDict["condition_name"]
+
         # list;
-        condition_names = self.getConditionNames()
-        self.serialisedArrayDataList = [self.serialisedArrayDataDict[key] for key in condition_names]
+        self.serialisedArrayDataList = [self.serialisedArrayDataDict[key] for key in self.condition_names]
+        # this is just a list version.
+        #self.serialisedArrayDataDict[0]
         return(True)
 
-    def saveCSV(self, path, filename):
+    def saveCSV(self, filename=None, **kargs):
         """
         (Override)
-        Some special cases for microarray data.
-        save the geneList as a csv
-        any geneList saved using saveCSV() you can load it back in using
-        loadCSV and the sniffer format - it will always be compatible.
-        """
-        oh = open(os.path.join(path, filename), "w")
-        writer = csv.writer(oh, dialect=csv.excel_tab)
+        **Purpose**
 
-        #format = {"refseq": 0, "entrez": 1, "symbol": 2, "coords": 3,
-        #        "conditions": {"code": "column[4:]"}, "array_systematic_name": 1, "duplicates_key": False,
-        #        "dialect": csv.excel_tab}
+            Save the microarray data as a csv file
+
+        **Arguments**
+
+            filename
+                The filename (with a valid path) to save the file to.
+
+        **Returns**
+
+            returns None
+            A saved csv file in filename.
+        """
+        valig_args = ["filename"]
+        for k in kargs:
+            if k not in valig_args:
+                raise ArgumentError, (self.saveCSV, k)
+
+        assert filename, "you must specify a filename"
+
+        oh = open(os.path.realpath(filename), "w")
+        writer = csv.writer(oh, dialect=csv.excel_tab) # why save as a tsv?
 
         writeOrder = ["array_systematic_name", "entrez", "refseq", "name"]
 
-        writer.writerow(writeOrder + self.getConditionNames())
+        title_row = []
+        for k in writeOrder:
+            if k in self.linearData[0]: # sample to see if we have this key
+                title_row.append(k) # should mimic below
+        writer.writerow(title_row + self.getConditionNames())
 
         for data in self.linearData:
             line = []
             for key in writeOrder:
-                line.append(data[key])
-            line = line + data["conditions"] # conditions go last.
-            writer.writerow(line)
+                if key in data:
+                    line.append(data[key])
+            writer.writerow(line + data["conditions"])# conditions go last.
         oh.close()
 
     # ----------- overrides/extensions ---------------------------------
 
-    def getArrayName(self): # better as __str__?
+    def getArrayName(self):
         return(self.array["name"])
 
     def getGenomeName(self):
+        if not self.genome:
+            return("Genome not bound")
         return(self.genome.getName())
 
-    def getConditions(self, key, value):
+    def sliceConditions(self, conditions, **kargs):
         """
-        get the conditions for "key"
+        **Purpose**
 
-        #? this is named wrong?
-        It should be something like, get conditions by key?
-        I think this is not really what I want to do.
+            return a copy of the microarray, but only containing
+            the condition names specified in conditions
+
+        **Arguments**
+
+            conditions (Required)
+
+                A list, or other iterable of condition names to extract
+                from the microarray. Every condition name must be present
+                on the microarray.
+
+        **Result**
+
+            A new microarray object with the same settings as the original,
+            but containing only the microarray conditions specified in
+            the 'conditions' argument.
         """
-        return(self._findDataByKeyGreedy(key, value)["conditions"])
+        valig_args = ["conditions"]
+        for k in kargs:
+            if k not in valig_args:
+                raise ArgumentError, (self.sliceConditions, k)
+
+        assert conditions, "You must specify a list of conditions to keep"
+        for item in conditions:
+            assert item in self.condition_names, "'%s' condition not found on this microarray"
+
+        newl = copy.deepcopy(self)
+
+        copymask = [] # work out a mask to extract the correct array columns.
+        for name in conditions:
+            for i, c in enumerate(self.condition_names):
+                if c == name:
+                    copymask.append(i)
+
+        for index, item in enumerate(self.linearData):
+            new_array_data = []
+            for c in copymask: # use the mask to collect the array entries.
+                new_array_data.append(item["conditions"][c])
+            newl.linearData[index]["conditions"] = new_array_data
+
+        newl.condition_names = conditions
+        newl._optimiseData()
+        return(newl)
 
     def getDataForCondition(self, condition_name):
         """
@@ -235,17 +340,41 @@ class microarray(genelist):
         col_cluster (Optional, default = True)
             cluster the column conditions, True or False
 
+        log (Optional, defualt=False, True|False of 2..n for log2, log10)
+                log the y axis (defaults to e)
+                send an integer for the base, e.g. for log10
+
+                log=10
+
+                for log2
+
+                log=2
+
+                for mathematical constant e
+
+                log=True
+                log="e"
+
         **Result**
 
         saves an image to the 'filename' location and
         returns the 'actual filename' that really gets saved (glbase
-        will modify the .png ending to .svg or .eps depending upon
-        the current setings).
+        will modify e.g. a '.png' ending to '.svg' or '.eps' etc. depending
+        upon the current setings).
         """
         # checks for option here please.
         assert filename, "you must specify a filename"
 
-        actual_filename = self.draw._heatmap(data=self.serialisedArrayDataDict,
+        data = self.serialisedArrayDataList
+        if "log" in kargs:
+            data = self.__log_transform_data(self.serialisedArrayDataList, log=kargs["log"])
+
+        # convert it into the serialisedArrayDataDict that _heatmap() expects.
+        newdata = {}
+        for index, name in enumerate(self.condition_names):
+            newdata[name] = data[index] # get the particular column
+
+        actual_filename = self.draw._heatmap(data=newdata,
             row_names=self["name"], col_names=self.getConditionNames(),
             filename=filename, **kargs)
 
@@ -262,8 +391,7 @@ class microarray(genelist):
         names = self.getConditionNames()
 
         if condition_name not in names:
-            print "Error: condition name: %s is not on this array" % condition_name
-            return(None)
+            raise AssertionError, "Error: condition name: %s is not on this array" % condition_name
 
         name_index = names.index(condition_name)
         #print name_index
@@ -272,7 +400,8 @@ class microarray(genelist):
         newl.linearData = []
         newl.condition_names = []
 
-        for item in self:
+        p = progressbar(len(self.linearData))
+        for index, item in enumerate(self.linearData):
             #print item
             old_array_data = item["conditions"]
             #print old_array_data
@@ -286,11 +415,13 @@ class microarray(genelist):
                     else:
                         new_array_data.append(float(toNormal) / float(datum))
                 elif keep_normed:
-                    new_array_data.append(1.0)
+                    new_array_data.append(1.0) # er... this should be 0.5 ?
 
-            data_copy = deepcopy(item)
+            data_copy = copy.deepcopy(item)
             newl.linearData.append(data_copy)
             data_copy["conditions"] = new_array_data # load the new_array_data over the old one.
+
+            p.update(index)
 
         # rebuild the condition names (optimiseData can't handle this)
         if keep_normed:
@@ -309,8 +440,9 @@ class microarray(genelist):
         self._history.append("Normalised To Condition: %s" % condition_name)
         return(newl)
 
-    def drawDotplot(self, x_condition_name, y_condition_name, **kargs):
+    def drawDotplot(self, x_condition_name, y_condition_name, filename=None, **kargs):
         """
+        **Purpose**
         draw an X/Y dot plot, get R^2 etc.
 
         x_condition_name = the name of the er... X condition
@@ -322,115 +454,192 @@ class microarray(genelist):
         filename = "dotplot.png"
         log = False|True
         """
-        # do lots of testing for the existance or not of the condition key
+        assert filename, "no filename specified"
+        assert x_condition_name in self.serialisedArrayDataDict, "%s x-axis condition not found" % x_condition_name
+        assert y_condition_name in self.serialisedArrayDataDict, "%s y-axis condition not found" % y_condition_name
+
         x_data = self.getDataForCondition(x_condition_name)
         y_data = self.getDataForCondition(y_condition_name)
 
-        if len(x_data) < 100:
-            # prefer matplotlib for <100
-            if config.MATPLOTLIB_AVAIL:
-                usePlotter = "matplot"
-            else:
-                print "Error: matplotlib not available, cannot drawdotplot()"
-                sys.quit()
-        else:
-            # Use a mapped image instead of this one of r"s smoothScatter
-            if config.MATPLOTLIB_AVAIL:
-                usePlotter = None
-                print "Warning: dotplots for samples > 100 not implemented"
+        x_data, y_data = self.__log_transform_data([x_data, y_data], 2)
 
         # defaults:
-        xlims = False
-        ylims = False
-        r_xlims = r.c(0, max(x_data + y_data))
-        r_ylims = r.c(0, max(x_data + y_data))
-        filename="dotplot.png"
+        xlims = [min(x_data + y_data), max(x_data + y_data)]
+        ylims = [min(x_data + y_data), max(x_data + y_data)]
         log = False
+
         for key in kargs:
-            if key == "xlimits": # requires a tuple.
-                r_xlims = r.c(kargs[key][0],kargs[key][1])
-                xlims = (kargs[key])
-            if key == "ylimits": # requires a tuple.
-                r_ylims = r.c(kargs[key][0],kargs[key][1])
-                ylims = (kargs[key])
             if key == "log":
                 if kargs["log"]:
                     pass
                     # log the data.
-            if key == "filename":
-                filename = kargs[key]
 
-        if usePlotter == "matplot":
-            plot.cla()
-            plot.scatter(x_data,y_data)
-            plot.xlabel(x_condition_name)
-            plot.ylabel(y_condition_name)
-            if xlims:
-                plot.xlim(xlims)
-            else:
-                plot.xlim((min(x_data), max(x_data + y_data)))
-            if ylims:
-                plot.ylim(ylims)
-            else:
-                plot.ylim((min(y_data), max(y_data + x_data)))
+        plot.cla()
+        plot.subplot(111)
+
+        plot.scatter(x_data, y_data, c="blue", alpha=0.3, edgecolors='none')
+
+        plot.xlabel(x_condition_name)
+        plot.ylabel(y_condition_name)
+        if xlims:
+            plot.xlim(xlims)
+        else:
+            plot.xlim((min(x_data), max(x_data + y_data)))
+        if ylims:
+            plot.ylim(ylims)
+        else:
+            plot.ylim((min(y_data), max(y_data + x_data)))
+
+        if len(x_data) < 100:
             # for the matplot.lib < 100: I want to label everything.
             names = self["name"]
             for i, n in enumerate(names):
                 plot.annotate(n, (x_data[i], y_data[i]), size=6)
 
-            plot.savefig(filename)
+        plot.savefig(filename)
         print "Info: Saved the dotplot image"
         return(True)
 
-    def drawBoxplot(self, **kargs):
+    def drawBoxplot(self, filename=None, **kargs):
         """
-        draw's a boxplot of all conditions.
+        **Purpose**
+
+        Draw a boxplot of all conditions.
+
+        **Arguments**
+
+            filename (Required)
+                filename to save as. The file extension may be modified
+                depending the setting of the current config.DEFAULT_DRAWER
+
+            log (True|False of 2..n for log2, log10)
+                log the y axis (defaults to e)
+                send an integer for the base, e.g. for log10
+
+                log=10
+
+                for log2
+
+                log=2
+
+                for mathematical constant e
+
+                log=True
+                log="e"
+
+        **Results**
+
+        saves an image with the correct filetype extension for the current
+        config.DEFAULT_DRAWER.
+        returns the actual filename used to save the file.
         """
+        assert filename
+
         ylimits = False
-        filename = "Boxplot.png"
+        do_log = False
 
         data = self.serialisedArrayDataList
-        plot.cla()
         for key in kargs:
             if key == "log":
-                if kargs["log"]:
-                    data = copy(self.serialisedArrayDataList)
-                    for set in data:
-                        print set
-                        for index, item in enumerate(set):
-                            print index, item
-                            set[index] = math.log(2, item)
+                data = self.__log_transform_data(self.serialisedArrayDataList, log=kargs["log"])
             if key == "ylimits": # requires a tuple.
                 ylimits = kargs[key]
             if key == "filename":
                 filename = kargs[key]
+
         # do plot
-        plot.boxplot(self.serialisedArrayDataList)
-        if ylimits:
-            plot.ylim(ylimits)
+        actual_filename = self.draw._boxplot(data=data, filename=filename, xticklabels=self.getConditionNames())
 
-        plot.xticks(arange(1,len(self.getConditionNames())+1),self.getConditionNames())
-        plot.savefig(filename)
-        print "Info: Saved the boxplot image: %s" % filename
-        return(True)
+        print "Info: Saved the boxplot image: %s" % actual_filename
+        return(actual_filename)
 
-    def drawDistributionCurves(self, **kargs):
+    def __log_transform_data(self, serialisedArrayDataList=None, log=math.e):
         """
-        draws the distributions
-        valid keyword arguments:
-        filename = filename of the resulting
-        window = size of window for moving average
-        modifier = undocumented fudge for float based arrays.
-        xlimits = a tuple or list of the form: (minimum_x, maximum_y)
+        (Internal)
+
+        transforms the data based on base
+        helper for drawBoxPlot() and draw drawCurves()
         """
-        filename = "distribution_plot.png"
-        binner_modifier = 100
-        window_size = 20
+        assert serialisedArrayDataList, "[Internal] __log_transform_data() - no data provided"
+
+        do_log = False
+
+        if log == math.e:
+            do_log = math.e
+        elif isinstance(log, bool):
+            do_log = math.e
+        elif isinstance(log, int):
+            do_log = log
+        else:
+            do_log = False
+
+        if do_log:
+            data = copy.deepcopy(serialisedArrayDataList)
+            for set in data:
+                for index, item in enumerate(set):
+                    set[index] = math.log(item, do_log)
+            return(data)
+        else:
+            return(serialisedArrayDataList)
+
+    def drawCurves(self, filename=None, **kargs):
+        """
+        **Purpose**
+
+        draw a bell-curve diagram of the array expression.
+
+        **Arguments**
+
+            filename (Required)
+                filename of the resulting
+
+            window
+                size of window for moving average
+
+            modifier
+                undocumented fudge for float based arrays.
+
+            xlimits
+                a tuple of the form: (minimum_x, maximum_y)
+
+            log (True|False of 2..n for log2, log10)
+                log the y axis (defaults to e)
+                send an integer for the base, e.g. for log10
+
+                log=10
+
+                for log2
+
+                log=2
+
+                for mathematical constant e
+
+                log=True
+                log="e"
+
+            cumulative (True|False, default False)
+
+                draw cumulative curves.
+
+        **Result**
+
+        saves an image to 'filename'
+        returns the actual filename (the filename may be modified
+            depending upon the current display driver)
+
+        """
+        assert filename, "no filename given"
+
+        window_size = 200
         simple_args = ["filename", "window", "modifier"]
         xlimits = None
+        do_log = False
+        extra_args = {}
+        data = self.serialisedArrayDataList
+
         for k in kargs:
-            #if k in simple_args:
-            #    eval(
+            if k == "log":
+                data = self.__log_transform_data(self.serialisedArrayDataList, log=kargs["log"])
             if k == "filename":
                 filename = kargs[k]
             if k == "window":
@@ -439,17 +648,15 @@ class microarray(genelist):
                 binner_modifier = kargs[k]
             if k == "xlimits": # requires a tuple.
                 xlimits = kargs[k]
+            if k == "cumulative":
+                extra_args["cumulative"] = kargs["cumulative"]
 
         # normalise data, for each condition.
         plot.cla()
-        conditions = self.getConditionNames()
-        for c in conditions:
-            data = self.getDataForCondition(c)
-            a = qarray("L", [0 for x in xrange(int((max(data) + 1)  * binner_modifier))]) # assumes data is 0 -> max bound...
-            for d in data:
-                a[int(d * binner_modifier)] += 1
-            x, n = utils.movingAverage(a, window_size)
-            plot.plot(x, n, label=c)
+
+        for i, c in enumerate(self.getConditionNames()):
+            plot.hist(data[i], bins=window_size, histtype="step", label=c, **extra_args)
+
         if xlimits: plot.xlim(xlimits)
         plot.legend()
         plot.savefig(filename)
@@ -493,8 +700,9 @@ class microarray(genelist):
         newl._optimiseData()
         return(newl)
 
-    def _insertCondition(self, condition_name, condition_data, range_bind=None):
+    def _insertCondition(self, condition_name, condition_data, range_bind=None, **kargs):
         """
+        (Internal)
         candidate for reveal?
         """
         self.condition_names.append(condition_name)
@@ -531,9 +739,10 @@ class microarray(genelist):
 
         returns False if no valid.
         """
-        if key in self:
-            genelist.sort(key) # use the parents sort.
-            return(True)
+        assert (key in self.linearData[0]) or key in self.getConditionNames(), "'%s' search key not found in list or array data" % key
+
+        if key in self.linearData[0]:
+            return(genelist.sort(self, key)) # use the parents sort.
         else:
             names = self.getConditionNames()
             if key in names:
@@ -543,14 +752,4 @@ class microarray(genelist):
                 return(True)
         return(False)
 
-    # gui stuff.
-    # available for the gui on this class
-    __gui__avail__ = {
-        }
-    # define gui interfaces
-    #annotate.__gui__ = {"required": {"list": "genelist", "key": "list key", "distance": "int"},
-    #    "optional": {"resolution": "filename"}} # bind gui descriptor
-
-    #load.__gui__ = {"required": {"filename": "str"},
-    #    "optional": {"format": "option"}} # bind gui descriptor
 
