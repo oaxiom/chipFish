@@ -73,22 +73,9 @@ class bookmarks:
     def _getdbpointer(self):
         """
         (Private)
-        return a conncetion to the underlying sqldb
+        return a connection to the underlying sqldb
         """
         return(self.__connection)
-
-    def get_menus(self):
-        """
-        **Purpose**
-            return a set of menus that can be bound into the parent gui.
-
-        **Arguments**
-            None
-
-        **Returns**
-            A bindable menu object.
-        """
-        pass
 
     def add_bookmark(self, location, notes):
         """
@@ -109,9 +96,14 @@ class bookmarks:
             using self.get_menus()
         """
         # check for a duplicate in the db?
-        self.__cursor.execute("INSERT INTO marks VALUES (NULL, ?, ?, ?, ?, ?)",
-            (str(location), location["chr"], location["left"], location["right"], notes))
-        self.__connection.commit()
+        # DO I already have this entry?
+        self.__cursor.execute("SELECT * FROM marks WHERE loc=? AND notes=?", 
+            (str(location), notes)) # Don't add duplicates.
+        
+        if not self.__cursor.fetchall():
+            self.__cursor.execute("INSERT INTO marks VALUES (NULL, ?, ?, ?, ?, ?)",
+                (str(location), location["chr"], location["left"], location["right"], notes))
+            self.__connection.commit()
 
     def _get_all_bookmarks(self):
         """
@@ -127,10 +119,14 @@ class bookmarks:
         # sensibly format:
 
         return(res)
+    
+    def del_bookmark(self, location, notes):
+        pass
 
 if __name__ == "__main__":
     # to go into a test suite later.
 
     b = bookmarks("mm8")
-    #b.add_bookmark(location(loc="chr17:15064087-15088782"), "Dll1")
+    b.add_bookmark(location(loc="chr17:15064087-15088782"), "Dll1")
+    b.add_bookmark(location(loc="chr17:15064087-15088782"), "Dll3")
     print b._get_all_bookmarks()
