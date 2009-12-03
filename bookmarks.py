@@ -29,7 +29,7 @@ class bookmarks:
         self.userpath = str(userconfig()) # userdata tests for read/write access to this dir.
 
         # Is the genome dir already available?
-        self.genome_path = os.path.join(self.userpath, genome)
+        self.genome_path = os.path.join(self.userpath, genome.lower())
         if not os.path.exists(self.genome_path):
             os.mkdir(self.genome_path)
 
@@ -97,20 +97,25 @@ class bookmarks:
         """
         # check for a duplicate in the db?
         # DO I already have this entry?
-        self.__cursor.execute("SELECT * FROM marks WHERE loc=? AND notes=?", 
+        self.__cursor.execute("SELECT * FROM marks WHERE loc=? AND notes=?",
             (str(location), notes)) # Don't add duplicates.
-        
+
         if not self.__cursor.fetchall():
             self.__cursor.execute("INSERT INTO marks VALUES (NULL, ?, ?, ?, ?, ?)",
                 (str(location), location["chr"], location["left"], location["right"], notes))
             self.__connection.commit()
 
-    def _get_all_bookmarks(self):
+    def get_all_bookmarks(self):
         """
-        (semi-private)
-        returns a list of all of the bookmarks in the db.
-        Not sure on the use of this, but may come in handy later (when
-        I'll make it public
+        **Purpose**
+            returns a list of all of the bookmarks in the db.
+
+        **Arguments**
+            None
+
+        **Results**
+            returns a list of dictionaries of the form
+            [{"location": <location>, "notes": <string>} .. n]
         """
         self.__cursor.execute("SELECT * FROM marks")
         res = []
@@ -119,7 +124,7 @@ class bookmarks:
         # sensibly format:
 
         return(res)
-    
+
     def del_bookmark(self, location, notes):
         pass
 

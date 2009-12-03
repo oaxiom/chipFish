@@ -184,17 +184,45 @@ class gDraw:
         self.halfw = w / 2
         self.halfh = h / 2
 
-    def setLocation(self, chromosome, leftBasePair, rightBasePair):
+    def setLocation(self, chromosome=None, leftBasePair=None, rightBasePair=None, loc=None, **kargs):
         """
-        Set the location of the view, this will show the left most and rightmost
-        base pair number.
-        It also calculates the internal scale representations.
+        **Purpose**
+            Set the location of the view, this will show the left most and rightmost
+            base pair number.
+            It also calculates the internal scale representations.
+
+        **Arguments**
+            This method is a little scizophrenic at the moment, supporting both
+            an old-style and new-stly <location> based associaton
+
+        **Returns**
+            Nothing
+            Does not rebuild the Cairo Display! but it makes the next call to
+            OnPaint() or forceRedraw() correct.
         """
-        self.chromosome = str(chromosome)
-        # test for valid chr.
-        self.lbp = leftBasePair
-        self.rbp = rightBasePair
+        if chromosome: # old-style assignation
+            self.chromosome = str(chromosome)
+            self.lbp = leftBasePair
+            self.rbp = rightBasePair
+        elif loc: # new-stly <location> assignation.
+            self.chromosome = loc["chr"]
+            self.lbp = loc["left"]
+            self.rbp = loc["right"]
+        # sanity checking? Neccesary?
         self.__rebuildDisplay()
+
+    def getLocation(self):
+        """
+        **Purpose**
+            get the current view genome location
+
+        **Arguments**
+            None
+
+        **Returns**
+            returns a <location>
+        """
+        return(location(chr=self.chromosome, left=self.lbp, right=self.rbp))
 
     def __rebuildDisplay(self):
         """
@@ -254,13 +282,6 @@ class gDraw:
                 self.rbp = mid_point + 1
         self.__rebuildDisplay()
         return(True)
-
-
-    def setDrawAttribute(self, attribute, value):
-        """
-        setDrawAttribute
-        """
-        pass
 
     def drawChr(self, location_span):
         """

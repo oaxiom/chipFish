@@ -53,7 +53,6 @@ class genome(glbase.genome):
 
         (To move into glbase proper?)
         """
-        print location
         ret = []
         if self.dataByChr.has_key(location["chr"]):
             for item in self.dataByChr[location["chr"]]:
