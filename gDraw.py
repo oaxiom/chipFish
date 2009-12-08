@@ -24,6 +24,10 @@ NOTES:
     Is this adequate for our needs?
     - will only render UTF-8 fonts... Anything else requried?
     that rules out greek symbols, Chinese, Cyrillic etc...? Right?
+
+TODO:
+-----
+. change the location to a <location> and use that datatype instead (cleaner)
 """
 
 from __future__ import division
@@ -37,9 +41,9 @@ from constants import *
 from boundbox import bBox
 from operator import itemgetter
 from glbase_wrapper import location
+from data import *
 
 MAX_TRACKS = 10 # maximum number of tracks
-valid_move_modes = frozenset(["left", "right", "zoomin", "zoomout"])
 
 #----------------------------------------------------------------------
 # The Cairo interface.
@@ -105,7 +109,7 @@ def Context_FromSWIGObject(swigObj):
 
 class drawPanel(wx.Panel):
     """
-    An empty Panel class that sets things up suitbly for Cairo.
+    An empty Panel class that sets things up suitably for Cairo.
     """
     def __init__(self, parent, paint_Procedure):
         wx.Panel.__init__(self, parent, -1, size=(-1,-1), style=wx.FULL_REPAINT_ON_RESIZE) # This has to be set to full repaint :)
@@ -140,10 +144,12 @@ class gDraw:
         self.w = 100
         self.h = 200
 
-    def _debug_draw_col_boxes(self):
+    def __debug_draw_col_boxes(self):
         """
         (Internal)
         Debug routine to draw the locations of the collision boxes.
+
+        set me in opt.debug
         """
         self._setPenColour((0.6, 0.2, 0, 0.5))
         for box in self.colBoxes:
@@ -154,6 +160,8 @@ class gDraw:
 
     def bindPanel(self, panel):
         """
+        This is special usage, and not so intuitive at the moment...
+        Maybe in the future it will be better.
         bind a wx.Panel into gDraw.
         """
         self.panel = drawPanel(panel, self.OnPaint)
@@ -163,9 +171,9 @@ class gDraw:
         """
         bind a drawing track extra to genome.
         """
-        self.tracks.append({"data": track, "track_location": self._getNextTrackBox()})
+        self.tracks.append({"data": track, "track_location": self.__getNextTrackBox()})
 
-    def _getNextTrackBox(self):
+    def __getNextTrackBox(self):
         """
         get the next available track location and return the counding coordinates of the block.
         """
@@ -178,9 +186,10 @@ class gDraw:
         """
         set the size of the viewport;
         """
-        self.w = w
+        self.fullw = w # for blanking screen
+        self.w = w - opt.graphics.right_border_width # a small right most border for editing trakcs
         self.h = h
-        self.aspect = abs(float(w) / h)
+        self.aspect = abs(float(self.w) / self.h)
         self.halfw = w / 2
         self.halfh = h / 2
 
@@ -194,6 +203,7 @@ class gDraw:
         **Arguments**
             This method is a little scizophrenic at the moment, supporting both
             an old-style and new-stly <location> based associaton
+            later it should only support the new-style <location>
 
         **Returns**
             Nothing
@@ -204,7 +214,7 @@ class gDraw:
             self.chromosome = str(chromosome)
             self.lbp = leftBasePair
             self.rbp = rightBasePair
-        elif loc: # new-stly <location> assignation.
+        elif loc: # new-style <location> assignation.
             self.chromosome = loc["chr"]
             self.lbp = loc["left"]
             self.rbp = loc["right"]
@@ -262,7 +272,7 @@ class gDraw:
             return(False)
 
         # get the current bp move percent.
-        move_percent = int((self.lbp - self.rbp) / percent)
+        move_percent = int((self.rbp - self.lbp) * (percent / 100.0))
 
         if mode == "right":
             self.lbp -= move_percent
@@ -283,13 +293,13 @@ class gDraw:
         self.__rebuildDisplay()
         return(True)
 
-    def drawChr(self, location_span):
+    def __drawChr(self, location_span):
         """
         draw the basic chromosome
         """
         if not self.validDraw: raise CairoDrawError
         self.ctx.set_source_rgb(0, 0, 0)
-        loc = self._realToLocal(0, 0)
+        loc = self.__realToLocal(0, 0)
         self.ctx.move_to(loc[0], loc[1]-2)
         self.ctx.line_to(self.w, loc[1]-2)
         self.ctx.move_to(0, loc[1]+2)
@@ -297,37 +307,31 @@ class gDraw:
         self.ctx.set_line_width(1.5)
         self.ctx.stroke()
 
-    def _drawPoint(self, location, data):
+    def __drawPoint(self, location, data):
         """
         drawFeatures of the type "Point"
         data should be a list of coordinates within the location span
         """
         pass
 
-    def _drawSpan(self, location, data):
+    def __drawSpan(self, location, data):
         """
         drawFeatures of the type "Span"
         data should be a list of coordinates of the form chrX:left-right within the location span
         """
         pass
 
-    def drawObject(self, data):
-        """
-        add an object onto the Q
-        """
-        self.paintQ.append(data)
-
-    def drawRuler(self):
+    def __drawRuler(self):
         """
         draw the ruler.
 
         """
         if not self.validDraw: raise CairoDrawError
 
-        x,y,w,h = self._getTextExtents("Chromosome %s" % str(self.chromosome))
-        self._drawText(5, opt.ruler.height_px + 22, opt.ruler.font, "Chromosome %s" % str(self.chromosome), size=12)
+        x,y,w,h = self.__getTextExtents("Chromosome %s" % str(self.chromosome))
+        self.__drawText(5, opt.ruler.height_px + 22, opt.ruler.font, "Chromosome %s" % str(self.chromosome), size=12)
 
-        self._setPenColour(opt.ruler.colour)
+        self.__setPenColour(opt.ruler.colour)
         # work out a good scale representation
         # wether to draw at 100, 1000, 10000, 100000, 1000000 ...
 
@@ -347,7 +351,7 @@ class gDraw:
                 self.ctx.line_to(screen_offset, opt.ruler.height_px * index+0.5)
                 self.ctx.stroke()
                 if index == 1: # write numbers at 1/10 scale.
-                    self._drawText(screen_offset +2, opt.ruler.text_height, opt.ruler.font, str(real_offset), opt.ruler.font_size)
+                    self.__drawText(screen_offset +2, opt.ruler.text_height, opt.ruler.font, str(real_offset), opt.ruler.font_size)
 
         # set up the bounding box.
         self.colBoxes.append(bBox((0,0,self.w, opt.ruler.text_height), (0,0), None, None))
@@ -411,14 +415,14 @@ class gDraw:
         except:
             raise ErrorCairoAcquireDevice
 
-        self._paint(ctx)
+        self.__paint(ctx)
         return(True)
 
     #------------------------------------------------------------------
     # Internal painters
     #------------------------------------------------------------------
 
-    def _realToLocal(self, x, y):
+    def __realToLocal(self, x, y):
         """
         (Internal)
         Convert real genomic coords to local pixel coordinates.
@@ -426,7 +430,7 @@ class gDraw:
         """
         return((self.w * ((x-self.lbp) / self.deltaf), (self.h - 30) + y))
 
-    def _localToReal(self, sx, sy):
+    def __localToReal(self, sx, sy):
         """
         opposite of realToLocal()
         """
@@ -434,32 +438,58 @@ class gDraw:
         y = 0
         return((x,y))
 
-    def _getTextExtents(self, text):
+    def __getTextExtents(self, text):
         """
         (Internal)
         returns a bounding box of the text return = (x,y,w,h)
         """
         return(self.ctx.text_extents(text)[:4])
 
-    def _drawTrackBackground(self, track_location):
+    def __drawTrackBackground(self, track_location):
         """
         track_location is the bottom edge of the track block
         """
         # get an available track slot
-        self._setPenColour( (0.95,0.95,0.95) )
-        base_loc = self._realToLocal(0, track_location)
+        self.__setPenColour( (0.95,0.95,0.95) )
+        base_loc = self.__realToLocal(0, track_location)
         self.ctx.rectangle(0, base_loc[1]-opt.track.height_px, self.w, opt.track.height_px-2) # 30 = half genomic track size
         self.ctx.fill()
 
-    def _drawGraphTrack(self, track_data):
-        # need to resample the array to speed up the draw
-        self._drawTrackBackground(track_data["track_location"])
-        self._setPenColour( (0,0,0) )
+    def __drawGraphTrack(self, track_data, scaled=True, min_scaling=100):
+        """
+        **Arguments**
+            track_data
+                must be some kind of array/iterable, with a 1px resolution.
+
+            scaled (True|False)
+                scale the data vertically for the available track
+                height?
+
+            min_scaling
+                only works if scaled = True,
+                sets it so that a height of 1 is not expanded to the
+                full height of the track. Instead the track will be scaled to
+                this value as a minimum.
+        """
+        if scaled:
+            track_max = max(track_data["array"])
+
+            if min_scaling and track_max < min_scaling:
+                scaling_value = min_scaling / float(opt.track.height_px)
+            else:
+                scaling_value = track_max / float(opt.track.height_px)
+            # only works if numpy array?
+            new_array = track_data["array"] / scaling_value
+        else:
+            new_array = track_data["array"]
+
+        self.__drawTrackBackground(track_data["track_location"])
+        self.__setPenColour( (0,0,0) )
         self.ctx.set_line_width(0.5)
         coords = []
         lastpx = -1
-        for index, value in enumerate(track_data["array"]):
-            loc = self._realToLocal(self.lbp + index, track_data["track_location"])
+        for index, value in enumerate(new_array):
+            loc = self.__realToLocal(self.lbp + index, track_data["track_location"])
             #if int(loc[0]) > lastpx: # this means only draw one per pixel
             #    lastpx = loc[0]
             #    coords.append( (index, loc[1] - 30 - value)) # +30 locks it to the base of the track
@@ -469,9 +499,9 @@ class gDraw:
         for index, item in enumerate(coords):
             self.ctx.line_to(item[0], item[1])
         self.ctx.stroke()
-        self._drawText(0, loc[1] - 15 , opt.graphics.font, track_data["name"])
+        self.__drawText(0, loc[1] - 15 , opt.graphics.font, track_data["name"])
 
-    def _drawText(self, x, y, font, text, size=12, colour=(0,0,0), style=None):
+    def __drawText(self, x, y, font, text, size=12, colour=(0,0,0), style=None):
         """
         (Internal - helper)
         Draw text to the screen, font is a string for the font name.
@@ -479,12 +509,12 @@ class gDraw:
         Will accept several styles, see constants for details.
 
         """
-        self._setPenColour(colour)
+        self.__setPenColour(colour)
         self.ctx.select_font_face(font, txtToCairoA[style], txtToCairoB[style])
         self.ctx.move_to(x, y)
         self.ctx.show_text(text)
 
-    def _drawGene(self, data):
+    def __drawGene(self, data):
         """
         draw Features of the type "Gene"
         should be an dict containing the following keys:
@@ -499,10 +529,10 @@ class gDraw:
 
         #print "t:", ((data["left"]-self.lbp) / self.deltaf), ((data["right"]-self.lbp) / self.deltaf)
 
-        posLeft = self._realToLocal(data["loc"]["left"], 0)[0]
-        posRight = self._realToLocal(data["loc"]["right"], 0)[0]
+        posLeft = self.__realToLocal(data["loc"]["left"], 0)[0]
+        posRight = self.__realToLocal(data["loc"]["right"], 0)[0]
         self.ctx.set_line_width(0.5)
-        self._setPenColour(opt.graphics.gene_colour)
+        self.__setPenColour(opt.graphics.gene_colour)
 
         #---------------------------------------------------------------
         # draw gene blocks.
@@ -518,26 +548,26 @@ class gDraw:
 
         current_offset = opt.graphics.gene_height
         coords = []
-        coords.append(self._realToLocal(data["loc"]["left"], 0))
-        coords.append(self._realToLocal(data["loc"]["left"], + opt.graphics.gene_height))
+        coords.append(self.__realToLocal(data["loc"]["left"], 0))
+        coords.append(self.__realToLocal(data["loc"]["left"], + opt.graphics.gene_height))
         for c in tc:
             if c["t"] == "cdss":
                 current_offset = opt.graphics.cds_height
-                coords.append(self._realToLocal(c["c"], + opt.graphics.gene_height))
-                coords.append(self._realToLocal(c["c"], + opt.graphics.cds_height))
+                coords.append(self.__realToLocal(c["c"], + opt.graphics.gene_height))
+                coords.append(self.__realToLocal(c["c"], + opt.graphics.cds_height))
             elif c["t"] == "cdse":
                 current_offset = opt.graphics.gene_height
-                coords.append(self._realToLocal(c["c"], + opt.graphics.cds_height))
-                coords.append(self._realToLocal(c["c"], + opt.graphics.gene_height))
+                coords.append(self.__realToLocal(c["c"], + opt.graphics.cds_height))
+                coords.append(self.__realToLocal(c["c"], + opt.graphics.gene_height))
             elif c["t"] == "es":
-                coords.append(self._realToLocal(c["c"], 0))
-                coords.append(self._realToLocal(c["c"], + current_offset))
+                coords.append(self.__realToLocal(c["c"], 0))
+                coords.append(self.__realToLocal(c["c"], + current_offset))
             elif c["t"] == "ee":
-                coords.append(self._realToLocal(c["c"], + current_offset))
-                coords.append(self._realToLocal(c["c"], 0))
+                coords.append(self.__realToLocal(c["c"], + current_offset))
+                coords.append(self.__realToLocal(c["c"], 0))
 
-        coords.append(self._realToLocal(data["loc"]["right"], + opt.graphics.gene_height))
-        coords.append(self._realToLocal(data["loc"]["right"], 0))
+        coords.append(self.__realToLocal(data["loc"]["right"], + opt.graphics.gene_height))
+        coords.append(self.__realToLocal(data["loc"]["right"], 0))
 
         self.ctx.move_to(coords[0][0], coords[0][1])
         for index, item in enumerate(coords):
@@ -556,7 +586,7 @@ class gDraw:
         # Draw gene arrow
 
         if data["strand"] == "+": # top strand
-            loc = self._realToLocal(data["loc"]["left"], 0)
+            loc = self.__realToLocal(data["loc"]["left"], 0)
             # arrow.
             self.ctx.move_to(loc[0]+10, loc[1]-20)
             self.ctx.line_to(loc[0]+10, loc[1]-30)
@@ -564,9 +594,9 @@ class gDraw:
             self.ctx.line_to(loc[0]+10, loc[1]-10)
             self.ctx.line_to(loc[0]+10, loc[1]-20)
             self.ctx.stroke()
-            self._drawText(loc[0], loc[1]-25, "Arial", data["name"], 12)
+            self.__drawText(loc[0], loc[1]-25, "Arial", data["name"], 12)
         elif data["strand"] == "-":
-            loc = self._realToLocal(data["loc"]["right"], 0)
+            loc = self.__realToLocal(data["loc"]["right"], 0)
             # arrow.
             self.ctx.move_to(loc[0]-10, loc[1]+20)
             self.ctx.line_to(loc[0]-10, loc[1]+30)
@@ -574,13 +604,31 @@ class gDraw:
             self.ctx.line_to(loc[0]-10, loc[1]+10)
             self.ctx.line_to(loc[0]-10, loc[1]+20)
             self.ctx.stroke()
-            self._drawText(loc[0], loc[1]+25, "Arial", data["name"], 12)
+            self.__drawText(loc[0], loc[1]+25, "Arial", data["name"], 12)
         else:
             raise ErrorInvalidGeneDefinition
 
+
+        if opt.draw.single_midline_in_introns: # draw a single line through the gene
+            # this looks best when the genome is not being drawn.
+            leftmost = self.__realToLocal(data["loc"]["left"], 0)
+            rightmost = self.__realToLocal(data["loc"]["right"], 0)
+            self.__setPenColour(opt.graphics.gene_colour)
+            self.ctx.set_line_width(1)
+            self.ctx.move_to(leftmost[0], leftmost[1])
+            self.ctx.line_to(rightmost[0], rightmost[1])
+            self.ctx.stroke()
+
+        if opt.draw.chevrons_inside_introns:
+            pass
+
+        if opt.draw.braces_between_exons:
+            pass
+
+
         return(True)
 
-    def _paint(self, ctx):
+    def __paint(self, ctx):
         """
         (Internal)
         painter procedure. pass a valid Cairo context for drawing onto.
@@ -593,37 +641,42 @@ class gDraw:
             raise ErrorCairoAcquireDevice
         self.ctx = ctx
 
+        draw_modes_dict = {
+            "gene": self.__drawGene,
+            "lncRNA": self.__drawGene,
+            "microRNA": self.__drawGene,
+            "graph": self.__drawGraphTrack,
+            "bar": None,
+            "spots": None
+        }
+
         # kill all the colission boxes
         self.colBoxes = []
 
         # blank the screen:
-        self._setPenColour(opt.graphics.screen_colour)
-        ctx.rectangle(0,0,self.w,self.h)
+        self.__setPenColour(opt.graphics.screen_colour)
+        ctx.rectangle(0,0,self.fullw,self.h)
         ctx.fill()
 
-        func_dict = {
-            "gene": self._drawGene,
-            "lncRNA": self._drawGene,
-            "microRNA": self._drawGene,
-            "graph": self._drawGraphTrack
-        }
-
-        self.drawChr(None)
+        if opt.draw.double_lines_for_genome:
+            self.__drawChr(None)
 
         for item in self.paintQ:
-            if func_dict.has_key(item["type"]):
-                func_dict[item["type"]](item)
+            if item["type"] in draw_modes_dict:
+                draw_modes_dict[item["type"]](item)
+            else:
+                pass # print a warning!
 
-        self.drawRuler()
+        self.__drawRuler()
 
         # render and finish drawing.
         self.validDraw = False
 
         # any further (internal) drawing goes here.
-        if opt.debug.draw_collision_boxes: self._debug_draw_col_boxes()
+        if opt.debug.draw_collision_boxes: self.__debug_draw_col_boxes()
         return(True)
 
-    def _setPenColour(self, colour):
+    def __setPenColour(self, colour):
         """
         (Internal - draw primitive)
         A macro for changing the current pen colour.

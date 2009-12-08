@@ -18,6 +18,7 @@ import opt, gDraw, glbase_wrapper
 
 from error import *
 from bookmarks import bookmarks
+from data import *
 
 import wx
 from wx import xrc
@@ -28,9 +29,7 @@ from wx import xrc
 
 # Find glbase
 sys.path.append(opt.path.glbase_wrapper)
-from glbase_wrapper import *
-
-from track import track
+from glbase_wrapper import glload, track, location
 
 # ----------------------------------------------------------------------
 # Main GUI
@@ -63,22 +62,17 @@ class cfApp(wx.App):
         self.g = glload("data/mm8_refGene.glb")
         self.draw = gDraw.gDraw(self.g) # drawer must have access to the genome
 
-        self.draw.bindTrack(track(filename="data/NSMash1_new.trk", name="NS5 Mash1 ChIP-seq"))
-        self.draw.bindTrack(track(filename="data/SpMash1_new.trk", name="Spinal Cord Mash1 ChIP-seq"))
-        self.draw.bindTrack(track(filename="data/TcMash1_new.trk", name="Telencephalon Mash1 ChIP-seq"))
+        #self.draw.bindTrack(track(filename="data/NSMash1_new.trk", name="NS5 Mash1 ChIP-seq"))
+        #self.draw.bindTrack(track(filename="data/SpMash1_new.trk", name="Spinal Cord Mash1 ChIP-seq"))
+        #self.draw.bindTrack(track(filename="data/TcMash1_new.trk", name="Telencephalon Mash1 ChIP-seq"))
         self.draw.bindTrack(track(filename="data/NS_H3K4me3.trk", name="NS5 H3K4me3"))
         #self.draw.bindTrack(track(filename="data/NS_H3K27me3.trk", name="NS5 H3K27me3"))
         #self.draw.bindTrack(track(filename="data/NS_H3K36me3.trk", name="NS5 H3K36me3"))
+        self.draw.bindTrack(track(filename="data/ES_H3K4me3.trk", name="ES H3K4me3"))
         #self.draw.bindTrack(track(filename="data/ES_H3K36me3.trk", name="ES H3K4me3"))
-        #self.draw.bindTrack(track(filename="data/MEF_H3K36me3.trk", name="MEF H3K4me3"))
+        self.draw.bindTrack(track(filename="data/MEF_H3K4me3.trk", name="MEF H3K4me3"))
 
-        #self.draw.setLocation("6", 122666976, 122685608) # Nice view of Nanog
-        #self.draw.setLocation("1", 3001251, 3001551) # testing the ChIP-seq track
-        self.draw.setLocation("17", 15074087, 15084782) # Interesting view of the ChIP-seq (Dll1?) chr17:15,064,087-15,088,782
-        #self.draw.setLocation("7", 28010095, 28012095) # Dll3
-        #self.draw.setLocation("3", 34850525, 34853525) # Sox2
-        #self.draw.setLocation("16", 91152965, 91156965) # Olig1
-        #self.draw.setLocation("5", 140855715, 140873715) # Lnfg
+        self.draw.setLocation(loc=location(loc="chr17:15061372-15127565")) # Interesting view of the ChIP-seq (Dll1?) chr17:15,064,087-15,088,782
 
         # end of user hard-coded segments.
         # --------------------------------------------------------------
@@ -101,8 +95,8 @@ class cfApp(wx.App):
         gDrawPanel.SetSizer(sizer) # add it to the GUI
 
         # bind events to the GUI.
-        self.Bind(wx.EVT_LEFT_DOWN, self._mouseLeftDown, draw_panel)
-        self.Bind(wx.EVT_LEFT_UP, self._mouseLeftUp, draw_panel)
+        self.Bind(wx.EVT_LEFT_DOWN, self.__mouseLeftDown, draw_panel)
+        self.Bind(wx.EVT_LEFT_UP, self.__mouseLeftUp, draw_panel)
         self.Bind(wx.EVT_BUTTON, self.OnViewLeft, xrc.XRCCTRL(self.main, "butViewLeft"))
         self.Bind(wx.EVT_BUTTON, self.OnViewRight, xrc.XRCCTRL(self.main, "butViewRight"))
         self.Bind(wx.EVT_BUTTON, self.OnViewBigRight, xrc.XRCCTRL(self.main, "butViewBigRight"))
@@ -160,7 +154,7 @@ class cfApp(wx.App):
         """
         (Internal)
         get the bookmarks based on the genome name/identifier
-        and bind them into the bookmarks mend
+        and bind them into the bookmarks menu
         """
         # get the bookmarks
         self.__bookmarks = bookmarks(genome_name)
@@ -207,41 +201,46 @@ class cfApp(wx.App):
         event.Skip()
 
     def OnViewRight(self, event):
-        self.draw.move("right", 10)
+        self.draw.move("right", opt.interface.small_move)
         self._updateDisplay()
         event.Skip()
 
     def OnViewBigRight(self, event):
-        self.draw.move("right", 20)
+        self.draw.move("right", opt.interface.big_move)
         self._updateDisplay()
         event.Skip()
 
     def OnViewLeft(self, event):
-        self.draw.move("left", 10)
+        self.draw.move("left", opt.interface.small_move)
         self._updateDisplay()
         event.Skip()
 
     def OnViewBigLeft(self, event):
-        self.draw.move("left", 20)
+        self.draw.move("left", opt.interface.big_move)
         self._updateDisplay()
         event.Skip()
 
     def OnButZoomIn(self, event):
-        self.draw.move("zoomin", 10)
+        self.draw.move("zoomin", opt.interface.small_move)
         self._updateDisplay()
         event.Skip()
 
     def OnButZoomOut(self, event):
-        self.draw.move("zoomout", 10)
+        self.draw.move("zoomout", opt.interface.small_move)
         self._updateDisplay()
         event.Skip()
 
     def OnGotoLocationEdit(self, event):
         try:
-            loc = location(loc=self.textGoToLoc.GetValue())
+            loc_value=self.textGoToLoc.GetValue()
+
+            # do a few simple tidy ups so I can load into loc.
+            loc_value = loc_value.replace(",", "")
+
+            loc = location(loc=loc_value)
 
             if loc:
-                self.draw.setLocation(loc["chr"], loc["left"], loc["right"])
+                self.draw.setLocation(loc=loc)
             else:
                 raise TypeError
         except (TypeError, IndexError):
