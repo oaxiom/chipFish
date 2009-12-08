@@ -14,7 +14,7 @@ import cPickle, sys, os, struct, math, sqlite3, zlib
 from location import location
 from data import positive_strand_labels, negative_strand_labels
 
-from array import array # Carray
+from numpy import array, zeros # Carray
 
 TRACK_CACHE_SIZE = 10 # number of track segments to cache.
 
@@ -187,7 +187,7 @@ class track:
                 size of the DNA shear.
 
         **Returns**
-            an 'array('i', [0, 1, 2 ... n])' contiginous array
+            an 'numpy.array([0, 1, 2 ... n])' contiginous array
             or a tuple containing two arrays, one for each strand.
         """
         if strand: raise NotImplementedError
@@ -204,7 +204,7 @@ class track:
             reads += self.get_reads(l, strand)
 
         # make a single array
-        a = array(self.array_format, [0 for x in xrange(0, loc["right"]-loc["left"]+int(resolution), int(resolution))])
+        a = zeros(int( (loc["right"]-loc["left"]+resolution)/resolution ))
 
         for r in reads:
 
@@ -219,35 +219,9 @@ class track:
                 array_relative_location = int((rloc - read_extend - loc["left"]) / resolution) # convert relative to the array
 
                 if array_relative_location >= 0 and array_relative_location < len(a): # within array
-                    if resolution <= 1: # force 1bp read
-                        a[array_relative_location] += 1
-                    else:
-                        a[array_relative_location] += 1
-
-
-            """
-            for real_loc in xrange(loc["left"]+read_extend, int(loc["right"]+read_extend+resolution), int(resolution)):
-                print real_loc
-                print real_loc-loc["left"]-read_extend
-                for r in reads:
-                    if r[2] in positive_strand_labels:
-                        left = r[0]
-                        right = r[1] + read_extend
-                    elif r[2] in negative_strand_labels:
-                        left = r[0] - read_extend
-                        right = r[1]
-
-                    if real_loc >= left and real_loc <= right:
-                        if resolution <= 1: # force 1bp read
-                            a[real_loc-loc["left"]-read_extend] += 1
-                        else:
-                            a[int((real_loc-loc["left"]-read_extend)/resolution)] += 1
-            """
-
-        #print "array_len", len(a)
+                    a[array_relative_location] += 1
 
         return(a)
-
 
     def get_array_chromosome(self, chromosome, strand=None, resolution=1, read_extend=0, **kargs):
         """
@@ -292,7 +266,7 @@ class track:
                 right_most = i[1]+read_extend
 
         # make an array.
-        a = array(self.array_format, [0 for x in xrange(0, right_most+int(resolution), int(resolution))])
+        a = zeros(int(right_most+int(resolution), int(resolution)))
 
         for r in reads:
             # read_extend
@@ -453,10 +427,11 @@ if __name__ == "__main__":
     print t.get_reads(location(loc="chr1:1-26"))
     print t.get_array(location(loc="chr1:1-26"))
     print t.get_array(location(loc="chr1:10-20"))
-    print t.get_array(location(loc="chr1:20-25"))
-    print t.get_array(location(loc="chr1:20-25"), resolution=2)
-    print t.get_array(location(loc="chr1:20-25"), resolution=1.5)
-
-    print t.get_array(location(loc="chr1:20-25"), resolution=1.5)
+    print "res_tests"
+    print t.get_array(location(loc="chr1:20-30"))
+    print t.get_array(location(loc="chr1:20-30"), resolution=2)
+    print t.get_array(location(loc="chr1:20-30"), resolution=1.5)
+    #print t.get_array(location(loc="chr1:20-30"), resolution=0.5) # this causes an error
+    print t.get_array(location(loc="chr1:20-30"), resolution=5)
 
     #print t.get_array_chromosome("1")
