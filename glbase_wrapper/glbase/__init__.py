@@ -57,6 +57,7 @@ from delayedlist import delayedlist
 from peaklist import peaklist
 from glglob import glglob
 from element import motif
+from track import track
 import draw # draw is available?
 import utils
 
@@ -65,6 +66,6 @@ if not config.SILENT: print "Glbase: Version: %s, %s" % (config.VERSION, config.
 # export all of the libraries, methods and helpers.
 __all__ = ["genelist", "flags", "microarray", "genome",
             "taglist", "draw", "utils", "glload",
-            "peaklist", "glglob", "motif",
+            "peaklist", "glglob", "motif", "track",
             "location"] + dir() # in future I want to get rid of dir() and control what gets exported.
 

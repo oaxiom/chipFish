@@ -7,36 +7,13 @@ genome pass through for chipFish, see the accompanying readme.txt for details.
 
 import sys, os
 
+from utils import qcollide
+
 sys.path.append("..") # get the parent options
 import opt
 
 sys.path.append(opt.path.glbase_package)
 import glbase # import like this to get around namespace issues
-
-def qcollide(Aleft, Aright, Bleft, Bright):
-    """
-    optimised for speed.
-    """
-    # quickest rejections first;
-    if Aright < Bleft:
-        return(False)
-    if Aleft > Bright:
-        return(False)
-
-    if Aleft <= Bright and Aright >= Bright:
-        return(True) # Bright point is within A, collision
-
-    if Aright >= Bleft and Aleft <= Bleft:
-        return(True) # Bleft point is within A, collision.
-
-    if Bleft <= Aright and Bright >= Aright:
-        return(True) # Aright point is within B, collision
-
-    if Bright >= Aleft and Bleft <= Aleft:
-        return(True) # Aleft point is within B, collision.
-
-    #print "unhandled!"
-    return(False)
 
 class genome(glbase.genome):
     """

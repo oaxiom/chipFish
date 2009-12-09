@@ -4,7 +4,5 @@ data.py
 
 """
 
-# these are all the available drawing modes:
-
-
+valid_track_draw_types = frozenset(["graph", "bar", "spot"])
 valid_move_modes = frozenset(["left", "right", "zoomin", "zoomout"])

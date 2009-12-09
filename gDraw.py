@@ -46,7 +46,8 @@ from data import *
 MAX_TRACKS = 10 # maximum number of tracks
 
 #----------------------------------------------------------------------
-# The Cairo interface.
+# The Cairo interface. I think this code is actually taken from
+# wx.lib.wxcairo
 import wx.lib.wxcairo
 
 import ctypes
@@ -76,6 +77,7 @@ class Pycairo_CAPI(ctypes.Structure):
       ('SurfacePattern_Type', ctypes.py_object),
       ('Gradient_Type', ctypes.py_object),
       ('LinearGradient_Type', ctypes.py_object),
+      ('LinearGradient_FromLinearGradient', ctypes.PYFUNCTYPE(ctypes.py_object, ctypes.c_void_p)), # not right?
       ('RadialGradient_Type', ctypes.py_object),
       ('Pattern_FromPattern', ctypes.c_void_p),
       ('ScaledFont_Type', ctypes.py_object),
@@ -95,6 +97,7 @@ ctypes.pythonapi.PyCObject_Import.restype = ctypes.POINTER(Pycairo_CAPI)
 pycairo_api = ctypes.pythonapi.PyCObject_Import("cairo", "CAPI").contents;
 
 ContextType = pycairo_api.Context_Type
+LinearGradientType = pycairo_api.LinearGradient_Type
 
 def Context_FromSWIGObject(swigObj):
     """
@@ -144,6 +147,31 @@ class gDraw:
         self.w = 100
         self.h = 200
 
+    def OnPaint(self, event):
+        """
+        **Event**
+            Call to get Cairo to paint, this is done automatically if bound
+            to a Panel. You do not need to call this explicitly.
+        """
+        # override;
+        try:
+            dc = wx.PaintDC(self.panel) # make each time OnPaint is called.
+            #dc = wx.AutoBufferedPaintDC(self) # not clear why this doesn't work ...
+            self.size = dc.GetSizeTuple()
+            self.setViewPortSize(self.size[0], self.size[1])
+            gc = wx.GraphicsContext.Create(dc)
+            nc = gc.GetNativeContext()
+            ctx = Context_FromSWIGObject(nc)
+
+        except:
+            raise ErrorCairoAcquireDevice
+
+        #self.lingradient = pycairo_api.LinearGradient_FromLinearGradient(ctypes.c_void_p(int(nc)), LinearGradientType)
+        #print dir(self.lingradient)
+
+        self.__paint(ctx)
+        return(True)
+
     def __debug_draw_col_boxes(self):
         """
         (Internal)
@@ -167,20 +195,37 @@ class gDraw:
         self.panel = drawPanel(panel, self.OnPaint)
         return(self.panel)
 
-    def bindTrack(self, track):
+    def bindTrack(self, track, track_type=None):
         """
         bind a drawing track extra to genome.
-        """
-        self.tracks.append({"data": track, "track_location": self.__getNextTrackBox()})
 
-    def __getNextTrackBox(self):
+        # valid track types:
+        graph
+        bar
+        spot
+        """
+        # if no track_type try to guess from the track object
+        if not track_type:
+            track_type = track._default_draw_type
+
+        if track_type not in valid_track_draw_types:
+            raise ErrorTrackDrawTypeNotFound, track_type
+
+        self.tracks.append({"data": track, "track_location": self.__getNextTrackBox(track_type), "type": track_type})
+        print self.tracks
+
+    def __getNextTrackBox(self, track_type):
         """
         get the next available track location and return the counding coordinates of the block.
         """
+        currentLoc = 0
         for index, track in enumerate(self.trackBoxes):
+            print track
+            if track:
+                currentLoc += opt.track.height_px[track]
             if not track:
-                self.trackBoxes[index] = True
-                return(-(index * opt.track.height_px)-opt.track.genome_base_offset) # 60 = genome track
+                self.trackBoxes[index] = track_type
+                return(-(index + (currentLoc))-opt.track.genome_base_offset) # 60 = genome track
 
     def setViewPortSize(self, w, h):
         """
@@ -249,7 +294,7 @@ class gDraw:
         self.paintQ = self.genome.getAllDrawableFeaturesInRange(self.curr_loc)
         for track in self.tracks:
             #try:
-            self.paintQ.append({"type": "graph",
+            self.paintQ.append({"type": track["type"],
                 "array": track["data"].get_array(location(loc=self.curr_loc), resolution=self.bps_per_pixel, read_extend=150),
                 "track_location": track["track_location"],
                 "name": track["data"].name})
@@ -275,11 +320,11 @@ class gDraw:
         move_percent = int((self.rbp - self.lbp) * (percent / 100.0))
 
         if mode == "right":
-            self.lbp -= move_percent
-            self.rbp -= move_percent
-        elif mode == "left":
             self.lbp += move_percent
             self.rbp += move_percent
+        elif mode == "left":
+            self.lbp -= move_percent
+            self.rbp -= move_percent
         elif mode == "zoomout":
             self.lbp -= move_percent
             self.rbp += move_percent
@@ -392,30 +437,10 @@ class gDraw:
 
     def forceRedraw(self):
         """
+        Should be named forcePaint?
         Use me to force a repaint, rather than calling OnPaint directly.
         """
         self.OnPaint(None)
-        return(True)
-
-    def OnPaint(self, event):
-        """
-        **Event**
-            Call to get Cairo to paint, this is done automatically if bound
-            to a Panel. You do not need to call this explicitly.
-        """
-        # override;
-        try:
-            dc = wx.PaintDC(self.panel) # make each time OnPaint is called.
-            #dc = wx.AutoBufferedPaintDC(self) # not clear why this doesn't work ...
-            self.size = dc.GetSizeTuple()
-            self.setViewPortSize(self.size[0], self.size[1])
-            gc = wx.GraphicsContext.Create(dc)
-            nc = gc.GetNativeContext()
-            ctx = Context_FromSWIGObject(nc)
-        except:
-            raise ErrorCairoAcquireDevice
-
-        self.__paint(ctx)
         return(True)
 
     #------------------------------------------------------------------
@@ -445,14 +470,14 @@ class gDraw:
         """
         return(self.ctx.text_extents(text)[:4])
 
-    def __drawTrackBackground(self, track_location):
+    def __drawTrackBackground(self, track_location, track_type):
         """
         track_location is the bottom edge of the track block
         """
         # get an available track slot
         self.__setPenColour( (0.95,0.95,0.95) )
         base_loc = self.__realToLocal(0, track_location)
-        self.ctx.rectangle(0, base_loc[1]-opt.track.height_px, self.w, opt.track.height_px-2) # 30 = half genomic track size
+        self.ctx.rectangle(0, base_loc[1]-opt.track.height_px[track_type], self.w, opt.track.height_px[track_type]-2) # 30 = half genomic track size
         self.ctx.fill()
 
     def __drawGraphTrack(self, track_data, scaled=True, min_scaling=100):
@@ -475,15 +500,15 @@ class gDraw:
             track_max = max(track_data["array"])
 
             if min_scaling and track_max < min_scaling:
-                scaling_value = min_scaling / float(opt.track.height_px)
+                scaling_value = min_scaling / float(opt.track.height_px["graph"])
             else:
-                scaling_value = track_max / float(opt.track.height_px)
+                scaling_value = track_max / float(opt.track.height_px["graph"])
             # only works if numpy array?
             new_array = track_data["array"] / scaling_value
         else:
             new_array = track_data["array"]
 
-        self.__drawTrackBackground(track_data["track_location"])
+        self.__drawTrackBackground(track_data["track_location"], "graph")
         self.__setPenColour( (0,0,0) )
         self.ctx.set_line_width(0.5)
         coords = []
@@ -625,8 +650,57 @@ class gDraw:
         if opt.draw.braces_between_exons:
             pass
 
-
         return(True)
+
+    def __drawBarTrack(self, track_data, min_scale=1):
+        """
+        draw a 'bar' format track
+
+        **Arguments**
+            track_data
+                must be some kind of array/iterable, with a nbp:1px resolution.
+
+        """
+        track_max = max(track_data["array"]) # bartrack must be normalised
+        if track_max < min_scale:
+            track_max = min_scale
+        new_array = track_data["array"]
+
+        posLeft = self.__realToLocal(self.lbp, track_data["track_location"])
+        posRight = self.__realToLocal(self.rbp, track_data["track_location"])
+
+        self.__drawTrackBackground(track_data["track_location"], "bar")
+
+        self.ctx.set_line_width(10)
+
+        currValue = new_array[0]
+        col = 1.0 - (currValue / track_max)
+        self.__setPenColour( (col,col,col) )
+        self.ctx.move_to(posLeft[0], posLeft[1]-9) # start x,y
+
+        for index, value in enumerate(new_array):
+            fraction_along_array = index / len(new_array)
+
+            if value != currValue:
+                # move to the new position-1 and complete the line
+                self.ctx.line_to(index, posLeft[1]-9)
+                self.ctx.stroke()
+
+                #change the colour to the new value:
+                col = 1.0 - (value / track_max)
+                self.__setPenColour( (col,col,col) )
+
+                # move to the new start of the lien:
+                self.ctx.move_to(index, posLeft[1]-9)
+
+                # update the currValue
+                currValue = value
+                #print index, col, len(new_array)
+
+        self.ctx.line_to(posRight[0], posRight[1]-9)
+        self.ctx.stroke()
+
+        self.__drawText(0, posRight[1]-17 , opt.graphics.font, track_data["name"])
 
     def __paint(self, ctx):
         """
@@ -646,7 +720,7 @@ class gDraw:
             "lncRNA": self.__drawGene,
             "microRNA": self.__drawGene,
             "graph": self.__drawGraphTrack,
-            "bar": None,
+            "bar": self.__drawBarTrack,
             "spots": None
         }
 
