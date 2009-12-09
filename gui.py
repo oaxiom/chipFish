@@ -29,7 +29,7 @@ from wx import xrc
 
 # Find glbase
 sys.path.append(opt.path.glbase_wrapper)
-from glbase_wrapper import glload, track, location
+from glbase_wrapper import glload, track, location, peaklist, format_bed
 
 # ----------------------------------------------------------------------
 # Main GUI
@@ -62,13 +62,15 @@ class cfApp(wx.App):
         self.g = glload("data/mm8_refGene.glb")
         self.draw = gDraw.gDraw(self.g) # drawer must have access to the genome
 
+        self.draw.bindTrack(peaklist(filename="data/Matches_ESEsrrb_esrrf_5bp_soxf.bed", format=format_bed))
         #self.draw.bindTrack(track(filename="data/NSMash1_new.trk", name="NS5 Mash1 ChIP-seq"))
         #self.draw.bindTrack(track(filename="data/SpMash1_new.trk", name="Spinal Cord Mash1 ChIP-seq"))
         #self.draw.bindTrack(track(filename="data/TcMash1_new.trk", name="Telencephalon Mash1 ChIP-seq"))
+        self.draw.bindTrack(track(filename="data/NS_H3K4me3.trk", name="NS5 H3K4me3"), track_type="bar")
         self.draw.bindTrack(track(filename="data/NS_H3K4me3.trk", name="NS5 H3K4me3"))
         #self.draw.bindTrack(track(filename="data/NS_H3K27me3.trk", name="NS5 H3K27me3"))
         #self.draw.bindTrack(track(filename="data/NS_H3K36me3.trk", name="NS5 H3K36me3"))
-        self.draw.bindTrack(track(filename="data/ES_H3K4me3.trk", name="ES H3K4me3"))
+    #self.draw.bindTrack(track(filename="data/ES_H3K4me3.trk", name="ES H3K4me3"))
         #self.draw.bindTrack(track(filename="data/ES_H3K36me3.trk", name="ES H3K4me3"))
         self.draw.bindTrack(track(filename="data/MEF_H3K4me3.trk", name="MEF H3K4me3"))
 

@@ -90,7 +90,7 @@ class ErrorLibrarySQLite(Exception):
     Error: SQL backend not available.
     """
     def __init__(self):
-        self.message = "Error: Database SQLite nota found or not available."
+        self.message = "Error: Database SQLite not found or not available."
     def __str__(self):
         return(repr(self.message))
 
@@ -114,10 +114,19 @@ class ErrorUserDataReadOnly(Exception):
 
 class ErrorOSNotSupported(Exception):
     """
-    Error: The user config is inaccesible.
+    Error: This OS type is not currently supported.
     """
     def __init__(self):
         import platform
         self.message = "Error: The OS '%s' is not currently supported" % platform.platform()
+    def __str__(self):
+        return(repr(self.message))
+
+class ErrorTrackDrawTypeNotFound(Exception):
+    """
+    Error: The tracks draw type cannot be found/determined/guessed.
+    """
+    def __init__(self, message):
+        self.message = "Error: The tracks draw type '%s' cannot be found/determined/guessed" % message
     def __str__(self):
         return(repr(self.message))

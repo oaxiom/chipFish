@@ -91,7 +91,7 @@ class track:
     """
     options for the tracks
     """
-    height_px = 150
+    height_px = {"graph": 150, "bar": 30, "spot": 30} # height's of the tracks in pixels.
     genome_base_offset = 60 # offset from the genome track to the first track.
 
 def saveOptions():

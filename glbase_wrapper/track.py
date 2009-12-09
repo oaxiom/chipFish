@@ -23,10 +23,11 @@ class track(glbase.track):
     # descriptions, text for localisation
     __doc__ = "Overriden: Not Present"
     __tooltype__ = "Vanilla track"
+    _default_draw_type = "graph"
 
     # gui stuff.
     # available for the gui on this class
     __gui__avail__ = {
-        "draw type": (type="selection", options=("graph", "bar"))
+        "draw type": {"type": "selection", "options": ("graph", "bar")}
         }
 
