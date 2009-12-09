@@ -16,3 +16,10 @@ from gui import cfApp
 app = cfApp()
 app.MainLoop()
 
+"""
+TODO:
+-----
+
+. subclass ruler so I can add scale bars
+. speed up the bar draws.
+"""

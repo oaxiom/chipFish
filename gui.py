@@ -67,12 +67,12 @@ class cfApp(wx.App):
         #self.draw.bindTrack(track(filename="data/SpMash1_new.trk", name="Spinal Cord Mash1 ChIP-seq"))
         #self.draw.bindTrack(track(filename="data/TcMash1_new.trk", name="Telencephalon Mash1 ChIP-seq"))
         self.draw.bindTrack(track(filename="data/NS_H3K4me3.trk", name="NS5 H3K4me3"), track_type="bar")
-        self.draw.bindTrack(track(filename="data/NS_H3K4me3.trk", name="NS5 H3K4me3"))
-        #self.draw.bindTrack(track(filename="data/NS_H3K27me3.trk", name="NS5 H3K27me3"))
-        #self.draw.bindTrack(track(filename="data/NS_H3K36me3.trk", name="NS5 H3K36me3"))
-    #self.draw.bindTrack(track(filename="data/ES_H3K4me3.trk", name="ES H3K4me3"))
-        #self.draw.bindTrack(track(filename="data/ES_H3K36me3.trk", name="ES H3K4me3"))
-        self.draw.bindTrack(track(filename="data/MEF_H3K4me3.trk", name="MEF H3K4me3"))
+        self.draw.bindTrack(track(filename="data/NS_H3K4me3.trk", name="NS5 H3K4me3"), track_type="bar")
+        self.draw.bindTrack(track(filename="data/NS_H3K27me3.trk", name="NS5 H3K27me3"), track_type="bar")
+        self.draw.bindTrack(track(filename="data/NS_H3K36me3.trk", name="NS5 H3K36me3"), track_type="bar")
+        self.draw.bindTrack(track(filename="data/ES_H3K4me3.trk", name="ES H3K4me3"), track_type="bar")
+        self.draw.bindTrack(track(filename="data/ES_H3K36me3.trk", name="ES H3K4me3"), track_type="bar")
+        self.draw.bindTrack(track(filename="data/MEF_H3K4me3.trk", name="MEF H3K4me3"), track_type="bar")
 
         self.draw.setLocation(loc=location(loc="chr17:15061372-15127565")) # Interesting view of the ChIP-seq (Dll1?) chr17:15,064,087-15,088,782
 
