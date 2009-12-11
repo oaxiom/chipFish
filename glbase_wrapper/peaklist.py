@@ -28,6 +28,7 @@ class peaklist(glbase.peaklist):
     __doc__ = "Overriden: Not Present"
     __tooltype__ = "Vanilla peaklist"
     _default_draw_type = "bar"
+    _available_draw_types = ("bar", "spot")
 
     # new methods:
     def get_array(self, loc, strand=None, resolution=1, **kargs):
@@ -67,7 +68,7 @@ class peaklist(glbase.peaklist):
     # gui stuff.
     # available for the gui on this class
     __gui__avail__ = {
-        "draw type": {"type": "selection", "options": ("bar", "spots")}
+        "draw type": _available_draw_types
         }
 
 
