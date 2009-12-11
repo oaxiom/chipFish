@@ -10,14 +10,13 @@ NOTES:
 . This needs to be split into two
     at the moment a lot of interface code is spilling
     over into gDraw. needs to be split into a strictly drawing backend,
-    and an interface class.
+    and an interface class. Actually, why? Cairo is mature...
 . gDraw is a wrapper for whatever vector-draw backend is in use.
 . The vector back-end is not normally available outside of gDraw as its
     implementation is likely to change.
 . only gDraw external procedures are valid.
-. procedures prefixed with _ are undocumented, internal and liable to change.
-  (semi-private classes)
-. DXF/PS exporter? Yes please.
+. procedures prefixed with _ and __ are undocumented, internal and liable to change.
+  (semi-private and private classes)
 . make a set of drawing primitives in case we need to swap out the back renderer
     some time in the future.
 . We're currently using the 'toy' text-rendering API.
@@ -28,6 +27,7 @@ NOTES:
 TODO:
 -----
 . change the location to a <location> and use that datatype instead (cleaner)
+. DXF/PS exporter?
 """
 
 from __future__ import division
@@ -45,70 +45,9 @@ from data import *
 
 MAX_TRACKS = 10 # maximum number of tracks
 
-#----------------------------------------------------------------------
-# The Cairo interface. I think this code is actually taken from
-# wx.lib.wxcairo
+
 import wx.lib.wxcairo
-
-import ctypes
 import cairo
-from ctypes.util import find_library
-
-cairo_dll = ctypes.CDLL(find_library("cairo"))
-
-# Pycairo's API representation (from pycairo.h)
-class Pycairo_CAPI(ctypes.Structure):
-   _fields_ = [
-      ('Context_Type', ctypes.py_object),
-      ('Context_FromContext', ctypes.PYFUNCTYPE(ctypes.py_object,
-                                                ctypes.c_void_p,
-                                                ctypes.py_object,
-                                                ctypes.py_object)),
-      ('FontFace_Type', ctypes.py_object),
-      ('FontFace_FromFontFace', ctypes.PYFUNCTYPE(ctypes.py_object, ctypes.c_void_p)),
-      ('FontOptions_Type', ctypes.py_object),
-      ('FontOptions_FromFontOptions', ctypes.PYFUNCTYPE(ctypes.py_object, ctypes.c_void_p)),
-      ('Matrix_Type', ctypes.py_object),
-      ('Matrix_FromMatrix', ctypes.PYFUNCTYPE(ctypes.py_object, ctypes.c_void_p)),
-      ('Path_Type', ctypes.py_object),
-      ('Path_FromPath', ctypes.PYFUNCTYPE(ctypes.py_object, ctypes.c_void_p)),
-      ('Pattern_Type', ctypes.py_object),
-      ('SolidPattern_Type', ctypes.py_object),
-      ('SurfacePattern_Type', ctypes.py_object),
-      ('Gradient_Type', ctypes.py_object),
-      ('LinearGradient_Type', ctypes.py_object),
-      ('LinearGradient_FromLinearGradient', ctypes.PYFUNCTYPE(ctypes.py_object, ctypes.c_void_p)), # not right?
-      ('RadialGradient_Type', ctypes.py_object),
-      ('Pattern_FromPattern', ctypes.c_void_p),
-      ('ScaledFont_Type', ctypes.py_object),
-      ('ScaledFont_FromScaledFont', ctypes.PYFUNCTYPE(ctypes.py_object, ctypes.c_void_p)),
-      ('Surface_Type', ctypes.py_object),
-      ('ImageSurface_Type', ctypes.py_object),
-      ('PDFSurface_Type', ctypes.py_object),
-      ('PSSurface_Type', ctypes.py_object),
-      ('SVGSurface_Type', ctypes.py_object),
-      ('Win32Surface_Type', ctypes.py_object),
-      ('XlibSurface_Type', ctypes.py_object),
-      ('Surface_FromSurface', ctypes.PYFUNCTYPE(ctypes.py_object, ctypes.c_void_p)),
-      ('Check_Status', ctypes.PYFUNCTYPE(ctypes.c_int, ctypes.c_int))]
-
-# look up the API
-ctypes.pythonapi.PyCObject_Import.restype = ctypes.POINTER(Pycairo_CAPI)
-pycairo_api = ctypes.pythonapi.PyCObject_Import("cairo", "CAPI").contents;
-
-ContextType = pycairo_api.Context_Type
-LinearGradientType = pycairo_api.LinearGradient_Type
-
-def Context_FromSWIGObject(swigObj):
-    """
-    (Internal)
-    get the Cairo object for drawing.
-    """
-    ptr = ctypes.c_void_p(int(swigObj))
-    #increment the native context's ref count, since the Pycairo_Context decrements it
-    #when it is finalised.
-    cairo_dll.cairo_reference(ptr)
-    return pycairo_api.Context_FromContext(ptr, ContextType, None)
 
 class drawPanel(wx.Panel):
     """
@@ -118,9 +57,6 @@ class drawPanel(wx.Panel):
         wx.Panel.__init__(self, parent, -1, size=(-1,-1), style=wx.FULL_REPAINT_ON_RESIZE) # This has to be set to full repaint :)
         self.Bind(wx.EVT_PAINT, paint_Procedure, self)
         self.Fit()
-
-#----------------------------------------------------------------------
-# End of the Cairo interface
 
 class gDraw:
     def __init__(self, genome):
@@ -153,23 +89,72 @@ class gDraw:
             Call to get Cairo to paint, this is done automatically if bound
             to a Panel. You do not need to call this explicitly.
         """
-        # override;
+        print "OnPaint"
+        # try to get cairo:
         try:
             dc = wx.PaintDC(self.panel) # make each time OnPaint is called.
             #dc = wx.AutoBufferedPaintDC(self) # not clear why this doesn't work ...
             self.size = dc.GetSizeTuple()
             self.setViewPortSize(self.size[0], self.size[1])
-            gc = wx.GraphicsContext.Create(dc)
-            nc = gc.GetNativeContext()
-            ctx = Context_FromSWIGObject(nc)
-
+            ctx = wx.lib.wxcairo.ContextFromDC(dc)
         except:
             raise ErrorCairoAcquireDevice
 
-        #self.lingradient = pycairo_api.LinearGradient_FromLinearGradient(ctypes.c_void_p(int(nc)), LinearGradientType)
-        #print dir(self.lingradient)
+        self.ctx = ctx
 
-        self.__paint(ctx)
+        draw_modes_dict = {
+            "gene": self.__drawGene,
+            "lncRNA": self.__drawGene,
+            "microRNA": self.__drawGene,
+            "graph": self.__drawTrackGraph,
+            "bar": self.__drawTrackBar,
+            "spots": self.__drawTrackSpot
+            }
+
+        self.delta = self.rbp - self.lbp
+        self.deltaf = float(self.delta)
+        self.bps_per_pixel = self.delta / float(self.w)
+
+        self.curr_loc = location(chr=self.chromosome, left=self.lbp, right=self.rbp)
+
+        # kill all the colission boxes
+        self.colBoxes = []
+
+        # blank the screen:
+        self.__setPenColour(opt.graphics.screen_colour)
+        ctx.rectangle(0,0,self.fullw,self.h)
+        ctx.fill()
+
+        if opt.draw.double_lines_for_genome:
+            self.__drawChr(None)
+
+        # get the new paintQ:
+        # draw the genome:
+        genome_items = self.genome.getAllDrawableFeaturesInRange(self.curr_loc)
+        for item in genome_items:
+            draw_modes_dict[item["type"]](item)
+
+        # draw the tracks:
+        for track in self.tracks:
+            # basic data:
+            draw_data = {"type": track["type"],
+                "track_location": track["track_location"],
+                "name": track["data"].name}
+
+            if track["type"] == "graph":
+                draw_data["array"] = track["data"].get_array(location(loc=self.curr_loc), resolution=self.bps_per_pixel, read_extend=150)
+            elif track["type"] == "bar":
+                draw_data["array"] = track["data"].get_array(location(loc=self.curr_loc), resolution=self.bps_per_pixel, read_extend=150)
+            elif track["type"] == "spot":
+                draw_data["array"] = track["data"].get_array(location(loc=self.curr_loc), resolution=self.bps_per_pixel, read_extend=150)
+
+            # and draw:
+            draw_modes_dict[draw_data["type"]](draw_data)
+
+        self.__drawRuler()
+
+        # any further (internal) drawing goes here.
+        if opt.debug.draw_collision_boxes: self.__debug_draw_col_boxes()
         return(True)
 
     def __debug_draw_col_boxes(self):
@@ -212,7 +197,6 @@ class gDraw:
             raise ErrorTrackDrawTypeNotFound, track_type
 
         self.tracks.append({"data": track, "track_location": self.__getNextTrackBox(track_type), "type": track_type})
-        print self.tracks
 
     def __getNextTrackBox(self, track_type):
         """
@@ -220,7 +204,6 @@ class gDraw:
         """
         currentLoc = 0
         for index, track in enumerate(self.trackBoxes):
-            print track
             if track:
                 currentLoc += opt.track.height_px[track]
             if not track:
@@ -247,7 +230,7 @@ class gDraw:
 
         **Arguments**
             This method is a little scizophrenic at the moment, supporting both
-            an old-style and new-stly <location> based associaton
+            an old-style and new-style <location> based associaton
             later it should only support the new-style <location>
 
         **Returns**
@@ -264,7 +247,6 @@ class gDraw:
             self.lbp = loc["left"]
             self.rbp = loc["right"]
         # sanity checking? Neccesary?
-        self.__rebuildDisplay()
 
     def getLocation(self):
         """
@@ -278,30 +260,6 @@ class gDraw:
             returns a <location>
         """
         return(location(chr=self.chromosome, left=self.lbp, right=self.rbp))
-
-    def __rebuildDisplay(self):
-        """
-        rebuild and draw the display.
-        """
-        #self.scale = (self.rbp - self.lbp) / 10000
-        self.delta = self.rbp - self.lbp
-        self.deltaf = float(self.delta)
-        self.bps_per_pixel = self.delta / float(self.w)
-
-        self.curr_loc = location(chr=self.chromosome, left=self.lbp, right=self.rbp)
-
-        # get the new paintQ:
-        self.paintQ = self.genome.getAllDrawableFeaturesInRange(self.curr_loc)
-        for track in self.tracks:
-            #try:
-            self.paintQ.append({"type": track["type"],
-                "array": track["data"].get_array(location(loc=self.curr_loc), resolution=self.bps_per_pixel, read_extend=150),
-                "track_location": track["track_location"],
-                "name": track["data"].name})
-            #except: # track probably doens't have this chr?
-            #    pass
-        self.paintQ.reverse()
-        return(True)
 
     def move(self, mode="centre", percent=5):
         """
@@ -335,14 +293,12 @@ class gDraw:
                 mid_point = self.rbp + self.lbp / 2
                 self.lbp = mid_point - 1
                 self.rbp = mid_point + 1
-        self.__rebuildDisplay()
         return(True)
 
     def __drawChr(self, location_span):
         """
         draw the basic chromosome
         """
-        if not self.validDraw: raise CairoDrawError
         self.ctx.set_source_rgb(0, 0, 0)
         loc = self.__realToLocal(0, 0)
         self.ctx.move_to(loc[0], loc[1]-2)
@@ -352,27 +308,11 @@ class gDraw:
         self.ctx.set_line_width(1.5)
         self.ctx.stroke()
 
-    def __drawPoint(self, location, data):
-        """
-        drawFeatures of the type "Point"
-        data should be a list of coordinates within the location span
-        """
-        pass
-
-    def __drawSpan(self, location, data):
-        """
-        drawFeatures of the type "Span"
-        data should be a list of coordinates of the form chrX:left-right within the location span
-        """
-        pass
-
     def __drawRuler(self):
         """
         draw the ruler.
 
         """
-        if not self.validDraw: raise CairoDrawError
-
         x,y,w,h = self.__getTextExtents("Chromosome %s" % str(self.chromosome))
         self.__drawText(5, opt.ruler.height_px + 22, opt.ruler.font, "Chromosome %s" % str(self.chromosome), size=12)
 
@@ -480,7 +420,7 @@ class gDraw:
         self.ctx.rectangle(0, base_loc[1]-opt.track.height_px[track_type], self.w, opt.track.height_px[track_type]-2) # 30 = half genomic track size
         self.ctx.fill()
 
-    def __drawGraphTrack(self, track_data, scaled=True, min_scaling=100):
+    def __drawTrackGraph(self, track_data, scaled=True, min_scaling=100):
         """
         **Arguments**
             track_data
@@ -526,6 +466,17 @@ class gDraw:
         self.ctx.stroke()
         self.__drawText(0, loc[1] - 15 , opt.graphics.font, track_data["name"])
 
+    def __drawTrackSpot(self, track_data):
+        """
+        **Arguments**
+            track_data
+                a result from track.get_locations()
+
+            colour
+                a float colour (r, g, b, [a]), ranging 0..1
+        """
+        pass
+
     def __drawText(self, x, y, font, text, size=12, colour=(0,0,0), style=None):
         """
         (Internal - helper)
@@ -550,13 +501,11 @@ class gDraw:
         exonStarts: list of exon start locations
         exonEnds: list of ends
         """
-        if not self.validDraw: raise ErrorCairoDraw
-
         #print "t:", ((data["left"]-self.lbp) / self.deltaf), ((data["right"]-self.lbp) / self.deltaf)
 
         posLeft = self.__realToLocal(data["loc"]["left"], 0)[0]
         posRight = self.__realToLocal(data["loc"]["right"], 0)[0]
-        self.ctx.set_line_width(0.5)
+        self.ctx.set_line_width(1)
         self.__setPenColour(opt.graphics.gene_colour)
 
         #---------------------------------------------------------------
@@ -652,7 +601,7 @@ class gDraw:
 
         return(True)
 
-    def __drawBarTrack(self, track_data, min_scale=1):
+    def __drawTrackBar(self, track_data, min_scale=1):
         """
         draw a 'bar' format track
 
@@ -701,54 +650,6 @@ class gDraw:
         self.ctx.stroke()
 
         self.__drawText(0, posRight[1]-17 , opt.graphics.font, track_data["name"])
-
-    def __paint(self, ctx):
-        """
-        (Internal)
-        painter procedure. pass a valid Cairo context for drawing onto.
-
-        draws every object in paintQ
-        """
-        if ctx:
-            self.validDraw = True
-        else:
-            raise ErrorCairoAcquireDevice
-        self.ctx = ctx
-
-        draw_modes_dict = {
-            "gene": self.__drawGene,
-            "lncRNA": self.__drawGene,
-            "microRNA": self.__drawGene,
-            "graph": self.__drawGraphTrack,
-            "bar": self.__drawBarTrack,
-            "spots": None
-        }
-
-        # kill all the colission boxes
-        self.colBoxes = []
-
-        # blank the screen:
-        self.__setPenColour(opt.graphics.screen_colour)
-        ctx.rectangle(0,0,self.fullw,self.h)
-        ctx.fill()
-
-        if opt.draw.double_lines_for_genome:
-            self.__drawChr(None)
-
-        for item in self.paintQ:
-            if item["type"] in draw_modes_dict:
-                draw_modes_dict[item["type"]](item)
-            else:
-                pass # print a warning!
-
-        self.__drawRuler()
-
-        # render and finish drawing.
-        self.validDraw = False
-
-        # any further (internal) drawing goes here.
-        if opt.debug.draw_collision_boxes: self.__debug_draw_col_boxes()
-        return(True)
 
     def __setPenColour(self, colour):
         """
