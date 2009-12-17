@@ -265,12 +265,107 @@
 			</object>
 			<object class="wxMenu" name="tools">
 				<label>Tools</label>
+				<object class="wxMenuItem" name="exportCurrentViewAsPng">
+					<label>Export Current View as png</label>
+					<help></help>
+				</object>
 			</object>
 			<object class="wxMenu" name="help">
 				<label>Help</label>
 				<object class="wxMenuItem" name="about">
 					<label>About</label>
 					<help></help>
+				</object>
+			</object>
+		</object>
+	</object>
+	<object class="wxDialog" name="CustomFindDialog">
+		<style>wxDEFAULT_DIALOG_STYLE</style>
+		<size>618,328</size>
+		<title>Find Gene</title>
+		<centered>1</centered>
+		<object class="wxGridSizer">
+			<rows>2</rows>
+			<cols>1</cols>
+			<vgap>0</vgap>
+			<hgap>0</hgap>
+			<object class="sizeritem">
+				<option>1</option>
+				<flag>wxEXPAND</flag>
+				<border>5</border>
+				<object class="wxBoxSizer">
+					<orient>wxVERTICAL</orient>
+					<object class="sizeritem">
+						<option>1</option>
+						<flag>wxEXPAND</flag>
+						<border>5</border>
+						<object class="wxStaticBoxSizer">
+							<orient>wxHORIZONTAL</orient>
+							<label>Find</label>
+							<object class="sizeritem">
+								<option>1</option>
+								<flag>wxALIGN_CENTER_VERTICAL|wxALL</flag>
+								<border>5</border>
+								<object class="wxTextCtrl" name="m_textFindText">
+									<value></value>
+									<maxlength>0</maxlength>
+								</object>
+							</object>
+							<object class="sizeritem">
+								<option>0</option>
+								<flag>wxALIGN_CENTER_VERTICAL|wxALL</flag>
+								<border>5</border>
+								<object class="wxButton" name="m_butSearchStart">
+									<label>Search</label>
+									<default>0</default>
+								</object>
+							</object>
+						</object>
+					</object>
+					<object class="sizeritem">
+						<option>0</option>
+						<flag>wxEXPAND</flag>
+						<border>5</border>
+						<object class="wxBoxSizer">
+							<orient>wxVERTICAL</orient>
+							<object class="sizeritem">
+								<option>0</option>
+								<flag>wxALL|wxEXPAND</flag>
+								<border>5</border>
+								<object class="wxGauge" name="m_gaugeSearch">
+									<style>wxGA_HORIZONTAL</style>
+									<range>100</range>
+									<value>0</value>
+								</object>
+							</object>
+						</object>
+					</object>
+					<object class="sizeritem">
+						<option>3</option>
+						<flag>wxEXPAND</flag>
+						<border>5</border>
+						<object class="wxStaticBoxSizer">
+							<orient>wxVERTICAL</orient>
+							<label>Found</label>
+							<object class="sizeritem">
+								<option>1</option>
+								<flag>wxALL|wxEXPAND</flag>
+								<border>5</border>
+								<object class="wxListBox" name="m_listBox">
+									<content />
+								</object>
+							</object>
+							<object class="sizeritem">
+								<option>0</option>
+								<flag>wxALIGN_RIGHT|wxALL</flag>
+								<border>5</border>
+								<object class="wxButton" name="m_butGoTo">
+									<label>Go To</label>
+									<default>0</default>
+								</object>
+							</object>
+						</object>
+					</object>
 				</object>
 			</object>
 		</object>

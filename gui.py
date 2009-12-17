@@ -19,9 +19,13 @@ import opt, gDraw, glbase_wrapper
 from error import *
 from bookmarks import bookmarks
 from data import *
+from userconfig import userconfig
 
 import wx
 from wx import xrc
+
+# My gui elements:
+from find import findDialog
 
 # ----------------------------------------------------------------------
 # Use a modified start-up of glbase.
@@ -62,29 +66,32 @@ class cfApp(wx.App):
         self.g = glload("data/mm8_refGene.glb")
         self.draw = gDraw.gDraw(self.g) # drawer must have access to the genome
 
+        format_chip_lists = {"loc": {"code": "location(loc=column[0])"}}
+
         self.draw.bindTrack(peaklist(filename="data/Matches_ESEsrrb_esrrf_5bp_soxf.bed", format=format_bed))
+        self.draw.bindTrack(peaklist(filename="../../Final Peak Lists/ESEsrrb_peaks.csv", format=format_chip_lists))
+        self.draw.bindTrack(peaklist(filename="../../Final Peak Lists/ESSox2_peaks.csv", format=format_chip_lists))
+        self.draw.bindTrack(peaklist(filename="../../Final Peak Lists/ESOct4_peaks.csv", format=format_chip_lists))
+        #self.draw.bindTrack(peaklist(filename="../../Final Peak Lists/ESNanog_peaks.csv", format=format_chip_lists))
+        #self.draw.bindTrack(peaklist(filename="../../Final Peak Lists/ESKlf4_peaks.csv", format=format_chip_lists))
+        #self.draw.bindTrack(peaklist(filename="../../Final Peak Lists/ESp300_peaks.csv", format=format_chip_lists))
         #self.draw.bindTrack(track(filename="data/NSMash1_new.trk", name="NS5 Mash1 ChIP-seq"))
         #self.draw.bindTrack(track(filename="data/SpMash1_new.trk", name="Spinal Cord Mash1 ChIP-seq"))
         #self.draw.bindTrack(track(filename="data/TcMash1_new.trk", name="Telencephalon Mash1 ChIP-seq"))
-        self.draw.bindTrack(track(filename="data/NS_H3K4me3.trk", name="NS5 H3K4me3"), track_type="bar")
-        self.draw.bindTrack(track(filename="data/NS_H3K27me3.trk", name="NS5 H3K27me3"), track_type="bar")
-        self.draw.bindTrack(track(filename="data/NS_H3K36me3.trk", name="NS5 H3K36me3"), track_type="bar")
-        self.draw.bindTrack(track(filename="data/ES_H3K4me3.trk", name="ES H3K4me3"), track_type="bar")
-        self.draw.bindTrack(track(filename="data/ES_H3K36me3.trk", name="ES H3K4me3"), track_type="bar")
-        self.draw.bindTrack(track(filename="data/MEF_H3K4me3.trk", name="MEF H3K4me3"), track_type="bar")
+        #self.draw.bindTrack(track(filename="data/NS_H3K4me3.trk", name="NS5 H3K4me3"))
+        #self.draw.bindTrack(track(filename="data/NS_H3K27me3.trk", name="NS5 H3K27me3"), track_type="bar")
+        #self.draw.bindTrack(track(filename="data/NS_H3K36me3.trk", name="NS5 H3K36me3"), track_type="bar")
+        #self.draw.bindTrack(track(filename="data/ES_H3K4me3.trk", name="ES H3K4me3"))
+        #self.draw.bindTrack(track(filename="data/ES_H3K36me3.trk", name="ES H3K4me3"), track_type="bar")
+        #self.draw.bindTrack(track(filename="data/MEF_H3K4me3.trk", name="MEF H3K4me3"))
 
         self.draw.setLocation(loc=location(loc="chr17:15061372-15127565")) # Interesting view of the ChIP-seq (Dll1?) chr17:15,064,087-15,088,782
 
         # end of user hard-coded segments.
         # --------------------------------------------------------------
 
-        # menu names:
-        # Boomarks root:
-        # bookmarks
-        # bookmarkThisLocation ID_BOOKMARK_THIS_LOCATION
-        # ID_ORGANISE_BOOKMARKS organiseBookmarks
-        # findGene
         self.__rebind_bookmarks("mm8") # I have to bodge this as self.g has a mangled name.
+        self.__userdata = userconfig()
 
         # bind the gPanel;
         sizer = wx.BoxSizer(wx.VERTICAL)
@@ -110,6 +117,8 @@ class cfApp(wx.App):
         self.Bind(wx.EVT_MENU, self.OnMenuAbout, id=xrc.XRCID("about"))
         self.Bind(wx.EVT_MENU, self.OnMenuQuit, id=xrc.XRCID("quit"))
         self.Bind(wx.EVT_MENU, self.OnMenuAddBookmark, id=xrc.XRCID("bookmarkThisLocation"))
+        self.Bind(wx.EVT_MENU, self.OnMenuExportAsPng, id=xrc.XRCID("exportCurrentViewAsPng"))
+        self.Bind(wx.EVT_MENU, self.OnMenuFindGene, id=xrc.XRCID("findGene"))
         # get changable elements from the gui and store them locally.
         # (See _updateDisplay())
         self.textGoToLoc = wx.xrc.XRCCTRL(self.main, "textGoToLoc")
@@ -118,19 +127,22 @@ class cfApp(wx.App):
         self.main.Show()
         self.main.Maximize(True)
         # force a redraw:
-        self._updateDisplay()
+        #self._updateDisplay()
         print "End %s" % time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())
         return(True)
 
     #------------------------------------------------------------------
     # Internal
-    def _updateDisplay(self, redrawDisplay=True, event=None):
+    def _updateDisplay(self, loc=None, redrawDisplay=True, event=None):
         """
         (Internal)
         update the gui forms and changeable elements.
         redrawDisplay will not redraw the gui, it just redraws the
         gDrawPanel
         """
+        if loc:
+            self.draw.setLocation(loc=loc)
+
         self.lastValidLocation = self.draw.getLocation()
         if redrawDisplay:
             self.draw.forceRedraw()
@@ -278,4 +290,24 @@ class cfApp(wx.App):
             notes = ", ".join([x["name"] for x in nearby_features[0:7]]+["..."])
         self.__bookmarks.add_bookmark(self.draw.getLocation(), notes)
         self.__rebind_bookmarks("mm8") # bodge for now.
+
+    def OnMenuExportAsPng(self, event):
+        # get a dailog
+        # get the last used dir or home.
+        f = wx.FileSelector(message="Save the current genome View as an image",
+            default_path=self.__userdata["last_png_file"],
+            default_filename="",
+            default_extension="png",
+            wildcard="PNG files (*.png)|*.png|All Files|*",
+            flags=wx.FD_SAVE|wx.FD_OVERWRITE_PROMPT)
+
+        if f:
+            self.draw.exportImage(f)
+            # modify userconfig based on the new path (if any)
+            self.__userdata["last_png_file"] = os.path.split(f)[0]
+
+    def OnMenuFindGene(self, event):
+        # launch the custom finder.
+        a = findDialog(self)
+
 # end of mainFrame

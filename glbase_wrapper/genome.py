@@ -51,6 +51,41 @@ class genome(glbase.genome):
                     ret.append(item)
         return(ret)
 
+    def find(self, text, guage_object=None, case_sensitive=False):
+        """
+        **Purpose**
+            find any items containing 'text' in the genelist
+
+        **Arguments**
+            text (string, required)
+                the text string to search for
+
+        **Returns**
+            A list of dicts containing the search string
+            modify a progress bar (NotImplemented)
+
+        """
+        ret = []
+
+        if guage_object:
+            guage_object.SetRange(len(self))
+
+        for index, item in enumerate(self.linearData):
+            for key in item:
+                # can only search strings:
+                if case_sensitive:
+                    tstr = str(item[key])
+                else:
+                    tstr = str(item[key]).lower()
+
+                if text in tstr:
+                    ret.append(item)
+                    break # only append once
+            if guage_object:
+                guage_object.SetValue(index)
+
+        return(ret)
+
     # descriptions, text for localisation
     __doc__ = "Overriden: Not Present"
     __tooltype__ = "Vanilla genelist"

@@ -27,11 +27,11 @@ class peaklist(glbase.peaklist):
     # descriptions, text for localisation
     __doc__ = "Overriden: Not Present"
     __tooltype__ = "Vanilla peaklist"
-    _default_draw_type = "bar"
+    _default_draw_type = "spot"
     _available_draw_types = ("bar", "spot")
 
     # new methods:
-    def get_array(self, loc, strand=None, resolution=1, **kargs):
+    def get_data(self, type, loc, strand=None, resolution=1, **kargs):
         """
         **Purpose**
             mimic the entry to track.
@@ -48,22 +48,27 @@ class peaklist(glbase.peaklist):
         **Results**
             returns a Numpy array.
         """
-        # make a single array
-        a = zeros(int( (loc["right"]-loc["left"]+resolution)/resolution ))
+        if type == "bar":
+            # make a single array
+            ret = zeros(int( (loc["right"]-loc["left"]+resolution)/resolution ))
 
-        ret = []
-        if loc["chr"] in self.dataByChr:
-            for item in self.dataByChr[loc["chr"]]:
-                if qcollide(loc["left"], loc["right"], item["loc"]["left"], item["loc"]["right"]):
-                    # make a suitable draw object
-                    item["type"] = "bar" # set the type flag for gDraw
+            if loc["chr"] in self.dataByChr:
+                for item in self.dataByChr[loc["chr"]]:
+                    if qcollide(loc["left"], loc["right"], item["loc"]["left"], item["loc"]["right"]):
+                        # make a suitable draw object
+                        for rloc in xrange(item["loc"]["left"], item["loc"]["right"], int(resolution)):
+                            array_relative_location = int((rloc - loc["left"]) / resolution) # convert relative to the array
 
-                    for rloc in xrange(item["loc"]["left"], item["loc"]["right"], int(resolution)):
-                        array_relative_location = int((rloc - loc["left"]) / resolution) # convert relative to the array
-
-                        if array_relative_location >= 0 and array_relative_location < len(a): # within array
-                            a[array_relative_location] += 1
-        return(a)
+                            if array_relative_location >= 0 and array_relative_location < len(ret): # within array
+                                ret[array_relative_location] += 1
+            return(ret)
+        elif type == "spot":
+            ret = []
+            if loc["chr"] in self.dataByChr:
+                for item in self.dataByChr[loc["chr"]]:
+                    if qcollide(loc["left"], loc["right"], item["loc"]["left"], item["loc"]["right"]):
+                        ret.append(item["loc"])
+            return(ret)
 
     # gui stuff.
     # available for the gui on this class
