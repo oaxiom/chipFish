@@ -42,6 +42,7 @@ class debug:
     """
     containers for debugging options.
     """
+    profile = False
     debug_version = False
     if debug_version:
         draw_collision_boxes = True
@@ -75,6 +76,7 @@ class draw:
     single_midline_in_introns = True # draws a line through the gene, enclosing the gene
     chevrons_inside_introns = False # not implemented draws chevrons inside the gene indicating direction
     braces_between_exons = False # not implemented draws braces across the exons
+    scale_bar = True
 
 class ruler:
     """
@@ -93,6 +95,10 @@ class track:
     """
     height_px = {"graph": 150, "bar": 30, "spot": 30} # height's of the tracks in pixels.
     genome_base_offset = 60 # offset from the genome track to the first track.
+    spot_pixel_radius = 4
+    spot_default_colour = (0.8, 0.1, 0.1)
+    spot_filled = True # fill the spot circle
+    spot_shape = "circle" # supported = circle, triangle
 
 def saveOptions():
     pass

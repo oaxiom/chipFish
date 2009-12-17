@@ -26,6 +26,29 @@ class track(glbase.track):
     _default_draw_type = "graph"
     _available_draw_types = ("graph", "bar")
 
+    def get_data(self, type, loc, strand=None, resolution=1, **kargs):
+        """
+        **Purpose**
+            get data from the track.
+            entry point to get the graph
+            for track.py it just maps onto get_array()
+
+        **Arguments**
+            loc
+                location span to get the array for.
+
+            strand (Not supported)
+
+            resolution
+                the bp resolution to use for the array.
+
+        **Results**
+            returns a Numpy array.
+        """
+        if type in self._available_draw_types:
+            return(self.get_array(loc, strand, resolution, **kargs))
+        raise AssertionError, "draw mode not available"
+
     # gui stuff.
     # available for the gui on this class
     __gui__avail__ = {

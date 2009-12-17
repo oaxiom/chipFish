@@ -83,24 +83,26 @@ class gDraw:
         self.w = 100
         self.h = 200
 
-    def OnPaint(self, event):
+    def OnPaint(self, event, cairo_context=None):
         """
         **Event**
             Call to get Cairo to paint, this is done automatically if bound
             to a Panel. You do not need to call this explicitly.
+            If you pass a Cairo Context cairo will paint to that
+            rather than generate a context for the gui.
         """
-        print "OnPaint"
         # try to get cairo:
-        try:
-            dc = wx.PaintDC(self.panel) # make each time OnPaint is called.
-            #dc = wx.AutoBufferedPaintDC(self) # not clear why this doesn't work ...
-            self.size = dc.GetSizeTuple()
-            self.setViewPortSize(self.size[0], self.size[1])
-            ctx = wx.lib.wxcairo.ContextFromDC(dc)
-        except:
-            raise ErrorCairoAcquireDevice
+        if not cairo_context:
+            try:
+                dc = wx.PaintDC(self.panel) # make each time OnPaint is called.
+                #dc = wx.AutoBufferedPaintDC(self) # not clear why this doesn't work ...
+                self.size = dc.GetSizeTuple()
+                self.setViewPortSize(self.size[0], self.size[1])
+                cairo_context = wx.lib.wxcairo.ContextFromDC(dc)
+            except:
+                raise ErrorCairoAcquireDevice
 
-        self.ctx = ctx
+        self.ctx = cairo_context
 
         draw_modes_dict = {
             "gene": self.__drawGene,
@@ -108,7 +110,7 @@ class gDraw:
             "microRNA": self.__drawGene,
             "graph": self.__drawTrackGraph,
             "bar": self.__drawTrackBar,
-            "spots": self.__drawTrackSpot
+            "spot": self.__drawTrackSpot
             }
 
         self.delta = self.rbp - self.lbp
@@ -122,8 +124,8 @@ class gDraw:
 
         # blank the screen:
         self.__setPenColour(opt.graphics.screen_colour)
-        ctx.rectangle(0,0,self.fullw,self.h)
-        ctx.fill()
+        self.ctx.rectangle(0,0,self.fullw,self.h)
+        self.ctx.fill()
 
         if opt.draw.double_lines_for_genome:
             self.__drawChr(None)
@@ -142,16 +144,18 @@ class gDraw:
                 "name": track["data"].name}
 
             if track["type"] == "graph":
-                draw_data["array"] = track["data"].get_array(location(loc=self.curr_loc), resolution=self.bps_per_pixel, read_extend=150)
+                draw_data["array"] = track["data"].get_data("graph", location(loc=self.curr_loc), resolution=self.bps_per_pixel, read_extend=150)
             elif track["type"] == "bar":
-                draw_data["array"] = track["data"].get_array(location(loc=self.curr_loc), resolution=self.bps_per_pixel, read_extend=150)
+                draw_data["array"] = track["data"].get_data("bar", location(loc=self.curr_loc), resolution=self.bps_per_pixel, read_extend=150)
             elif track["type"] == "spot":
-                draw_data["array"] = track["data"].get_array(location(loc=self.curr_loc), resolution=self.bps_per_pixel, read_extend=150)
+                draw_data["array"] = track["data"].get_data("spot", location(loc=self.curr_loc))
 
             # and draw:
             draw_modes_dict[draw_data["type"]](draw_data)
 
         self.__drawRuler()
+        if opt.draw.scale_bar:
+            self.__drawScaleBar()
 
         # any further (internal) drawing goes here.
         if opt.debug.draw_collision_boxes: self.__debug_draw_col_boxes()
@@ -308,6 +312,33 @@ class gDraw:
         self.ctx.set_line_width(1.5)
         self.ctx.stroke()
 
+    def __drawScaleBar(self):
+        """
+        draw a scale bar to the next 000'th
+        """
+        # work out most relevant n'000
+        # how many bp does 20% of the display take up?
+        percent = round(self.delta * 0.2)
+        # find the closest 10, 100, 1000 ...
+
+        # guess the best scale describing 20% of the view
+        best = 0
+        res = []
+        minim = 1000000000
+        for i, v in enumerate([10, 100, 1000, 10000, 100000, 1000000, 10000000]):
+            if minim > abs(percent - v):
+                minim = abs(percent - v)
+                best = v
+
+        posLeft = self.__realToLocal(self.rbp-best, -40)
+        posRight = self.__realToLocal(self.rbp, -40)
+
+        self.ctx.set_line_width(1)
+        self.ctx.move_to(posLeft[0]-20, posLeft[1]) # move 20px arbitrarily left
+        self.ctx.line_to(posRight[0]-20, posRight[1])
+        self.ctx.stroke()
+        self.__drawText(posLeft[0], posRight[1]-5, opt.graphics.font, "%sbp" % best)
+
     def __drawRuler(self):
         """
         draw the ruler.
@@ -324,8 +355,9 @@ class gDraw:
 
         a = round(self.delta, 1) # get the nearest 1XXXXX .. XXX
 
+
         # ten thousands
-        for index, window_size in enumerate([a/100, a/10, a]):
+        for index, window_size in enumerate([int(a/100), int(a/10), int(a)]):
 
             nearest = int(math.ceil(float(self.lbp+1) / window_size) * window_size)
             self.ctx.set_line_width(opt.ruler.line_width * index+0.5)
@@ -367,7 +399,39 @@ class gDraw:
             returns the actual filename used to save.
             and a file saved in filename
         """
-        pass
+        # guess the maximum height required:
+        guess_height = abs(self.tracks[-1]["track_location"]) + opt.track.height_px[self.tracks[-1]["type"]] + opt.ruler.height_px + 30 + 32 # 32 is the 'chromosome %s' padding, 30 is some other padding I'm not really certain where it comes from...
+
+        surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, 1024, guess_height)
+        ctx = cairo.Context(surface)
+
+        # preserve view variables
+        oldw = self.w
+        oldh = self.h
+        oldfullw = self.fullw
+
+        self.w = 1024
+        self.fullw = 1024 # no bar side buttons
+        self.h = guess_height
+
+        # forceRedraw onto my surface.
+        self.OnPaint(None, ctx)
+
+        # save image
+        actual_filename = filename
+        filehandle = open(actual_filename, "wb")
+        surface.write_to_png(filehandle)
+        filehandle.close()
+
+        # put back the gDraw view values.
+        self.w = oldw
+        self.h = oldh
+        self.fullw = oldfullw
+
+        # clean ups
+        del ctx
+        del surface
+        return(actual_filename)
 
     def getPanel(self):
         """
@@ -466,7 +530,7 @@ class gDraw:
         self.ctx.stroke()
         self.__drawText(0, loc[1] - 15 , opt.graphics.font, track_data["name"])
 
-    def __drawTrackSpot(self, track_data):
+    def __drawTrackSpot(self, track_data, **kargs):
         """
         **Arguments**
             track_data
@@ -475,7 +539,33 @@ class gDraw:
             colour
                 a float colour (r, g, b, [a]), ranging 0..1
         """
-        pass
+        self.__drawTrackBackground(track_data["track_location"], "spot")
+
+        sc = self.__realToLocal(0, track_data["track_location"])
+
+        self.__setPenColour((1,1,1))
+        self.ctx.rectangle(0, sc[1]-(opt.track.spot_pixel_radius*3), self.w, (opt.track.spot_pixel_radius*2)-2) # 30 = half genomic track size
+        self.ctx.fill()
+
+        colour = opt.track.spot_default_colour
+        if "colour" in kargs:
+            colour = kargs["colour"]
+        self.__setPenColour(colour)
+
+        for item in track_data["array"]:
+            if opt.track.spot_shape == "circle":
+                centre_point = (item["left"] + item["right"]) / 2
+                sc = self.__realToLocal(centre_point, track_data["track_location"])
+                self.ctx.arc(sc[0], sc[1]-(opt.track.spot_pixel_radius * 2), opt.track.spot_pixel_radius, 0, 2 * math.pi)
+            elif opt.track.spot_shape == "triangle":
+                pass
+
+        if opt.track.spot_filled:
+            self.ctx.fill()
+        else:
+            self.ctx.stroke()
+
+        self.__drawText(0, sc[1]-17 , opt.graphics.font, track_data["name"])
 
     def __drawText(self, x, y, font, text, size=12, colour=(0,0,0), style=None):
         """

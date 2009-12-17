@@ -7,14 +7,23 @@ Not for distribution.
 
 """
 
-import wx
+import wx, profile
 
+import opt, sys
 from gui import cfApp
 
 # genome and thread set-up's here;
 
-app = cfApp()
-app.MainLoop()
+if not opt.debug.profile:
+    app = cfApp()
+    app.MainLoop()
+else:
+    import cProfile, pstats
+    app = cfApp()
+    cProfile.run("app.MainLoop()", "profile.pro")
+    sys.stdout = open("log.log", "w")
+    p =  pstats.Stats("profile.pro")
+    p.strip_dirs().sort_stats("time").print_stats()
 
 """
 TODO:
