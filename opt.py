@@ -68,6 +68,10 @@ class graphics:
 
     right_border_width = 20 # in pixels, size of rightmost click border.
 
+    # gene arrow
+    arrow_width_px = 4
+    arrow_height_px = 4
+
 class draw:
     """
     drawing options
