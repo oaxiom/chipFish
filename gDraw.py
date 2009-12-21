@@ -325,7 +325,19 @@ class gDraw:
         best = 0
         res = []
         minim = 1000000000
-        for i, v in enumerate([10, 100, 1000, 10000, 100000, 1000000, 10000000]):
+
+        scales_and_labels = {10: "10bp",
+            100: "100bp",
+            1000: "1kbp",
+            10000: "10kbp",
+            100000: "100kbp",
+            1000000: "1Mbp",
+            10000000: "10Mbp",
+            100000000: "100Mbp", # Human chr 1 is 250Mbp.
+            1000000000: "1000Mbp" # Just in case there are some wierd genomes.
+            }
+
+        for i, v in enumerate(scales_and_labels):
             if minim > abs(percent - v):
                 minim = abs(percent - v)
                 best = v
@@ -333,11 +345,20 @@ class gDraw:
         posLeft = self.__realToLocal(self.rbp-best, -40)
         posRight = self.__realToLocal(self.rbp, -40)
 
-        self.ctx.set_line_width(1)
+        self.ctx.set_line_width(0.5)
         self.ctx.move_to(posLeft[0]-20, posLeft[1]) # move 20px arbitrarily left
         self.ctx.line_to(posRight[0]-20, posRight[1])
         self.ctx.stroke()
-        self.__drawText(posLeft[0], posRight[1]-5, opt.graphics.font, "%sbp" % best)
+
+        self.ctx.move_to(posLeft[0]-20, posLeft[1]-4) # move 20px arbitrarily left
+        self.ctx.line_to(posLeft[0]-20, posLeft[1]+4)
+        self.ctx.stroke()
+
+        self.ctx.move_to(posRight[0]-20, posRight[1]-4) # move 20px arbitrarily left
+        self.ctx.line_to(posRight[0]-20, posRight[1]+4)
+        self.ctx.stroke()
+
+        self.__drawText(posLeft[0], posRight[1]-5, opt.graphics.font, scales_and_labels[best])
 
     def __drawRuler(self):
         """
@@ -652,23 +673,23 @@ class gDraw:
         if data["strand"] == "+": # top strand
             loc = self.__realToLocal(data["loc"]["left"], 0)
             # arrow.
-            self.ctx.move_to(loc[0]+10, loc[1]-20)
-            self.ctx.line_to(loc[0]+10, loc[1]-30)
-            self.ctx.line_to(loc[0]+20, loc[1]-20)
-            self.ctx.line_to(loc[0]+10, loc[1]-10)
-            self.ctx.line_to(loc[0]+10, loc[1]-20)
-            self.ctx.stroke()
-            self.__drawText(loc[0], loc[1]-25, "Arial", data["name"], 12)
+            self.ctx.move_to(loc[0], loc[1]-20)
+            self.ctx.line_to(loc[0], loc[1]-20-opt.graphics.arrow_height_px)
+            self.ctx.line_to(loc[0]+opt.graphics.arrow_width_px, loc[1]-20)
+            self.ctx.line_to(loc[0], loc[1]-20+opt.graphics.arrow_height_px)
+            self.ctx.line_to(loc[0], loc[1]-20)
+            self.ctx.fill()
+            self.__drawText(loc[0]+opt.graphics.arrow_width_px+3, loc[1]-20+opt.graphics.arrow_height_px, "Arial", data["name"], 12)
         elif data["strand"] == "-":
             loc = self.__realToLocal(data["loc"]["right"], 0)
             # arrow.
-            self.ctx.move_to(loc[0]-10, loc[1]+20)
-            self.ctx.line_to(loc[0]-10, loc[1]+30)
-            self.ctx.line_to(loc[0]-20, loc[1]+20)
-            self.ctx.line_to(loc[0]-10, loc[1]+10)
-            self.ctx.line_to(loc[0]-10, loc[1]+20)
-            self.ctx.stroke()
-            self.__drawText(loc[0], loc[1]+25, "Arial", data["name"], 12)
+            self.ctx.move_to(loc[0], loc[1]+20)
+            self.ctx.line_to(loc[0], loc[1]+20-opt.graphics.arrow_height_px)
+            self.ctx.line_to(loc[0]-opt.graphics.arrow_width_px, loc[1]+20)
+            self.ctx.line_to(loc[0], loc[1]+20+opt.graphics.arrow_height_px)
+            self.ctx.line_to(loc[0], loc[1]+20)
+            self.ctx.fill()
+            self.__drawText(loc[0]+opt.graphics.arrow_width_px+3, loc[1]+20+opt.graphics.arrow_height_px, "Arial", data["name"], 12)
         else:
             raise ErrorInvalidGeneDefinition
 
