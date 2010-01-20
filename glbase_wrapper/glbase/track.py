@@ -190,8 +190,6 @@ class track:
             an 'numpy.array([0, 1, 2 ... n])' contiginous array
             or a tuple containing two arrays, one for each strand.
         """
-        if strand: raise NotImplementedError
-
         # check if the array is already on the cache.
         extended_loc = location(loc=str(loc)) # this should be fixed in a later version of glbase...
         extended_loc.expand(read_extend) # this behaviour may not work in a future version?
@@ -206,20 +204,27 @@ class track:
         # make a single array
         a = zeros(int( (loc["right"]-loc["left"]+resolution)/resolution ))
 
+        # work out and standardise strand:
+        if strand:
+            if strand in positive_strand_labels:
+                strand = positive_strand_labels
+            elif strand in negative_strand_labels:
+                strand = negative_strand_labels
+
         for r in reads:
+            if not strand or strand and r[2] in strand:
+                if r[2] in positive_strand_labels:
+                    read_left = r[0]
+                    read_right = r[1] + read_extend
+                elif r[2] in negative_strand_labels:
+                    read_left = r[0] - read_extend
+                    read_right = r[1]
 
-            if r[2] in positive_strand_labels:
-                read_left = r[0]
-                read_right = r[1] + read_extend
-            elif r[2] in negative_strand_labels:
-                read_left = r[0] - read_extend
-                read_right = r[1]
+                for rloc in xrange(read_left, read_right, int(resolution)):
+                    array_relative_location = int((rloc - read_extend - loc["left"]) / resolution) # convert relative to the array
 
-            for rloc in xrange(read_left, read_right, int(resolution)):
-                array_relative_location = int((rloc - read_extend - loc["left"]) / resolution) # convert relative to the array
-
-                if array_relative_location >= 0 and array_relative_location < len(a): # within array
-                    a[array_relative_location] += 1
+                    if array_relative_location >= 0 and array_relative_location < len(a): # within array
+                        a[array_relative_location] += 1
 
         return(a)
 
@@ -301,35 +306,27 @@ class track:
             loc (Required)
                 a valid location or string location.
 
-            strand (Optional, default = 'None', ie. collect both strands)
-                collect only one strands data. specify + or - strand and
-                return only seq reads on that strand.
-
         **Returns**
             a list containing all of the reads between loc.
         """
-        if strand: raise NotImplementedError
-
         if not self.__c:
             self.__c = self.__connection.cursor()
 
         table_name = "chr_%s" % loc["chr"]
 
-        if not strand:
-            # ~4.11 s 946 reads
-            self.__c.execute("SELECT * FROM %s WHERE (?>=left AND ?<=right) OR (?>=left AND ?<=right) OR (left<=? AND right>=?) OR (?<=left AND ?>=right)" % table_name,
-                (loc["left"], loc["left"], loc["right"], loc["right"], loc["left"], loc["right"], loc["left"], loc["right"]))
-            #self.__c.execute("SELECT left, right, strand FROM %s WHERE (left<=? AND right>=?) OR (?<=left AND ?>=right) OR (?>=left AND ?<=right) OR (?>=left AND ?<=right)" % table_name,
-            #    (loc["left"], loc["right"], loc["left"], loc["right"], loc["left"], loc["left"],loc["right"], loc["right"]))
-            # pseudo code:
-            # if left - dbright < 0 and :
-            #span = loc["right"] - loc["left"]
-            #self.__c.execute("SELECT left, right, strand FROM %s WHERE (?-left > -1 AND ?-left<?) OR (?-right>-1 AND ?-right<?)" % table_name,
-            #    (loc["right"], loc["right"], span, loc["left"], loc["left"], span))
-        else:
-            pass
+        # ~4.11 s 946 reads
+        self.__c.execute("SELECT * FROM %s WHERE (?>=left AND ?<=right) OR (?>=left AND ?<=right) OR (left<=? AND right>=?) OR (?<=left AND ?>=right)" % table_name,
+            (loc["left"], loc["left"], loc["right"], loc["right"], loc["left"], loc["right"], loc["left"], loc["right"]))
+        #self.__c.execute("SELECT left, right, strand FROM %s WHERE (left<=? AND right>=?) OR (?<=left AND ?>=right) OR (?>=left AND ?<=right) OR (?>=left AND ?<=right)" % table_name,
+        #    (loc["left"], loc["right"], loc["left"], loc["right"], loc["left"], loc["left"],loc["right"], loc["right"]))
+        # pseudo code:
+        # if left - dbright < 0 and :
+        #span = loc["right"] - loc["left"]
+        #self.__c.execute("SELECT left, right, strand FROM %s WHERE (?-left > -1 AND ?-left<?) OR (?-right>-1 AND ?-right<?)" % table_name,
+        #    (loc["right"], loc["right"], span, loc["left"], loc["left"], span))
 
         result = self.__c.fetchall()
+
         return(result)
 
     def finalise(self):

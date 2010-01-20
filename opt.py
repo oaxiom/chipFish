@@ -97,7 +97,10 @@ class track:
     """
     options for the tracks
     """
-    height_px = {"graph": 150, "bar": 30, "spot": 30} # height's of the tracks in pixels.
+    height_px = {"graph": 150,
+        "graph_split_strand": 150, # same as graph
+        "bar": 30,
+        "spot": 30} # height's of the tracks in pixels.
     genome_base_offset = 60 # offset from the genome track to the first track.
     spot_pixel_radius = 4
     spot_default_colour = (0.8, 0.1, 0.1)

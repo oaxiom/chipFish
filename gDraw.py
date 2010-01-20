@@ -11,15 +11,13 @@ NOTES:
     at the moment a lot of interface code is spilling
     over into gDraw. needs to be split into a strictly drawing backend,
     and an interface class. Actually, why? Cairo is mature...
-. gDraw is a wrapper for whatever vector-draw backend is in use.
-. The vector back-end is not normally available outside of gDraw as its
-    implementation is likely to change.
-. only gDraw external procedures are valid.
-. procedures prefixed with _ and __ are undocumented, internal and liable to change.
-  (semi-private and private classes)
-. make a set of drawing primitives in case we need to swap out the back renderer
-    some time in the future.
-. We're currently using the 'toy' text-rendering API.
+
+. I think this needs to be split further than 2.
+    gDraw should conatain the gui draw interface, and the actual drawing primitives __draw* moved into a
+    _draw module.
+
+. gDraw is the only location to use cairo... Actually, why restrict this? gDraw is getting far too big...
+. Currently using the 'toy' text-rendering API.
     Is this adequate for our needs?
     - will only render UTF-8 fonts... Anything else requried?
     that rules out greek symbols, Chinese, Cyrillic etc...? Right?
@@ -109,6 +107,7 @@ class gDraw:
             "lncRNA": self.__drawGene,
             "microRNA": self.__drawGene,
             "graph": self.__drawTrackGraph,
+            "graph_split_strand": self.__drawTrackGraph_split_strand,
             "bar": self.__drawTrackBar,
             "spot": self.__drawTrackSpot
             }
@@ -136,7 +135,7 @@ class gDraw:
         for item in genome_items:
             draw_modes_dict[item["type"]](item)
 
-        # draw the tracks:
+        # collect the data for the tracks and draw them on the screen.
         for track in self.tracks:
             # basic data:
             draw_data = {"type": track["type"],
@@ -144,11 +143,16 @@ class gDraw:
                 "name": track["data"].name}
 
             if track["type"] == "graph":
-                draw_data["array"] = track["data"].get_data("graph", location(loc=self.curr_loc), resolution=self.bps_per_pixel, read_extend=150)
+                draw_data["array"] = track["data"].get_data("graph", location(loc=self.curr_loc),
+                    resolution=self.bps_per_pixel, read_extend=150)
             elif track["type"] == "bar":
-                draw_data["array"] = track["data"].get_data("bar", location(loc=self.curr_loc), resolution=self.bps_per_pixel, read_extend=150)
+                draw_data["array"] = track["data"].get_data("bar", location(loc=self.curr_loc),
+                    resolution=self.bps_per_pixel, read_extend=150)
             elif track["type"] == "spot":
                 draw_data["array"] = track["data"].get_data("spot", location(loc=self.curr_loc))
+            elif track["type"] == "graph_split_strand":
+                draw_data["array"] = track["data"].get_data("graph", location(loc=self.curr_loc),
+                    strand=True, resolution=self.bps_per_pixel, read_extend=150)
 
             # and draw:
             draw_modes_dict[draw_data["type"]](draw_data)
@@ -551,6 +555,77 @@ class gDraw:
         self.ctx.stroke()
         self.__drawText(0, loc[1] - 15 , opt.graphics.font, track_data["name"])
 
+    def __drawTrackGraph_split_strand(self, track_data, scaled=True, min_scaling=100):
+        """
+        **Purpose**
+            Similar to Graph, but draws the track into a top strand and a bottom strand.
+            Although I could do this by generalising __drawTrackGraph() I feel it makes more
+            sense not to re-use the code.
+
+        **Arguments**
+            track_data
+                must be a dictionary of the form {"+": array(), "-": array()}
+                where the arrays are iterables containing x bp resolution
+                data.
+
+            scaled (True|False)
+                scale the data vertically for the available track
+                height?
+
+            min_scaling
+                only works if scaled = True,
+                sets it so that a height of 1 is not expanded to the
+                full height of the track. Instead the track will be scaled to
+                this value as a minimum.
+        """
+        assert "+" in track_data["array"], "__splitgraph data is missing + strand"
+        assert "-" in track_data["array"], "__splitgraph data is missing - strand"
+
+        half_way_point = opt.track.height_px["graph"] / 2
+
+        if scaled:
+            track_max = max([max(track_data["array"]["+"]), max(track_data["array"]["-"])])
+
+            if min_scaling and track_max < min_scaling:
+                scaling_value = min_scaling / float(half_way_point)
+            else:
+                scaling_value = track_max / float(half_way_point)
+            # only works if numpy array?
+            new_f_array = track_data["array"]["+"] / scaling_value # okay numpy can be sweet
+            new_r_array = track_data["array"]["-"] / scaling_value # okay numpy can be sweet
+        else:
+            new_f_array = track_data["array"]["+"]
+            new_r_array = track_data["array"]["-"]
+
+        self.__drawTrackBackground(track_data["track_location"], "graph")
+
+        for i, s in enumerate([new_f_array, new_r_array]):
+            # + strand:
+            if i == 0:
+                self.__setPenColour( (0.8,0,0) )
+            elif i == 1:
+                self.__setPenColour( (0,0,0.8) )
+            self.ctx.set_line_width(0.5)
+            coords = []
+            lastpx = -1
+            for index, value in enumerate(s):
+                loc = self.__realToLocal(self.lbp + index, track_data["track_location"])
+                # get the middle:
+                middle = loc[1] - half_way_point
+                if i == 0:
+                    coords.append( (index, middle + value)) # +30 locks it to the base of the track
+                elif i == 1:
+                    coords.append( (index, middle - value)) # +30 locks it to the base of the track
+
+            self.ctx.move_to(coords[0][0], coords[0][1]) # start x,y
+            for index, item in enumerate(coords):
+                self.ctx.line_to(item[0], item[1])
+            self.ctx.stroke()
+
+        # - strand
+
+        self.__drawText(0, loc[1] - 15 , opt.graphics.font, track_data["name"])
+
     def __drawTrackSpot(self, track_data, **kargs):
         """
         **Arguments**
@@ -778,11 +853,13 @@ class gDraw:
 
     def isColliding(self, x, y):
         """
+        this shouldn't be here?
+
         returns a collision type (see boundbox)
         or FALSE
         """
         for box in self.colBoxes:
-            c = box.collideB()
+            c = box.collideB((x,y))
             if c:
                 print c["type"]
                 return(c["type"])

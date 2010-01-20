@@ -75,7 +75,7 @@ class cfApp(wx.App):
         #self.draw.bindTrack(peaklist(filename="../../Final Peak Lists/ESNanog_peaks.csv", format=format_chip_lists))
         #self.draw.bindTrack(peaklist(filename="../../Final Peak Lists/ESKlf4_peaks.csv", format=format_chip_lists))
         #self.draw.bindTrack(peaklist(filename="../../Final Peak Lists/ESp300_peaks.csv", format=format_chip_lists))
-        #self.draw.bindTrack(track(filename="data/NSMash1_new.trk", name="NS5 Mash1 ChIP-seq"))
+        self.draw.bindTrack(track(filename="data/NSMash1_new.trk", name="NS5 Mash1 ChIP-seq"))
         #self.draw.bindTrack(track(filename="data/SpMash1_new.trk", name="Spinal Cord Mash1 ChIP-seq"))
         #self.draw.bindTrack(track(filename="data/TcMash1_new.trk", name="Telencephalon Mash1 ChIP-seq"))
         #self.draw.bindTrack(track(filename="data/NS_H3K4me3.trk", name="NS5 H3K4me3"))
