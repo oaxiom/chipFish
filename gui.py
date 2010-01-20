@@ -14,12 +14,15 @@ TODO:
 
 import math, sys, time
 
+sys.path.append("locale/")
+
 import opt, gDraw, glbase_wrapper
 
 from error import *
 from bookmarks import bookmarks
 from data import *
 from userconfig import userconfig
+from localisation import locale
 
 import wx
 from wx import xrc
@@ -48,15 +51,23 @@ class cfApp(wx.App):
         Main entry point for chipFish.
         """
         # errors should be put into a log;
-        #sys.stderr = self # silence errors.
-        #sys.stdout = self
+        if not opt.generic.debug:
+            sys.stderr = self # silence errors.
+            sys.stdout = self
+
         print "chipFish (c) 2009, oAxiom, %s" % (time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())) # log.
+
+        #load locale:
+        self.locale = locale("en-gb")
 
         # load the gui
         self.res = xrc.XmlResource('gui_parent.xrc')
 
         # load the mainFrame
         self.main = self.res.LoadFrame(None, "mainFrame")
+
+        # load the locale into the gui:
+        self.locale.load_main_gui(self.main)
 
         # --------------------------------------------------------------
         # These are user state variables, currently hard coded
@@ -154,7 +165,7 @@ class cfApp(wx.App):
         (Interal)
         Deal with mouse down presses
         """
-        pass
+        print "mouse down"
 
     def __mouseLeftUp(self, event):
         """
