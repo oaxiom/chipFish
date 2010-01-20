@@ -23,8 +23,8 @@ class track(glbase.track):
     # descriptions, text for localisation
     __doc__ = "Overriden: Not Present"
     __tooltype__ = "Vanilla track"
-    _default_draw_type = "graph"
-    _available_draw_types = ("graph", "bar")
+    _default_draw_type = "graph_split_strand"
+    _available_draw_types = ("graph", "graph_split_strand", "bar")
 
     def get_data(self, type, loc, strand=None, resolution=1, **kargs):
         """
@@ -37,16 +37,21 @@ class track(glbase.track):
             loc
                 location span to get the array for.
 
-            strand (Not supported)
+            strand (True|False)
+                If true return a dictionary {"+": array(), "-": array()}
 
             resolution
                 the bp resolution to use for the array.
 
         **Results**
-            returns a Numpy array.
+            returns a Numpy array, or a dictionary.
         """
         if type in self._available_draw_types:
-            return(self.get_array(loc, strand, resolution, **kargs))
+            if not strand:
+                return(self.get_array(loc, resolution=resolution, **kargs))
+            else:
+                return({"+": self.get_array(loc, resolution=resolution, strand="+"),
+                    "-": self.get_array(loc, resolution=resolution, strand="-")})
         raise AssertionError, "draw mode not available"
 
     # gui stuff.
