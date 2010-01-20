@@ -36,7 +36,7 @@ import opt
 
 from error import *
 from constants import *
-from boundbox import bBox
+from boundbox import bbox
 from operator import itemgetter
 from glbase_wrapper import location
 from data import *
@@ -119,7 +119,7 @@ class gDraw:
         self.curr_loc = location(chr=self.chromosome, left=self.lbp, right=self.rbp)
 
         # kill all the colission boxes
-        self.colBoxes = []
+        self.__col_boxs = []
 
         # blank the screen:
         self.__setPenColour(opt.graphics.screen_colour)
@@ -155,9 +155,13 @@ class gDraw:
                     strand=True, resolution=self.bps_per_pixel, read_extend=150)
 
             # and draw:
-            draw_modes_dict[draw_data["type"]](draw_data)
+            colbox = draw_modes_dict[draw_data["type"]](draw_data)
 
-        self.__drawRuler()
+            # add a collision item if
+            if colbox:
+                self.__col_boxs.append(bbox(colbox, track, "track"))
+
+        self.__col_boxs.append(bbox(self.__drawRuler(), None, "ruler"))
         if opt.draw.scale_bar:
             self.__drawScaleBar()
 
@@ -172,10 +176,9 @@ class gDraw:
 
         set me in opt.debug
         """
-        self._setPenColour((0.6, 0.2, 0, 0.5))
-        for box in self.colBoxes:
-            dim = box.getDimensions()
-            self.ctx.rectangle(dim[0], dim[1], dim[2], dim[3])
+        self.__setPenColour((0.6, 0.2, 0, 0.3))
+        for box in self.__col_boxs:
+            self.ctx.rectangle(*box.get_dimensions())
             self.ctx.fill()
         self.ctx.stroke()
 
@@ -380,7 +383,6 @@ class gDraw:
 
         a = round(self.delta, 1) # get the nearest 1XXXXX .. XXX
 
-
         # ten thousands
         for index, window_size in enumerate([int(a/100), int(a/10), int(a)]):
 
@@ -395,9 +397,7 @@ class gDraw:
                 if index == 1: # write numbers at 1/10 scale.
                     self.__drawText(screen_offset +2, opt.ruler.text_height, opt.ruler.font, str(real_offset), opt.ruler.font_size)
 
-        # set up the bounding box.
-        self.colBoxes.append(bBox((0,0,self.w, opt.ruler.text_height), (0,0), None, None))
-        return(True)
+        return((0,0,self.w, opt.ruler.text_height)) # return the colbox
 
     def exportImage(self, filename, type=None):
         """
@@ -508,6 +508,7 @@ class gDraw:
         base_loc = self.__realToLocal(0, track_location)
         self.ctx.rectangle(0, base_loc[1]-opt.track.height_px[track_type], self.w, opt.track.height_px[track_type]-2) # 30 = half genomic track size
         self.ctx.fill()
+        return( (0, base_loc[1]-opt.track.height_px[track_type], self.w, opt.track.height_px[track_type]-2) )
 
     def __drawTrackGraph(self, track_data, scaled=True, min_scaling=100):
         """
@@ -537,7 +538,7 @@ class gDraw:
         else:
             new_array = track_data["array"]
 
-        self.__drawTrackBackground(track_data["track_location"], "graph")
+        colbox = self.__drawTrackBackground(track_data["track_location"], "graph")
         self.__setPenColour( (0,0,0) )
         self.ctx.set_line_width(0.5)
         coords = []
@@ -550,10 +551,13 @@ class gDraw:
             coords.append( (index, loc[1] - value)) # +30 locks it to the base of the track
 
         self.ctx.move_to(coords[0][0], coords[0][1]) # start x,y
-        for index, item in enumerate(coords):
+        for item in coords:
             self.ctx.line_to(item[0], item[1])
+
         self.ctx.stroke()
         self.__drawText(0, loc[1] - 15 , opt.graphics.font, track_data["name"])
+
+        return(colbox)# collision box dimensions
 
     def __drawTrackGraph_split_strand(self, track_data, scaled=True, min_scaling=100):
         """
@@ -597,7 +601,7 @@ class gDraw:
             new_f_array = track_data["array"]["+"]
             new_r_array = track_data["array"]["-"]
 
-        self.__drawTrackBackground(track_data["track_location"], "graph")
+        colbox = self.__drawTrackBackground(track_data["track_location"], "graph")
 
         for i, s in enumerate([new_f_array, new_r_array]):
             # + strand:
@@ -625,6 +629,7 @@ class gDraw:
         # - strand
 
         self.__drawText(0, loc[1] - 15 , opt.graphics.font, track_data["name"])
+        return(colbox)
 
     def __drawTrackSpot(self, track_data, **kargs):
         """
@@ -635,7 +640,7 @@ class gDraw:
             colour
                 a float colour (r, g, b, [a]), ranging 0..1
         """
-        self.__drawTrackBackground(track_data["track_location"], "spot")
+        colbox = self.__drawTrackBackground(track_data["track_location"], "spot")
 
         sc = self.__realToLocal(0, track_data["track_location"])
 
@@ -662,6 +667,7 @@ class gDraw:
             self.ctx.stroke()
 
         self.__drawText(0, sc[1]-17 , opt.graphics.font, track_data["name"])
+        return(colbox)
 
     def __drawText(self, x, y, font, text, size=12, colour=(0,0,0), style=None):
         """
@@ -804,7 +810,7 @@ class gDraw:
         posLeft = self.__realToLocal(self.lbp, track_data["track_location"])
         posRight = self.__realToLocal(self.rbp, track_data["track_location"])
 
-        self.__drawTrackBackground(track_data["track_location"], "bar")
+        colbox = self.__drawTrackBackground(track_data["track_location"], "bar")
 
         self.ctx.set_line_width(10)
 
@@ -836,6 +842,7 @@ class gDraw:
         self.ctx.stroke()
 
         self.__drawText(0, posRight[1]-17 , opt.graphics.font, track_data["name"])
+        return(colbox)
 
     def __setPenColour(self, colour):
         """

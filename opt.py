@@ -20,6 +20,7 @@ class generic:
     """
     some very generic options and constants.
     """
+    debug = True
     app_path = sys.path[0]
     VERSION = "0.1"
 
@@ -43,11 +44,7 @@ class debug:
     containers for debugging options.
     """
     profile = False
-    debug_version = False
-    if debug_version:
-        draw_collision_boxes = True
-    else:
-        draw_collision_boxes = False
+    draw_collision_boxes = True
 
 class graphics:
     """

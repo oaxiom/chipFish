@@ -1,0 +1,17 @@
+#
+# Prototype localisation folder.
+# Language is a simple tsv file. #'s mark comments
+#
+AppName	chipFish
+
+# main form gui definitions:
+butZoomIn	Zoom In
+butZoomOut	Zoom Out
+butGoToLoc	Go To
+butChrUp	Next
+butChrDown	Prev
+
+# these are menu elements:
+file	File
+about	About chipFish
+help	Help
