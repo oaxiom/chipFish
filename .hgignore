@@ -1,0 +1,11 @@
+syntax: glob
+*.pyc
+*~
+*.png
+*.trk
+*.glb
+*.csv
+*.tsv
+*.log
+*.pro
+*.bed
