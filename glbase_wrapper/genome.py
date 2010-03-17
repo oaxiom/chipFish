@@ -29,6 +29,7 @@ class genome(glbase.genome):
         retrieve all features between location.
 
         (To move into glbase proper?)
+        Yeah, this is now in glbase as genome.getFeatures(self, location, **kargs)
         """
         ret = []
         if self.dataByChr.has_key(location["chr"]):

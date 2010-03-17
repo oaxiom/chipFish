@@ -44,7 +44,7 @@ class debug:
     containers for debugging options.
     """
     profile = False
-    draw_collision_boxes = True
+    draw_collision_boxes = False
 
 class graphics:
     """
@@ -84,7 +84,7 @@ class ruler:
     options specific to the genome ruler.
     """
     font = "Arial"
-    font_size = 6
+    font_size = 10
     height_px = 10 # height of ruler in pixels.
     text_height = 10 # distance from top of screen of the ruler text.
     colour = (0,0,0)

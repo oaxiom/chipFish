@@ -5,6 +5,8 @@ userconfig.py
 os-specific dealing with paths for local storage of config and data
 on a per-user basis.
 
+The loading and saving of items is only partially started.
+
 """
 
 import sys, os, platform
@@ -57,10 +59,18 @@ class userconfig:
                 raise ErrorUserDataNotFound
 
     def __win(self):
+        """
+        I don't have a windows machine.
+        """
         return("")
 
     def __mac(self):
-        return("")
+        """
+        (Internal)
+        As far as I can tell, best practice on MacOSX is identical to
+        posix
+        """
+        self.__posix()
 
     def __str__(self):
         """

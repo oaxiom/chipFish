@@ -23,7 +23,7 @@ class track(glbase.track):
     # descriptions, text for localisation
     __doc__ = "Overriden: Not Present"
     __tooltype__ = "Vanilla track"
-    _default_draw_type = "graph_split_strand"
+    _default_draw_type = "graph"
     _available_draw_types = ("graph", "graph_split_strand", "bar")
 
     def get_data(self, type, loc, strand=None, resolution=1, **kargs):
