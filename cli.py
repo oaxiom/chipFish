@@ -3,7 +3,7 @@
 This is a cli interface into chipfish.
 
 I had to make this as the python bindings for wxwidgets failed to build
-so I needed a way to output the images.
+on the Mac, so I needed a way to output the images.
 
 This is ripped out of gDraw and others.
 
@@ -778,7 +778,7 @@ class cfApp:
         #self.draw.bindTrack(peaklist(filename="../../Final Peak Lists/ESSox2_peaks.csv", format=format_chip_lists))
         #self.draw.bindTrack(peaklist(filename="../../Final Peak Lists/ESOct4_peaks.csv", format=format_chip_lists))
         self.draw.bindTrack(track(filename="../Tracks/ES_H3K4me3.trk", name="H3K4me3"))
-        self.draw.bindTrack(track(filename="../Tracks/ES_H3K27me3.trk", name="H3K27me3"))
+        #self.draw.bindTrack(track(filename="../Tracks/ES_H3K27me3.trk", name="H3K27me3"))
         self.draw.bindTrack(track(filename="../Tracks/NS_CTCF.trk", name="CTCF"), track_type="graph_split_strand")
         #self.draw.bindTrack(track(filename="../Tracks/ES_H3K36me3.trk", name="p300"))
         #self.draw.bindTrack(track(filename="data/TcMash1_new.trk", name="Telencephalon Mash1 ChIP-seq"))
@@ -792,24 +792,14 @@ class cfApp:
 
 if __name__ == "__main__":
     a = cfApp()
-    a.draw.setLocation(loc=location(loc="chr1:172724244-172859108"))
-    a.draw.exportImage("image_iggs.png")
+    a.draw.setLocation(loc=location(loc="chr2:105467283-105479283"))
+    a.draw.exportImage("image_pax6_-10_-2.png")
 
-    a.draw.setLocation(loc=location(loc="chr2:105097958-105654589"))
-    a.draw.exportImage("image_pax6.png")
+    a.draw.setLocation(loc=location(loc="chr4:32557563-32569563"))
+    a.draw.exportImage("image_bach2_-10_-2.png")
 
-    a.draw.setLocation(loc=location(loc="chr6:124791088-124924502"))
-    a.draw.exportImage("image_tcr.png")
+    a.draw.setLocation(loc=location(loc="chr2:105427283-105507283"))
+    a.draw.exportImage("image_pax6_-50_+30.png")
 
-    a.draw.setLocation(loc=location(loc="chr11:100623847-100834654"))
-    a.draw.exportImage("image_stat3.png")
-
-    a.draw.setLocation(loc=location(loc="chr1:132831507-132923738"))
-    a.draw.exportImage("image_il10.png")
-
-    a.draw.setLocation(loc=location(loc="chr5:65052155-65264536"))
-    a.draw.exportImage("image_tlr1.png")
-
-    a.draw.setLocation(loc=location(loc="chr11:96077601-96129467"))
-    a.draw.exportImage("image_hox.png")
-
+    a.draw.setLocation(loc=location(loc="chr4:32517563-32597563"))
+    a.draw.exportImage("image_bach2_-50_+30.png")
