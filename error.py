@@ -29,6 +29,8 @@ class AssertionError(Exception):
         An assertion or requirement for a particular method
         failed. This usually means some sort of category required
         for the method is missing.
+        This method (in contrast to a lot of other error methods) needs
+        to provide its own error message
     """
     def __init__(self, message):
         """
@@ -44,8 +46,6 @@ class AssertionError(Exception):
 class ErrorCairoDraw(Exception):
     """
     Error: Attempting to draw to a non-ready Cairo surface.
-    Attributes:
-        message - an explanation of the error.
     """
     def __init__(self):
         self.message = "Error: Attempted to draw on an uninitialised Cairo Surface."
@@ -54,9 +54,7 @@ class ErrorCairoDraw(Exception):
 
 class ErrorCairoAcquireDevice(Exception):
     """
-    Error: Attempting to draw to a non-ready Cairo surface.
-    Attributes:
-        message - an explanation of the error.
+    Error: For some reason a Cairo surface is not available
     """
     def __init__(self):
         self.message = "Error: Failed to acquire a Cairo Surface."
@@ -66,8 +64,6 @@ class ErrorCairoAcquireDevice(Exception):
 class ErrorInvalidGeneDefinition(Exception):
     """
     Error: Attempting to draw to a non-ready Cairo surface.
-    Attributes:
-        message - an explanation of the error.
     """
     def __init__(self):
         self.message = "Error: Failed to acquire a Cairo Surface."
@@ -77,8 +73,6 @@ class ErrorInvalidGeneDefinition(Exception):
 class ErrorInvalidChromosome(Exception):
     """
     Error: Invalid Chromosome name, only 1-999 and X, Y, M are valid chromsome names.
-    Attributes:
-        message - an explanation of the error.
     """
     def __init__(self):
         self.message = "Error: Invalid Chromosome name, only 1-999 and X, Y, M are valid chromsome names."
@@ -96,7 +90,9 @@ class ErrorLibrarySQLite(Exception):
 
 class ErrorUserDataNotFound(Exception):
     """
-    Error: the user data cannot be found or is otherwise mangled"
+    Error: the user data cannot be found or is otherwise mangled
+    This should be fixable? 
+    Should intelligently fail?
     """
     def __init__(self):
         self.message = "Error: The per-user data is not available or mangled."
@@ -106,6 +102,8 @@ class ErrorUserDataNotFound(Exception):
 class ErrorUserDataReadOnly(Exception):
     """
     Error: The user config is inaccesible.
+    This suggests an install screw-up.
+    The home directory ~ should be writable.
     """
     def __init__(self):
         self.message = "Error: The per-user data is read-only."

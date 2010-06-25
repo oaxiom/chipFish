@@ -61,6 +61,14 @@ class genome(glbase.genome):
             text (string, required)
                 the text string to search for
 
+            guage_object
+                a progress bar of some description with the 
+                method SetRange(). 
+                If None, the progressbar is ignored
+
+            case_sensitive (Optional, default=False)
+                treat the search as case senesitive (or not)
+
         **Returns**
             A list of dicts containing the search string
             modify a progress bar (NotImplemented)
