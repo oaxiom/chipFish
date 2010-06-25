@@ -22,9 +22,8 @@ class userconfig:
         """
         self.__userpath = os.path.expanduser("~")
 
-        func_map = {"posix": self.__posix}
-            #"win": self.__win, # these are not currently implemented.
-            #"mac": self.__mac}
+        func_map = {"posix": self.__posix,
+            "mac": self.__mac} #"win": self.__win, # not currently implemented.
 
         if os.name in func_map:
             func_map[os.name]()

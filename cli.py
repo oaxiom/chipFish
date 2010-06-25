@@ -770,16 +770,16 @@ class cfApp:
         # (In future this will load the initial state here)
         self.g = glload("../Tracks/mm8_refGene.glb")
         self.draw = gDraw(self.g) # drawer must have access to the genome
-
         format_chip_lists = {"loc": {"code": "location(loc=column[0])"}}
 
         #self.draw.bindTrack(peaklist(filename="data/Matches_ESEsrrb_esrrf_5bp_soxf.bed", format=format_bed))
         #self.draw.bindTrack(peaklist(filename="../../Final Peak Lists/ESEsrrb_peaks.csv", format=format_chip_lists))
         #self.draw.bindTrack(peaklist(filename="../../Final Peak Lists/ESSox2_peaks.csv", format=format_chip_lists))
         #self.draw.bindTrack(peaklist(filename="../../Final Peak Lists/ESOct4_peaks.csv", format=format_chip_lists))
-        self.draw.bindTrack(track(filename="../Tracks/ES_H3K4me3.trk", name="H3K4me3"))
+        #self.draw.bindTrack(track(filename="../Tracks/ES_H3K4me3.trk", name="H3K4me3"))
         #self.draw.bindTrack(track(filename="../Tracks/ES_H3K27me3.trk", name="H3K27me3"))
-        self.draw.bindTrack(track(filename="../Tracks/NS_CTCF.trk", name="CTCF"), track_type="graph_split_strand")
+        #self.draw.bindTrack(track(filename="../Tracks/NS_CTCF.trk", name="ESCTCF"), track_type="graph_split_strand")
+        #self.draw.bindTrack(track(filename="../Tracks/ESCTCF.trk", name="ESCTCF"))
         #self.draw.bindTrack(track(filename="../Tracks/ES_H3K36me3.trk", name="p300"))
         #self.draw.bindTrack(track(filename="data/TcMash1_new.trk", name="Telencephalon Mash1 ChIP-seq"))
         #self.draw.bindTrack(track(filename="data/NS_H3K4me3.trk", name="NS5 H3K4me3"))
@@ -788,18 +788,18 @@ class cfApp:
         #self.draw.bindTrack(track(filename="../Tracks/ES_H3K36me3.trk", name="H3K36me3"))
         #self.draw.bindTrack(track(filename="data/MEF_H3K4me3.trk", name="MEF H3K4me3"))
 
+        self.draw.bindTrack(track(filename="../Tracks/TCD4_naive_H3k4me3.trk", name="TCD4 Naive H3K4me3"))
+        self.draw.bindTrack(track(filename="../Tracks/TCD4_naive_H3k27me3.trk", name="TCD4 Naive H3K27me3"))
+        self.draw.bindTrack(track(filename="../Tracks/TCD4_Th1_H3k4me3.trk", name="TCD4 h1 H3K4me3"))
+        self.draw.bindTrack(track(filename="../Tracks/TCD4_Th1_H3k27me3.trk", name="TCD4 h1 H3K27me3"))
+        self.draw.bindTrack(track(filename="../Tracks/TCD4_Th2_H3k4me3.trk", name="TCD4 h2 H3K4me3"))
+        self.draw.bindTrack(track(filename="../Tracks/TCD4_Th2_H3k27me3.trk", name="TCD4 h2 H3K27me3"))
+        self.draw.bindTrack(track(filename="../Tracks/ESCTCF.trk", name="ESCTCF"))
+
         self.draw.setLocation(loc=location(loc="chr1:172724244-172859108"))
 
 if __name__ == "__main__":
     a = cfApp()
-    a.draw.setLocation(loc=location(loc="chr2:105467283-105479283"))
-    a.draw.exportImage("image_pax6_-10_-2.png")
+    a.draw.setLocation(loc=location(loc="chr19:34297300-34411085"))
+    a.draw.exportImage("../Desktop/image_Fas.png")
 
-    a.draw.setLocation(loc=location(loc="chr4:32557563-32569563"))
-    a.draw.exportImage("image_bach2_-10_-2.png")
-
-    a.draw.setLocation(loc=location(loc="chr2:105427283-105507283"))
-    a.draw.exportImage("image_pax6_-50_+30.png")
-
-    a.draw.setLocation(loc=location(loc="chr4:32517563-32597563"))
-    a.draw.exportImage("image_bach2_-50_+30.png")

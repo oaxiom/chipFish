@@ -78,7 +78,7 @@ class gDraw:
         self.lbp = 1
         self.rbp = 1000
 
-        # set up dummy values for the view
+        # set up dummy values for the view these get updated to sensible values later
         self.w = 100
         self.h = 200
 

@@ -16,6 +16,7 @@ import sys, os
 from wx import xrc
 
 supported_languages = frozenset(["en-gb"])
+language_map = {"en-gb": "Enlish (UK)", "en-us": "English (North American)", "zh-cn": "Chinese (Simplified)"}
 
 class locale:
     """
@@ -23,7 +24,8 @@ class locale:
         emulate a dictionary
     """
     def __init__(self, language):
-        assert language in supported_languages, "language: %s not currently supported" % language
+        assert language in language_map, "language type '%s' is unknown" % language
+        assert language in supported_languages, "language: %s not currently supported" % language_map[language]
 
         print "Info: Register Localisation: %s" % language
 
