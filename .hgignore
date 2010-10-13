@@ -9,3 +9,4 @@ syntax: glob
 *.log
 *.pro
 *.bed
+.DS_Store

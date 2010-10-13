@@ -2,7 +2,7 @@
 
 Initialise glbase, import all the libraries, set up the environment etc.
 
-Now requires:
+Requires:
 * numpy
 * matplotlib
 * scipy
@@ -12,7 +12,6 @@ import sys, os
 
 #-----------------------------------------------------------------------
 # Load all of the global configuration options.
-
 try:
     import config
     from errors import LibraryNotFoundError
@@ -58,14 +57,23 @@ from peaklist import peaklist
 from glglob import glglob
 from element import motif
 from track import track
+from progress import progressbar
+from pwm import pwm
+from pwms import pwms
+from ecrbase import ecrbase, tfbs_iter
+from region import region
+from realtime import realtime
 import draw # draw is available?
 import utils
 
-if not config.SILENT: print "Glbase: Version: %s, %s" % (config.VERSION, config.DATE)
+from tools.seqToTrk import seqToTrk
+
+config.log.info("\033[0;34mglbase\033[0;30m: Version: %s, %s" % (config.VERSION, config.DATE))
 
 # export all of the libraries, methods and helpers.
 __all__ = ["genelist", "flags", "microarray", "genome",
-            "taglist", "draw", "utils", "glload",
+            "taglist", "utils", "glload", "seqToTrk",
             "peaklist", "glglob", "motif", "track",
-            "location"] + dir() # in future I want to get rid of dir() and control what gets exported.
+            "progressbar", "ecrbase", "region", "realtime", "tfbs_iter",
+            "location", "pwm", "pwms"] + dir() # in future I want to get rid of dir() and control what gets exported.
 

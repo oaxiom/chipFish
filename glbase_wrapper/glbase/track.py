@@ -22,14 +22,11 @@ class track:
     """
     track definition, used for things like sequence reads across the genome
     """
-    def __init__(self, name="None", new=False, stranded=True, filename=None, array_format="i"):
+    def __init__(self, name="None", new=False, filename=None, **kargs):
         """
         **Arguments**
             name (string)
                 name for the track (defaults to filename)
-
-            stranded (True|False)
-                store one or both strands?
 
             filename (string)
                 directory location of the track file.
@@ -40,11 +37,6 @@ class track:
             self.name = name
         else:
             self.name = filename
-
-        self.array_format = array_format
-
-        self.strands = ["+"]
-        if stranded: self.strands += ["-"]
 
         # set-up the tables
         if new:
@@ -328,6 +320,33 @@ class track:
         result = self.__c.fetchall()
 
         return(result)
+
+    def get_read_count(self, loc):
+        """
+        **Purpose**
+            get the number of reads within the location specified
+
+        **Arguments**
+            loc (Required)
+                a valid location or string location.
+
+        **Returns**
+            an integer (or 0) containing the number of reads falling within
+            the location string.
+        """
+        if not self.__c:
+            self.__c = self.__connection.cursor()
+
+        table_name = "chr_%s" % loc["chr"]
+
+        self.__c.execute("SELECT * FROM %s WHERE (?>=left AND ?<=right) OR (?>=left AND ?<=right) OR (left<=? AND right>=?) OR (?<=left AND ?>=right)" % table_name,
+            (loc["left"], loc["left"], loc["right"], loc["right"], loc["left"], loc["right"], loc["left"], loc["right"]))
+
+        # this is here in the hope that in the future cursor.rowcount
+        # will be correctly supported...
+        # at the moment probably provides little or no benefit.
+
+        return(len(self.__c.fetchall()))
 
     def finalise(self):
         """

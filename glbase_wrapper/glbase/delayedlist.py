@@ -1,13 +1,7 @@
 """
 Think of me as a delayed version of geneList
 
-* the returned arrangement of
 * this is the only special case of geneList (delayed)
-* should I make this part of genelist?
-* I think this can be generalised instead to be a 'delayed' genelist, with
-  the same interface as genelist (where possible) but the data remains on the disk.
-  See the Klf_Snipper for an example where I use this
-
 """
 import sys, os, time, copy
 
@@ -19,7 +13,8 @@ from draw import draw
 from taglist import taglist
 from genelist import genelist
 from history import historyContainer
-from errors import AssertionError, NotSupportedError
+from errors import AssertionError, NotSupportedError, DelayedListError
+from location import location
 
 # try to load non-standard libs.
 try:
@@ -62,7 +57,7 @@ class delayedlist(genelist):
         if "peaklist" in kargs: gene_list = kargs["peaklist"]
         elif "genelist" in kargs: gene_list = kargs["genelist"]
         elif "microarray" in kargs: gene_list = kargs["microarray"]
-        assert kargs["loc_key"] in gene_list[0].has_key()
+        assert kargs["loc_key"] in gene_list[0]
         assert self.__iter__().next().has_key(kargs["loc_key"]) # get an item and test it
         self._optimiseData()
 
@@ -80,12 +75,16 @@ class delayedlist(genelist):
 
         assert kargs.has_key("peaklist") or kargs.has_key("genelist") or kargs.has_key("microarray"), "You must provide a genelist-like object"
         assert kargs.has_key("loc_key"), "You must provide a 'loc_key' name"
+
+        # get the genelist object:
         if kargs.has_key("peaklist"): gene_list = kargs["peaklist"]
         elif kargs.has_key("genelist"): gene_list = kargs["genelist"]
         elif kargs.has_key("microarray"): gene_list = kargs["microarray"]
-        assert gene_list[0].has_key(kargs["loc_key"])
-        assert self.__iter__().next().has_key(kargs["loc_key"]) # get an item and test it
-        self._optimiseData()
+
+        assert kargs["loc_key"] in gene_list[0]
+        assert kargs["loc_key"] in self.__iter__().next() # get an item and test it
+
+        self._optimiseData() # reset the __iter__
 
         delta = 200
         if kargs.has_key("delta"): delta = kargs["delta"]
@@ -93,13 +92,13 @@ class delayedlist(genelist):
         return(genelist.overlap(self, genelist=gene_list, loc_key=kargs["loc_key"], delta=delta, merge=True))
 
     def __len__(self):
-        return(-1) # send back a dummy length, even though it's meaningless.
+        return(0) # send back a dummy length, even though it's meaningless.
 
     def __getitem__(self, index):
         """
         (Override)
         confers a = geneList[0] behaviour
-        This is mostly broken. It returns only the very first entry,
+        This is broken. It returns only the very first entry,
         whatever 'index' is sent to it, it disregards it.
         This only continues to exist for compatability with some internal
         routines.
@@ -114,7 +113,7 @@ class delayedlist(genelist):
         make the geneList behave like a normal iterator (list)
         """
         try:
-            for index, column in enumerate(self.linearData):
+            for index, column in enumerate(self.__reader):
                 # format the data to look like a genuine entry.
                 #if self.format.has_key("debug") and self.format["debug"]:
                 #    print "%s:'%s'" % (index, column)
@@ -136,7 +135,8 @@ class delayedlist(genelist):
                                 else:
                                     d[key] = self._guessDataType(column[self.format[key]])
                 yield d
-        except:
+        except StopIteration:
+            self._optimiseData()
             raise StopIteration
 
     def _optimiseData(self):
@@ -144,20 +144,24 @@ class delayedlist(genelist):
         (Override)
         Impossible to optimise the data.
         so we just reset the entry point.
+        This makes the iterator work like you would expect:
+        a new iterator will go back to the beginning of the list.
         """
         if self.filehandle: self.filehandle.close()
 
         self.filehandle = open(self.fullpath, "rU")
         if self.format.has_key("dialect"):
-            self.linearData = csv.reader(self.filehandle, dialect=self.format["dialect"])
+            self.__reader = csv.reader(self.filehandle, dialect=self.format["dialect"])
         else:
-            self.linearData = csv.reader(self.filehandle)
+            self.__reader = csv.reader(self.filehandle)
 
         if self.format.has_key("skiplines"):
-            if self.format["skiplines"] != -1: # no skuipped klines, good to go.
-                for i, x in enumerate(self.linearData):
+            if self.format["skiplines"] != -1: # no skipped lines, good to go.
+                for i, x in enumerate(self.__reader):
                     if i == self.format["skiplines"]:
                         break
+
+        self.linearData = self.__iter__()
         return(True)
 
     def __str__(self):
@@ -172,28 +176,33 @@ class delayedlist(genelist):
         self.linearData = temp_data
         ret = genelist.__str__(self)
         self._optimiseData()
-        return("%s\r\nOnly the first %s entries are shown" %(ret, config.NUM_ITEMS_TO_PRINT-1))
+        return("%s\nThis is a delayedlist - only the first %s entries are shown" %(ret, config.NUM_ITEMS_TO_PRINT))
 
     def save(self):
-        print "Error: Cannot save a binary representation of a delayedlist"
+        raise NotSupportedError, "Cannot save a binary representation of a delayedlist"
 
     def saveCSV(self, **kargs):
-        print "Error: delayedlists do not support saveCSV()"
+        raise NotSupportedError, "delayedlists do not support saveCSV()"
 
-    def getChIPSeqTags(self, gene_list, bins=[x for x in xrange(-5000, 5000, 100)], bSaveMergedImages=True):
+    def getChIPSeqTags(self, gene_list, bins=None, bSaveMergedImages=True):
         """
         **Purpose**
 
         Count the number of chip seq tags that lie under some arrangement of the 'bins'
 
+        NOTE: Although this functionality remains in delayedlist it has
+        been deprecated in favour of tracks. This method is astonishingly
+        slow and the user is strongly encouraged to look up tracks
+        and their usage.
+
         **Arguments**
 
         gene_list
-            your gene list of variant
+            your genelist or genelist-like object
 
         bins
             an array of bins spannign the range of base pairs you want to bin.
-            e.g. [x for x in range(-5000, 5000, 100)]
+            e.g. [x for x in range(-5000, 5000, 100)] (This is the default)
 
         bSaveMergedImages
             undocumented.
@@ -201,7 +210,7 @@ class delayedlist(genelist):
         **Result**
 
         returns a taglist list (a descendent of geneList)
-        that behaves very much like gene list.
+        that behaves very much like a genelist.
         However, any sepcial methods from the input gene_list will be lost
         in preference to taglist's methods.
         the chip_seq tag frequency is stored in the "chip_tags" key
@@ -210,17 +219,11 @@ class delayedlist(genelist):
         print "         press Ctrl+C to interupt."
 
         # test gene_list has a valid sorted
-        try:
-            gene_list.dataByChr["1"]
-        except:
-            print "Error: List does not have a valid location tag"
-            return(False)
+        assert gene_list.dataByChr["1"], "List does not have a valid location tag"
+        assert gene_list.dataByChr["1"][0]["tss_loc"] , "List does not have a valid tss_loc tag"
 
-        try:
-            gene_list.dataByChr["1"][0]["tss_loc"]
-        except:
-            print "Error: List does not have a valid tss_loc tag"
-            return(False)
+        if not bins:
+            bins = [x for x in xrange(-5000, 5000, 100)]
 
         newl = taglist(bins, gene_list.name) # loses any non-standard methods... :(
         newl.linearData = []
@@ -294,9 +297,9 @@ class delayedlist(genelist):
         # draw some pictures of flatBin.
 
         end = time.time()
-        print "Info: Time taken: %i mins" % ((end - start) / 60)
+        config.log.info("Time taken: %i mins" % ((end - start) / 60))
 
-        print "Info: All done, found:", f
+        config.log.info("All done, found:", f)
         if MATPLOTLIB_AVAIL:
             self._drawMerged(flatBin, gene_list.path)
 
@@ -314,4 +317,34 @@ class delayedlist(genelist):
             n = flatBin
         plot.plot(n)
         plot.savefig(os.path.join(path, "ChIP_merge_%s.png" % self.name))
-        print("Info: Saved a merge of the ChIP-peak to: %s" % os.path.join(path, "ChIP_merge_%s.png" % self.name))
+        config.log.info("Saved a merge of the ChIP-peak to: %s" % os.path.join(path, "ChIP_merge_%s.png" % self.name))
+
+    def reset(self):
+        """
+        **Purpose**
+            reset the delayedlist to the 0th element.
+            This is a bit of a hack. for most purposes
+            delayedlist will be correctly reset. The exception is this case:
+
+            for item in delayedlist:
+                ... some code
+                break
+
+            for item in delayedlist:
+                !!! Error! The list
+                continues from where it left off, not from the zeroth
+                element as expected.
+
+            Actually, (not tested) I think iterating over a delayedlist
+            twice is generally broken, and you should reset.
+            However, there is no way for delayedlist to know if the next
+            iteration is actually the first iteration of the list
+            and not a continuing iteration.
+
+        **Arguments**
+            None
+
+        **Results**
+            resets the list to the zeroth entry.
+        """
+        self._optimiseData()

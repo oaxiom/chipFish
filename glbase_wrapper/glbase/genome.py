@@ -14,6 +14,7 @@ import config, utils
 from genelist import genelist
 from flags import *
 from errors import AssertionError
+from location import location
 
 class genome(genelist):
     def __init__(self, name="None", filename=None, **kargs):
@@ -74,6 +75,8 @@ class genome(genelist):
             if not "tss_loc" in self.linearData[0]:
                 # the list does not have a tss_loc key,
                 # I need to build it myself from the loc and strand tags
+                assert "loc" in self.linearData[0], "I can't find a location in the genome data! you must specify a 'tss_loc' or 'loc' key"
+
                 for item in self.linearData:
                     cloc = item["loc"]
                     if item["strand"] in positive_strand_labels:
@@ -97,9 +100,9 @@ class genome(genelist):
         """
         ret = genelist.__str__(self)
         if self.bHasBoundSequence:
-            return("%s\nGenome: DNA sequence is available" % ret)
+            return("%s\n(DNA sequence is available)" % ret)
         else:
-            return("%s\nGenome: DNA sequence is not available" % ret)
+            return("%s\n(DNA sequence is not available)" % ret)
 
     def __repr__(self):
         return("glbase.genome")
@@ -161,7 +164,7 @@ class genome(genelist):
                     newEmptyEntry = mockEntry
                     newEmptyEntry[key] = item[key]
                     newl.append(newEmptyEntry)
-        print " Could not find: %s/%s" % (omit, len(geneList))
+        config.log.error("Could not find: %s/%s" % (omit, len(geneList)))
         return(newl)
 
     def getDataByFeature(self, geneList, feature="refseq", returnFeatures=["name", "refseq", "entrez", "tss_loc"], KeepUnmapped=False):
@@ -187,6 +190,37 @@ class genome(genelist):
                     row.append(item[key])
                 new_ret.append(row)
         return(new_ret)
+
+    def getFeatures(self, loc=None, **kargs):
+        """
+        **Purpose**
+            get all of the genomic features (probably genes) within a
+            certain location span.
+
+        **Arguments**
+            location
+                either a location() or a cooercable location().
+
+        **Returns**
+            A vanilla list containing a bunch of keys describing any features
+            sitting in the genomic span specified by location.
+        """
+        assert loc, "no location provided"
+
+        try:
+            loc = location(loc=loc)
+        except:
+            raise AssertionError, "cannot cooerce location into correct form. Location is mangled?"
+
+        ret = []
+        if loc["chr"] in self.dataByChr:
+            for item in self.dataByChr[loc["chr"]]:
+                #print location["left"], location["right"], item["loc"]["left"], item["loc"]["right"]
+                if utils.qcollide(loc["left"], loc["right"], item["loc"]["left"], item["loc"]["right"]):
+                    # make a suitable draw object
+                    item["type"] = "gene" # set the type flag for gDraw
+                    ret.append(item)
+        return(ret)
 
     def bindSequence(self, path=None):
         """
@@ -232,7 +266,7 @@ class genome(genelist):
                 second_line = self.seq[chr_key].readline() # should be sequence.
                 assert len(second_line[0]) > 0, "Not a valid FASTA file, sequence is missing?"
                 self.seq_data[chr_key]["linelength"] = len(second_line) -1 # each line.
-        print "Info: Bound Genome sequence: %s" % path
+        config.log.info("Bound Genome sequence: %s" % path)
         self.bHasBoundSequence = True
         return(True)
 
@@ -265,6 +299,10 @@ class genome(genelist):
 
         if "loc" in kargs: loc = kargs["loc"]
         elif "coords" in kargs: loc = kargs["coords"]
+        try:
+            loc = location(loc=loc)
+        except:
+            pass
         assert isinstance(loc, location), "'loc' must be a proper genome location"
 
         left = loc["left"]
@@ -284,8 +322,9 @@ class genome(genelist):
             self.seq[chrom].seek(seekloc+self.seq_data[chrom]["offset"])
             ret = self.seq[chrom].read(delta + (delta /self.seq_data[chrom]["linelength"]) + bonus).replace("\n", "").replace("\r", "")
             bonus += 1
+            if bonus > delta: # breaks in case you send a loc that is beyond the end of the file.
+                break
 
-        #ret = self.seq[chrom].read(delta + (delta /self.seq_data[chrom]["linelength"])) #.replace("\n", "")
         if "strand" in kargs:
             if kargs["strand"] in negative_strand_labels:
                 ret = utils.rc(ret)
@@ -297,6 +336,10 @@ class genome(genelist):
 
         Get all of the sequences from a gene_list-like object (e.g. a peaklist,
         microarray, etc) with some sort of valid location key (e.g. "chr1:10000-20000")
+
+        I've checked this extensively - if you provide the correct location
+        it will send back the correct sequence. Any further errors are
+        generally from wrong locations.
 
         **Arguments**
 
@@ -310,49 +353,73 @@ class genome(genelist):
 
         strand_key
             If you want the list to respect the strand you must tell it the name of
-            a 'strand' key. If there is no strand key set then it will take the
-            top (or positive) strand.
+            a 'strand' key.
 
         deltaleft=n
             expand the coordinates left by n base pairs
             Will respect the orientation of the strand.
+            (You must specify a 'strand_key')
 
         deltaright=n
             expand the coordinates rightwards by n base pairs.
             Will respect the orientation
             of the strand.
+            (You must specify a 'strand_key')
 
         delta=n
             expand the coordinates by n, added onto the left and right
-            Will respect the orientation if a strand_key is present.
+
+        pointify (True|False)
+            turn the location into a single base pair based on the centre
+            of the coordinates (best used in combination with delta to
+            expand reads symmetrically, pointify will be performed before
+            the expansion of the coordinates)
 
         **Result**
 
         returns a copy of the original genelist-like object
         with the new key "seq" containing the sequence.
+        Will add a new key "seq_loc" that contains the new location that
+        the seq spans across.
         """
-        valid_args = ["genelist", "loc_key", "strand_key", "deltaleft", "deltaright", "delta"]
+        valid_args = ["genelist", "loc_key", "strand_key", "deltaleft", "deltaright", "delta",
+            "pointify"]
         for key in kargs:
             assert key in valid_args, "getSequences - Argument '%s' is not recognised" % key
 
         assert self.bHasBoundSequence, "No Available genome FASTA files"
         assert "genelist" in kargs, "Required argument: 'list' is missing or malformed"
         assert "loc_key" in kargs, "Required argument: 'loc_key' is missing or malformed"
+        #assert "deltaleft" in kargs and "strand_key" in kargs, "You must specify a strand_key if you want to assymetrically expand the coordinates"
+        #assert "deltaright" in kargs and "strand_key" in kargs, "You must specify a strand_key if you want to assymetrically expand the coordinates"
 
         newl = kargs["genelist"].__copy__()
         loc_key = kargs["loc_key"]
 
-        strand_key = None
+        strand_key = False
         if "strand_key" in kargs:
             strand_key = kargs["strand_key"]
 
-        for item in newl.linearData:
+        for item in newl.linearData: # this will break delayedlists...
+            newloc = item[loc_key]
+
+            if "pointify" in kargs and kargs["pointify"]:
+                newloc = newloc.pointify()
+
             if "delta" in kargs:
-                delta = kargs["delta"]
-                item[loc_key].expand(delta)
-                newloc = item[loc_key]
-            else:
-                newloc = item[loc_key] # no changes, so just pass it on.
+                newloc = newloc.expand(kargs["delta"])
+
+            if "deltaleft" in kargs and kargs["deltaleft"]:
+                if kargs["strand_key"] in positive_strand_labels:
+                    newloc = newloc.expandLeft(kargs["deltaleft"])
+                elif kargs["strand_key"] in negative_strand_labels:
+                    newloc = newloc.expandRight(kargs["deltaleft"])
+
+            if "deltaright" in kargs and kargs["deltaright"]:
+                if kargs["strand_key"] in positive_strand_labels:
+                    newloc = newloc.expandLeft(kargs["deltaright"])
+                elif kargs["strand_key"] in negative_strand_labels:
+                    newloc = newloc.expandRight(kargs["deltaright"])
 
             if strand_key:
                 seq = self.getSequence(loc=newloc, strand=item[strand_key])
@@ -361,8 +428,9 @@ class genome(genelist):
                 seq = self.getSequence(loc=newloc) # defaults to + strand.
                 item["strand"] = "+" # overwrite the strand to reflect the seq
             item["seq"] = seq
+            item["seq_loc"] = newloc
 
-        newl._optimiseData
-        if not config.SILENT: print "Info: Got sequences"
+        newl._optimiseData()
+        config.log.info("Got sequences for '%s'" % self.name)
         newl._history.append("Added DNA sequence")
         return(newl)

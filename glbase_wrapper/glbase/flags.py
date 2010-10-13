@@ -7,41 +7,7 @@ flags.py
 import utils, csv, cPickle
 
 from helpers import strandSorter
-from location import location
-from data import ignorekeys, typical_headers
-
-positive_strand_labels = frozenset(["+", "0", "f", "F"]) # correct? Sometimes 0 is the top strand?
-negative_strand_labels = frozenset(["-", "1", "r", "R"])
-
-# Template for doc strings.
-"""
-splurge
-
-**Arguments**
-    arg
-        splurger
-
-**Result**
-    splurge
-"""
-
-regex_dict = {
-    "a" : "a",
-    "c" : "c",
-    "g" : "g",
-    "t" : "t",
-    "r" : "[ag]", # twos
-    "y" : "[ct]",
-    "k" : "[gt]",
-    "m" : "[ac]",
-    "s" : "[gc]",
-    "w" : "[at]",
-    "h" : "[act]", # threes
-    "v" : "[acg]",
-    "d" : "[agt]",
-    "b" : "[cgt]",
-    "n" : "[acgt]" # four
-}
+from data import *
 
 """
 valid accessory tags:
@@ -58,10 +24,13 @@ not yet implemneted, but suggested:
 # lists of format-specifiers.
 default = {"sniffer": 0} # the default, it loads your file based on the heading labels in the csv.
 sniffer = default # alternative name
+sniffer_tsv = {"sniffer": 0, "dialect": csv.excel_tab} # alternative name
 
 # standard lists:
 format_bed = {"loc": {"code": "location(chr=column[0], left=column[1], right=column[2])"}, "strand": 4, "dialect": csv.excel_tab,
     "skiplines": -1}
+format_minimal_bed = {"loc": {"code": "location(chr=column[0], left=column[1], right=column[2])"}, "dialect": csv.excel_tab,
+    "skiplines": -1} # no strand basically, and ignore any other keys.
 format_bed_no_strand = {"loc": {"code": "location(chr=column[0], left=column[1], right=column[2])"}, "dialect": csv.excel_tab,
     "skiplines": -1}
 
@@ -80,10 +49,17 @@ format_macs_peak_loc = {"loc": 0, "tag_height": {"code": "int(column[4])", "fold
 format_macs_output = {"loc": {"code": "location(chr=column[0], left=column[1], right=column[2])"}, "tag_height": 5,
     "skiplines": 13, "dialect": csv.excel_tab}
 
+exporttxt_loc_only_format = {"loc": {"code": "location(chr=column[10].strip(\".fa\"), left=column[12], right=int(column[12])+25)"},
+        "strand": 13,
+        "dialect": csv.excel_tab} # export.txt file (output from the illumina pipeline), but only loads the location and strand.
+
+exporttxt_all_format = {"loc": {"code": "location(chr=column[10].strip(\".fa\"), left=column[12], right=int(column[12])+25)"},
+        "strand": 13, "seq": 6, "quality_score": 7,
+        "dialect": csv.excel_tab} # export.txt file (output from the illumina pipeline), but only loads the location and strand.
+
 # Load in CCAT files:
 # CCAT1.3 file format:
 # <chromosome> <position of the peak> <start of region> <end of region> <read counts in ChIP library> <read counts in re-sampled control library> <the fold-change against control>
-
 
 format_ccat_output = {"loc": {"code": "location(chr=column[0], left=column[1], right=column[1])"}, "dialect": csv.excel_tab,
     "tag_height": 4, "fold": 6, "skiplines": -1}
@@ -108,6 +84,14 @@ format_mm8_refgene = {"loc": {"code": "location(chr=column[0], left=column[2], r
         "strand": 1, "name": 4, "description": 5, "dialect" : csv.excel_tab,
         "refseq": 6, "tss_loc": {"code": "strandSorter(column[0], column[2], column[3], column[1])"}
         }
+
+# mm9 refGene table from UCSC:
+format_mm9_refgene = {"loc": {"code": "location(chr=column[2], left=column[4], right=column[5])"},
+        "strand": 3, "name": 12, "dialect" : csv.excel_tab,
+        "refseq": 1, "tss_loc": {"code": "strandSorter(column[2], column[4], column[5], column[3])"},
+        "cds_loc": {"code": "location(chr=column[2], left=column[6], right=column[7])"},
+        "exons_count": 8,
+        } # description is lost from the mm9 table?
 
 # hg18 default refseq export.
 format_hg18_refseq = {"loc": {"code": "location(chr=column[0], left=column[1], right=column[2])"},
