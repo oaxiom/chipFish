@@ -1,10 +1,8 @@
 """
+**Purpose**
+    An all-purpose container for microarray data.
 
-BUGS
-----
-
-TODO
-----
+**to do**
 
 * conditions are not always stored as floats... [fixed?]
 * Some R functions not implemented in matplotlib yet.
@@ -22,21 +20,22 @@ TODO
 
 import sys, os, csv, string, math, copy
 
-from numpy import array, arange, meshgrid, zeros, linspace, mean
-from array import array as qarray
+from numpy import array, arange, meshgrid, zeros, linspace, mean, object_
+from array import array as qarray # this should be deprecated later.
 
 import config
 from flags import *
 from genelist import genelist
 from draw import draw
 from progress import progressbar
+from errors import AssertionError, ArgumentError
 
 import matplotlib.pyplot as plot
 from pylab import bivariate_normal, griddata # comes from where?
 import matplotlib.cm as cm
 
 class microarray(genelist):
-    def __init__(self, filename=None, **kargs):
+    def __init__(self, filename=None, format=None, **kargs):
         """
         **Purpose**
 
@@ -46,12 +45,9 @@ class microarray(genelist):
             Inherits all genelist methods and implements several microarray
             specific methods.
 
-            microarray in glbase is ver underpowered and requires normalised
+            microarray analysis in glbase is very underpowered and requires normalised
             and easily manipulatable data. Examples for normalisation are
             genespring output, or output from R and PMA.
-
-            This may change in the future as when/if I need more microarray heavy
-            lifting.
 
         **Arguments**
 
@@ -64,25 +60,30 @@ class microarray(genelist):
                 a format specifier.
                 Must include some form of {"conditions": {"code": "column[4:]"}}
                 to specifiy the location of the numeric array data.
+                glbase will try to guess but will likely fail.
+
+                There are a few special import methods available.
+                To import illumina microarray data output from bead studio
+                use the special format specifier: "illumina"
 
         **Returns**
 
             A microarray instance.
-
         """
         valig_args = ["filename", "format"]
         for k in kargs:
             if k not in valig_args:
                 raise ArgumentError, (self.__init__, k)
 
-        assert filename, "no filename specified"
-        assert os.path.exists(os.path.realpath(filename)), "'%s' not found" % filename
-
         genelist.__init__(self)
-
-        format = None
         self.name = filename
         self.condition_names = []
+
+        assert filename, "no filename specified"
+        assert os.path.exists(os.path.realpath(filename)), "'%s' not found" % filename
+        if format:
+            assert "conditions" in format, "no 'conditions' specification to collect the data"
+
         for k in kargs:
             if k == "name":
                 self.name = kargs[k]
@@ -114,6 +115,7 @@ class microarray(genelist):
             break
         oh.close()
 
+        self.conditions = self.condition_names # also accesible
         self.array = {"file": filename, "name": self.name, "hash": self.__hash__()}
         self.cacheLocation = None
 
@@ -163,6 +165,7 @@ class microarray(genelist):
         genelist._optimiseData(self) # do the parent optimise.
 
         # generate a serialised version of the array conditions.
+
         data = {}
         for array_data in self["conditions"]:
             for index, name in enumerate(self.condition_names):
@@ -170,9 +173,16 @@ class microarray(genelist):
                     data[name] = []
                 data[name].append(float(array_data[index])) # get the particular column
         self.serialisedArrayDataDict = data
-
+        # this is broken?
         # access aray data by name:
         #self.serialisedArrayDataDict["condition_name"]
+
+        # The __array_data is immutable. serialisedArrayDataDict has been deleted.
+        # Instead, in the main list ["array_data"] key points to the row of the numpy array instead.
+        #self.__array_data = zeros([len(self["conditions"]), len(self)], dtype=object_) # a numpy version.
+        #for r, array_data in enumerate(self["conditions"]):
+        #    for c, v in enumerate(array_data):
+        #        self.__array_data[r, c] = {"value": v, "stderr": 0.0} # this is the array data type.
 
         # list;
         self.serialisedArrayDataList = [self.serialisedArrayDataDict[key] for key in self.condition_names]
@@ -205,9 +215,9 @@ class microarray(genelist):
         assert filename, "you must specify a filename"
 
         oh = open(os.path.realpath(filename), "w")
-        writer = csv.writer(oh, dialect=csv.excel_tab) # why save as a tsv?
+        writer = csv.writer(oh) # why save as a tsv?
 
-        writeOrder = ["array_systematic_name", "entrez", "refseq", "name"]
+        writeOrder = [key for key in self.linearData[0] if key != "conditions"]
 
         title_row = []
         for k in writeOrder:
@@ -222,6 +232,8 @@ class microarray(genelist):
                     line.append(data[key])
             writer.writerow(line + data["conditions"])# conditions go last.
         oh.close()
+        config.log.info("Saved a csv file to '%s'" % filename)
+        return(None)
 
     # ----------- overrides/extensions ---------------------------------
 
@@ -233,7 +245,7 @@ class microarray(genelist):
             return("Genome not bound")
         return(self.genome.getName())
 
-    def sliceConditions(self, conditions, **kargs):
+    def sliceConditions(self, conditions=None, **kargs):
         """
         **Purpose**
 
@@ -260,8 +272,9 @@ class microarray(genelist):
                 raise ArgumentError, (self.sliceConditions, k)
 
         assert conditions, "You must specify a list of conditions to keep"
+        assert isinstance(conditions, list), "You must specify a list of conditions to keep"
         for item in conditions:
-            assert item in self.condition_names, "'%s' condition not found on this microarray"
+            assert item in self.condition_names, "'%s' condition not found on this microarray" % item
 
         newl = copy.deepcopy(self)
 
@@ -277,6 +290,7 @@ class microarray(genelist):
                 new_array_data.append(item["conditions"][c])
             newl.linearData[index]["conditions"] = new_array_data
 
+        newl._history.append("sliced conditions, kept %s" % "".join(conditions))
         newl.condition_names = conditions
         newl._optimiseData()
         return(newl)
@@ -289,9 +303,7 @@ class microarray(genelist):
         so to get e.g. the refseq column, do: l = microarray["refseq"]
         """
         names = self.getConditionNames()
-        if not condition_name in names:
-            print "Error: No condition named: %s" % condition_name
-            return(False)
+        assert condition_name in names, "No condition named '%s' on this array" % condition_name
 
         l = []
         con = self["conditions"] # get all of the array data
@@ -378,20 +390,28 @@ class microarray(genelist):
             row_names=self["name"], col_names=self.getConditionNames(),
             filename=filename, **kargs)
 
-        print "Info: Saved the heatmap image: %s" % actual_filename
+        config.log.info("Saved the heatmap image: %s" % actual_filename)
         return(actual_filename)
 
-    def normaliseToCondition(self, condition_name, bUseFoldChange=True, keep_normed=False):
+    def normaliseToCondition(self, condition_name, bUseFoldChange=True, keep_normed=False, **kargs):
         """
-        normalise all other conditions to condition_name and delete condition name from the array list
-        keep_normed will keep the original data, but set it to 0
+        **Purpose**
+            normalise all other conditions to condition_name and delete
+            condition name from the array list
 
-        This puts the data in the range 0 .. 1 where 0.5 = the same as the control.
+        **Arguments**
+            keep_normed (boolean, Optional)
+                keep the original data, but set it to 0
+
+            ??? not true right:
+            This puts the data in the range 0 .. 1 where 0.5 = the same as the control.
+
+        **Returns**
+            returns the newly normalised list
         """
         names = self.getConditionNames()
 
-        if condition_name not in names:
-            raise AssertionError, "Error: condition name: %s is not on this array" % condition_name
+        assert condition_name in names, "condition name: %s is not on this array" % condition_name
 
         name_index = names.index(condition_name)
         #print name_index
@@ -407,8 +427,8 @@ class microarray(genelist):
             #print old_array_data
             new_array_data = []
             toNormal = old_array_data[name_index]+0.0000001 # stop divByZero errors.
-            for index, datum in enumerate(old_array_data):
-                name = names[index] # verbose for clarity
+            for i, datum in enumerate(old_array_data):
+                name = names[i] # verbose for clarity
                 if name != condition_name:
                     if bUseFoldChange:
                         new_array_data.append(math.pow(2, -(float(toNormal) / float(datum))))
@@ -436,23 +456,27 @@ class microarray(genelist):
                     newl.condition_names.append(name)
 
         newl._optimiseData()
-        print "Info: Normalised to condition: %s" % condition_name
+        config.log.info("Normalised to condition: %s" % condition_name)
         self._history.append("Normalised To Condition: %s" % condition_name)
         return(newl)
 
     def drawDotplot(self, x_condition_name, y_condition_name, filename=None, **kargs):
         """
         **Purpose**
-        draw an X/Y dot plot, get R^2 etc.
+            draw an X/Y dot plot, get R^2 etc.
 
-        x_condition_name = the name of the er... X condition
-        y_condition_name = the name of the er... Y condition
+        **Arguments**
+            x_condition_name = the name of the er... X condition
+            y_condition_name = the name of the er... Y condition
 
-        available key-word arguments:
-        xlimits = (0, 2)
-        ylimits = (0,2)
-        filename = "dotplot.png"
-        log = False|True
+            available key-word arguments:
+            xlimits = (0, 2)
+            ylimits = (0,2)
+            filename = "dotplot.png"
+            log = False|True
+
+        **Returns**
+            the actual filename saved as and a new image in filename.
         """
         assert filename, "no filename specified"
         assert x_condition_name in self.serialisedArrayDataDict, "%s x-axis condition not found" % x_condition_name
@@ -461,7 +485,8 @@ class microarray(genelist):
         x_data = self.getDataForCondition(x_condition_name)
         y_data = self.getDataForCondition(y_condition_name)
 
-        x_data, y_data = self.__log_transform_data([x_data, y_data], 2)
+        if "log" in kargs and kargs["log"] == "log2":
+            x_data, y_data = self.__log_transform_data([x_data, y_data], 2)
 
         # defaults:
         xlims = [min(x_data + y_data), max(x_data + y_data)]
@@ -497,7 +522,8 @@ class microarray(genelist):
                 plot.annotate(n, (x_data[i], y_data[i]), size=6)
 
         plot.savefig(filename)
-        print "Info: Saved the dotplot image"
+        real_filename = filename # not supported yet.
+        config.log.info("Saved the dotplot image '%s'" % real_filename)
         return(True)
 
     def drawBoxplot(self, filename=None, **kargs):
@@ -550,7 +576,7 @@ class microarray(genelist):
         # do plot
         actual_filename = self.draw._boxplot(data=data, filename=filename, xticklabels=self.getConditionNames())
 
-        print "Info: Saved the boxplot image: %s" % actual_filename
+        config.log.info("Saved the boxplot image: %s" % actual_filename)
         return(actual_filename)
 
     def __log_transform_data(self, serialisedArrayDataList=None, log=math.e):
@@ -660,7 +686,7 @@ class microarray(genelist):
         if xlimits: plot.xlim(xlimits)
         plot.legend()
         plot.savefig(filename)
-        print "Info: Saved the Distribustion Curves: %s" % filename
+        config.log.info("Saved the Distribustion Curves: %s" % filename)
         return(True)
 
     def getDataByCriteria(self, **kargs):
@@ -681,7 +707,7 @@ class microarray(genelist):
                 normal = kargs[k]
 
         if not function:
-            print "Error: Criteria function unavailable."
+            config.log.error("Criteria function unavailable.")
             return(False)
 
         newl = self.__copy__()
@@ -709,7 +735,7 @@ class microarray(genelist):
         max_data = max(condition_data)
         min_data = min(condition_data)
         if len(condition_data) != len(self):
-            print "Error: Insertion of array data, wrongly sized"
+            config.log.error("Insertion of array data, wrongly sized")
             return(False)
         for index, item in enumerate(self):
             if range_bind:
@@ -721,11 +747,39 @@ class microarray(genelist):
         self._optimiseData()
         return(True)
 
+    def remove_by_expression(self, minimum_value, number_to_pass=1, **kargs):
+        """
+        **Purpose**
+            If the probe expression is below 'minimum_value' in at least
+            'number_to_pass' conditions
+
+        **Arguments**
+
+        **Returns**
+            A new microarray object with probes that fail to pass removed.
+        """
+        # kargs tidier to go here.
+
+        newl = self.__copy__()
+        newl.linearData = []
+
+        for probe in self.linearData:
+            s = sum([i > minimum_value for i in probe["conditions"]])
+            if s > number_to_pass:
+                newl.append(probe)
+        newl._optimiseData()
+        config.log.info("'%s' probes failed the criteria" % (len(self) - len(newl)))
+        newl._history.append("'%s' probes failed the criteria" % (len(self) - len(newl)))
+        return(newl)
+
     def sort(self, key):
         """
         This is slightly different from the vanilla genelist's sort - you can pass it the name of
         a condition. Take care to make sure the condition name is not a valid list key.
         The algorithm searches the genelist before searching the array for your particular condition.
+
+        Also take care with this one: It is one of the few in-place list
+        modifiers.
 
         **Arguments**
 
@@ -751,5 +805,81 @@ class microarray(genelist):
                 self._optimiseData()
                 return(True)
         return(False)
+
+    def cumulative_distributions(self, genelists=None, filename=None, key=None, **kargs):
+        """
+        **Purpose**
+
+            draw a set of cumulative distributions, based on a selection
+            of genelist-like objects that can be mapped to
+            this microarray using 'key'
+
+        **Arguments**
+
+            genelists (Required)
+                a list or other iterable of genelists
+
+            filename (Required)
+                the filename to save the image to.
+
+            key (Required)
+                the key to use to match the microarray to the genelist.
+
+        **Returns**
+
+            An image, saved to 'filename'
+        """
+        valig_args = ["genelists", "filename", "key"]
+        for k in kargs:
+            if k not in valig_args:
+                raise ArgumentError, (self.cumulative_distributions, k)
+
+        assert filename, "you must specify a valid filename"
+        assert key, "you must specify a mapping key"
+        assert genelists[0], "you must specify a valid list of genelists"
+        assert key in genelists[0], "key '%s' not found in the genelists" % key
+        assert key in self, "key '%s' not found in the microarray" % key
+
+        mapped_scores = []
+
+        plot.cla()
+        fig = plot.figure()
+        axis = fig.add_subplot(111)
+
+        for g in genelists:
+            mapped = self.map(genelist=g, key=key)
+
+            nmap = []
+            # this will sum all items in array.
+            for a in mapped:
+                print a["conditions"]
+                s = sum(a["conditions"])
+                nmap.append(s)
+
+            # cumulate the nmap
+            for i, v in enumerate(nmap):
+                try:
+                    nmap[i] = nmap[i] + nmap[i+1]
+                except:
+                    break
+
+
+            print nmap
+
+        # matplotlib junk is inappropriately here: to go later.
+
+            axis.plot(nmap, label=g.name)
+
+        axis.set_title("")
+        #axis.show_legend()
+        fig.savefig(filename)
+
+
+
+
+
+
+
+
 
 

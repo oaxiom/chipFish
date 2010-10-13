@@ -19,12 +19,12 @@ class taglist(genelist):
         self.bins = bins
 
     def saveCSV(self, **kargs):
-        print "Error: Saving as a CSV is not available for a 'taglist' (the format is too complex)"
-        print "       use the taglist.save() method for a binary save"
+        config.log.error("Saving as a CSV is not available for a 'taglist' (the format is too complex)")
+        config.log.error("use the taglist.save() method for a binary save")
 
     def loadCSV(self, **kargs):
-        print "Error: Loading a CSV 'taglist' is not possible, format is too complex."
-        print "       Load a taglist using the taglist = load(file) method."
+        config.log.error("Loading a CSV 'taglist' is not possible, format is too complex.")
+        config.log.error("Load a taglist using the taglist = glload(filename=\"filename\") method.")
 
     def _loadCSV(self, **kargs):
         """
@@ -97,6 +97,6 @@ class taglist(genelist):
                         newitem["chip_tag"][k] = other["chip_tag"][k]
                     newl.linearData.append(newitem)
                 else:
-                    print "Error: Incompatability in lists."
+                    config.log.error("Incompatability in lists.")
         newl._optimiseData()
         return(newl)

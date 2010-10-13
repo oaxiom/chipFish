@@ -8,6 +8,7 @@ clean-up code and helpers for catching and dealing with errors.
 import csv
 
 from data import typical_headers, ignorekeys
+from location import location
 import config
 
 class AssertionError(Exception):
@@ -21,7 +22,20 @@ class AssertionError(Exception):
         """
         Output the error message and tidy up the traceback, and perform other stuff.
         """
-        print "Error: %s" % (message)
+        config.log.critical("%s" % (message))
+        if not config.DEBUG: # this only works in Py3k right?
+            self.__traceback__ = None
+
+class DelayedListError(Exception):
+    """
+    Error
+        Some sort of unsupported function in a delayedlist.
+    """
+    def __init__(self, message):
+        """
+        Output the error message and tidy up the traceback, and perform other stuff.
+        """
+        config.log.critical("%s" % (message))
         if not config.DEBUG: # this only works in Py3k right?
             self.__traceback__ = None
 
@@ -36,9 +50,44 @@ class ArgumentError(Exception):
         """
         Output the error message and tidy up the traceback, and perform other stuff.
         """
-        print "Error: Function '%s' - argument '%s' not supported" % (function, argument)
+        config.log.critical("Function '%s' - argument '%s' not supported" % (function, argument))
         if not config.DEBUG: # this only works in Py3k right?
             self.__traceback__ = None
+
+def guessDataType(value):
+    """
+    (Internal)
+
+    This is a copy of genelist._guessDataTpye()
+    I have to copy it here, as due to some circular imports I can't import
+    a genelist
+
+    Take a guess at the most reasonable datatype to store value as.
+    returns the resulting data type based on a list of logical cooercions
+    (explaines as I fail each cooercion).
+    Used internally in _loadCSV()
+    I expect this will get larger and larger with new datatypes, so it's here as
+    as separate proc.
+
+    Datatype cooercion preference:
+    float # this is wrong? try to make a float if has '.' otherwise int.
+    int
+    location
+    string
+    """
+    try: # see if the element is a float()
+        if "." in value: # if no decimal point, prefer to save as a int.
+            return(float(value))
+        else:
+            raise ValueError
+    except ValueError:
+        try: # see if it's actually an int?
+            return(int(value))
+        except ValueError:
+            try: # see if I can cooerce it into a location:
+                return(location(loc=value))
+            except (TypeError, IndexError, AttributeError, AssertionError, ValueError): # this is not working, just store it as a string
+                return(str(value))
 
 class UnRecognisedCSVFormatError(Exception):
     """
@@ -53,8 +102,7 @@ class UnRecognisedCSVFormatError(Exception):
         Format and ouput a series of messages so that I can see why the csv is not loading.
         """
         oh = open(file_handle, "rU")
-        print
-        print "Error: Unrecognised CSV"
+        config.log.error("csv/tsv file did not pass the csv parser")
         print "-----------------------"
         print "CSV Diagnostic:"
         if format.has_key("skiplines"): # skip the lines.
@@ -66,11 +114,12 @@ class UnRecognisedCSVFormatError(Exception):
         print "1:", oh.readline().rstrip("\r\n")
         print "2:", oh.readline().rstrip("\r\n")
         print "3:", oh.readline().rstrip("\r\n")
-        print "Format Specifier: %s" % (" ".join(["%s:%s" % (key, format[key]) for key in format]))
+        print "-----------------------"
+        print "Format Specifier: %s" % (" ".join(["%s:%s\t" % (key, format[key]) for key in format]))
         print "Expected Format, based on the format specifier:"
         oh.close()
 
-        # This is a safe version of loadCSV() that intelligently fails.
+        # This is a safe-ish version of loadCSV() that intelligently fails.
 
         if not format.has_key("sniffer"):
             oh = open(file_handle, "rU")
@@ -98,15 +147,13 @@ class UnRecognisedCSVFormatError(Exception):
                             for key in format:
                                 if not (key in ignorekeys): # ignore these tags
                                     try:
-                                        if not d.has_key(key):
+                                        if not key in d:
                                             d[key] = {}
-                                        if isinstance(format[key], dict) and (format[key].has_key("code")):
+                                        if isinstance(format[key], dict) and "code" in format[key]:
                                             # a code block insertion goes here - any valid lib and one line python code fragment
-                                            # store it as a dict with te key "code"
-                                            d[key] = eval(format[key]["code"])
+                                            # store it as a dict with the key "code"
+                                            d[key] = eval(format[key]["code"]) # this always fails for some reason...
                                         else:
-                                            # attempt to coerce things as an int.
-                                            # no need to do the cooersion here, just turn it into a str()
                                             d[key] = str(column[format[key]])
                                     except:
                                         d[key] = "mangled"
@@ -117,16 +164,15 @@ class UnRecognisedCSVFormatError(Exception):
             print "  No specified format (glbase will guess)"
 
         print "-----------------------"
-        print "Error: %s" % (message)
-        print
+        config.log.error("End of error output")
 
 class LibraryNotFoundError(Exception):
     """
     Error
         A required library is not found.
     """
-    def __init__(self, message, traceback):
-        print "Error: Library Not Found: %s" % (message)
+    def __init__(self, message):
+        config.log.critical("Library Not Found: %s" % (message))
 
 class UnrecognisedFileFormatError(Exception):
     """
@@ -140,15 +186,17 @@ class UnrecognisedFileFormatError(Exception):
         Format and ouput a series of messages so that I can see why the csv is not loading.
         """
         oh = open(file_handle, "rU")
-        print
-        print "Error: Unrecognised file format"
+        config.log.critical("Unrecognised file format")
         print "-----------------------"
         print "Diagnostic:"
         print "0:", oh.readline().rstrip("\r\n")
         print "1:", oh.readline().rstrip("\r\n")
         print "2:", oh.readline().rstrip("\r\n")
         print "3:", oh.readline().rstrip("\r\n")
-        print "Format Specifier: %s" % (" ".join(["%s:%s" % (key, format[key]) for key in format]))
+        if "sniffer" in format:
+            print "Format Specifier: Sniffer (guess the file format)"
+        else:
+            print "Format Specifier: %s" % (" ".join(["%s:%s" % (key, format[key]) for key in format]))
         print "-----------------------"
         print "Error: %s" % (message)
         print
@@ -164,23 +212,65 @@ class NotSupportedError(Exception):
         """
         Output the error message and tidy up the traceback, and perform other stuff.
         """
-        print "Error: Not Supported: %s" % (message)
+        config.log.critical("Not Supported: %s" % (message))
         if not config.DEBUG: # this only works in Py3k right?
             self.__traceback__ = None
 
-class DrawNoMatchingKeys_Special(Exception):
+class NotImplementedError(Exception):
     """
     Error
-        A specific error in draw.py this is required to make draw.py
-        completely silent.
+        Some things I'm too lazy to implement properly, so I raise an error here.
+    """
+    def __init__(self, message):
+        """
+        Output the error message and tidy up the traceback, and perform other stuff.
+        """
+        config.log.critical("Not Supported: %s" % (message))
+        if not config.DEBUG: # this only works in Py3k right?
+            self.__traceback__ = None
+
+class NoMatchingKeysError(Exception):
+    """
+    Error
+        No matching keys available between the two lists.
     """
     def __init__(self, function, argument):
         """
         Output the error message and tidy up the traceback, and perform other stuff.
         """
-        print "(Internal) _heatmap_and_plot()"
-        print "Error: No suitable matching key between the microarray and the peaklist"
+        print "Error: No suitable matching key between the two lists"
         print "       valid keys are: refseq entrez loc tss_loc array_systematic_name"
+        print "       You can also specify your own key using the 'match_key' argument"
         print "       Both the microarray and the peaklist must have both keys"
+        if not config.DEBUG: # this only works in Py3k right?
+            self.__traceback__ = None
+
+class BadOperationError(Exception):
+    """
+    Error
+        Nact() recieved a bad operation value.
+    """
+    def __init__(self, function, argument):
+        """
+        Output the error message and tidy up the traceback, and perform other stuff.
+        """
+        print "Error: A bad operation was sent to act(), or act() was unable"
+        print "       to complete the action."
+        print "       Bad code: %s" % argument
+        if not config.DEBUG: # this only works in Py3k right?
+            self.__traceback__ = None
+
+class GlglobDuplicateNameError(Exception):
+    """
+    Error
+        glglob recived two names that are identical.
+    """
+    def __init__(self, function, argument):
+        """
+        Output the error message and tidy up the traceback, and perform other stuff.
+        """
+        config.log.critical("glglob has two lists with the same name")
+        config.log.critical("for glglob to work you must provide lists")
+        config.log.critical("with unique names")
         if not config.DEBUG: # this only works in Py3k right?
             self.__traceback__ = None

@@ -6,6 +6,9 @@ data stuff, part of glbase
 
 Contains various data that doens't belong in helpers.py, flags.py or opt.py.
 And probably shouldn't be exported outside of glbase
+
+These are constants, although they can be changed, in case, for example,
+the value of pi changes.
 """
 
 regex_dict = {
@@ -50,5 +53,5 @@ typical_headers = frozenset(["chipseq_loc", "loc", "chr", "#",
 "======================================================================="] # stupid sissrs format garbage.
 ) # typical header labels;
 
-positive_strand_labels = frozenset(["+", "1", "f", "F"])
-negative_strand_labels = frozenset(["-", "0", "r", "R"])
+positive_strand_labels = frozenset(["+", "1", "f", "F", 1])
+negative_strand_labels = frozenset(["-", "0", "r", "R", -1, 0, "-1"])

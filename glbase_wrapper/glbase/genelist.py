@@ -4,27 +4,22 @@ behaves like a normal list, but each element contains a heterogenous set of data
 
 **to-do list**
 
-* add an option for extra_header [] to format. [skiplines?]
 * store more stuff in optimiseData for faster searching/indexing/matching. (pre-sorted list pointers?)
-* move to an SQLlite/temp model? delayedlists must then be converted to a sql db...
 * saveCSV does not save the labels in any order, they could come out all over the place!
     [Added option - would be nice to sensibly sample average data size, putting certain types to the left and right]
 * map is evil slow.
-* nicely clean up from errors. [Partially Done]
-* logging [Started]
 * set only copies the data - does not produce a genelist. [Think this is fixed]
 * make all methods keyword args based. [Done? Not checked]
 * Always inherit from the right side????
 * make add, sub, and, or work on non-equivalent lists. [Partially implemented]
-* wider use of assertion to declare required arguments. [Completed? Implemnted?]
-* genelists are not mutable. (this actually works now?)
+* genelists are not mutable. [there are at least two exceptions, sort() and one other, genelists should be non-mutables]
 
 Big strategy:
 -------------
 * glbase should be a wrapper around an sqlite database.
 """
 
-import sys, os, csv, copy, random, cPickle
+import sys, os, csv, copy, random, cPickle, re
 
 from operator import itemgetter
 
@@ -36,19 +31,47 @@ from draw import draw
 from history import historyContainer
 from errors import AssertionError, UnRecognisedCSVFormatError, UnrecognisedFileFormatError, ArgumentError
 from progress import progressbar
+from base_genelist import _base_genelist
 
-class genelist:
+class genelist(_base_genelist):
     """
-    This is essentially a class container for any arrangement of heterogenous data.
+    **Purpose**
+        This is essentially a class container for any arrangement of heterogenous data.
 
-    it is good for dealing with csv files with arbitrary columns - arranging
-    them by keys and then allowing cross-matching and data extraction.
-    geneList is the generic implementation, and you should probably avoid it as it is a bit raw
-    instead use one of the wrappers, which are geneLists with more sensible defaults
-    and drawing classes for known arrangements of data. Always use them in preference
-    to a vanilla genelist.
+        it is good for dealing with csv files with arbitrary columns - arranging
+        them by keys and then allowing cross-matching and data extraction.
+        geneList is the generic implementation, and you should probably avoid it as it is a bit raw
+        instead use one of the wrappers, which are geneLists with more sensible defaults
+        and drawing classes for known arrangements of data. Always use them in preference
+        to a vanilla genelist.
+
     """
     def __init__(self, **kargs):
+        """
+        **Arguments**
+            name (Optional)
+                Will default to the name of the file if a file is loaded,
+                otherwise name will be set to "Generic List" by default.
+                us the name argument to give it a custom nam,e
+
+            filename (Optional)
+                the name of a file to attempt to load.
+
+            force_tsv (Optional)
+                if you specify a filename to load then
+                setting this argument to True will force the file to be treated
+                as a tsv (tab-separated) rather than the default csv (comma
+                separated).
+
+            format
+                format specifier. (see docs... complex)
+
+        """
+        valig_args = ["name", "format", "force_tsv", "filename"]
+        for k in kargs:
+            if k not in valig_args:
+                raise ArgumentError, (self.__init__, k)
+
         self.linearData = []
         self.dataByChr = None # this is private, use get by loc.
         self.debug = False
@@ -58,13 +81,19 @@ class genelist:
         self.metadata = {} # container for various metadata's to extract figures from.
 
         format = sniffer
-        if "name" in kargs: self.name = kargs["name"]
         if "format" in kargs: format = kargs["format"] # I expect a filename= is coming.
         if "filename" in kargs:
             if "format" in kargs:
                 self.load(filename=kargs["filename"], format=kargs["format"])
             else:
-                self.load(filename=kargs["filename"])
+                # decide whether to respect the force_tsv arg.
+                if "force_tsv" in kargs and kargs["force_tsv"]:
+                    format = sniffer_tsv
+                else:
+                    format = sniffer
+                self.load(filename=kargs["filename"], format=format)
+            config.log.info("Loaded '%s' found %s items" % (kargs["filename"], len(self.linearData)))
+        if "name" in kargs: self.name = kargs["name"]
 
     def load(self, filename=None, format=None, **kargs):
         """
@@ -116,6 +145,7 @@ class genelist:
             elif filename.split(".")[-1] in ["glb"]:
                 self = load(self.filename) # will this work?
             else:
+                # just pretend it's a csv or the like.
                 if not format:
                     self.loadCSV(filename=filename, format=sniffer)
                 else:
@@ -126,7 +156,7 @@ class genelist:
         except:
             raise UnrecognisedFileFormatError, ("File format is not recognised", filename, format)
 
-    def loadCSV(self, filename=None, format=sniffer, **kargs):
+    def loadCSV(self, filename=None, format=None, **kargs):
         """
         **Purpose**
 
@@ -141,6 +171,13 @@ class genelist:
         format (Optional, default = "sniffer" (ie. guess))
             format specifer, see flags.py and helpers.py and the
             documentation on how to write a valid format specifier
+
+        force_tsv (Optional, default=False)
+            if you don't send a format specifier, but want to force the
+            genelist to load as a tsv, you can set this flag to True.
+            NOTE: If you send a format argument then this argument is ignored!
+
+            As another option, you can use the sniffer_tsv format specifier
 
         name (Optional, Default = based on the filename)
             name of the genelist, used intermittently as labels in
@@ -157,12 +194,18 @@ class genelist:
         self.fullfilename = filename
         self.name = self.filename.split(".")[0]
 
-        # make a guess if it is a tsv vs csv
+        # decide whether to respect the force_tsv arg.
+        if "force_tsv" in kargs and kargs["force_tsv"] and not format:
+            format = sniffer_tsv
+        elif not format:
+            format = sniffer
 
+        #self._loadCSV(filename=self.fullfilename, format=format, **kargs)
         try:
             self._loadCSV(filename=self.fullfilename, format=format, **kargs)
         except:
             try: # try again, guessing it might be a tsv
+                config.log.info("Loading... Failed to load as a 'csv'. Try to load as a 'tsv' file")
                 format["dialect"] = csv.excel_tab
                 self._loadCSV(filename=self.fullfilename, format=format, **kargs)
             except: # oh dear. Die.
@@ -204,6 +247,7 @@ class genelist:
                 break
 
         for index, column in enumerate(reader): # This is cryptically called column, when it is actually row.
+            #print index
             if "debug" in format and format["debug"]:
                 print "%s:'%s'" % (index, column)
                 if isinstance(format["debug"], int) and index > format["debug"]: break # If an integer, collect that many items.
@@ -234,7 +278,6 @@ class genelist:
             d = temp_data
         self.linearData = d # preserves the order of the data.
         self._optimiseData()
-        if not config.SILENT: print "Info: Loaded %s file: Found %s rows" % (filename, len(self.linearData))
         self._history.append("loadCSV filename=%s" % filename)
         return(True)
 
@@ -249,21 +292,21 @@ class genelist:
         I expect this will get larger and larger with new datatypes, so it's here as
         as separate proc.
 
-        Datatype cooercion preference:
-        float
-        int
-        location
-        string
+        Datatype coercion preference:
+        float > int > location > string
         """
         try: # see if the element is a float()
-            return(float(value))
+            if "." in value: # if no decimal point, prefer to save as a int.
+                return(float(value))
+            else:
+                raise ValueError
         except ValueError:
             try: # see if it's actually an int?
                 return(int(value))
             except ValueError:
                 try: # see if I can cooerce it into a location:
-                    return(location(value))
-                except (IndexError, AttributeError, AssertionError, ValueError): # this is not working, just store it as a string
+                    return(location(loc=value))
+                except (TypeError, IndexError, AttributeError, AssertionError, ValueError): # this is not working, just store it as a string
                     return(str(value))
 
     def _optimiseData(self):
@@ -285,6 +328,9 @@ class genelist:
                     self.dataByChrIndexLookBack[chr] = []
                 self.dataByChr[chr].append(item)
                 self.dataByChrIndexLookBack[chr].append(n) # oh sweet, sweet dirty hack...
+                # I can't remember what this lookback is for, but you
+                # can use it to get the linearData index even though looking at the
+                # dataByChr data It is not documented for a reason!
 
         # other quickmaps.
         # dataByKey?
@@ -308,7 +354,12 @@ class genelist:
         """
         return(self.linearData)
 
-    def _findDataByKeyGreedy(self, key, value): # override????? surely find?
+    def _findDataByKeyLazy(self, key, value): # override????? surely find?
+        """
+        (Internal)
+
+        find the first matching entry of key value pair
+        """
         if key == "loc":
             # special case for locations;
             pass
@@ -318,7 +369,7 @@ class genelist:
                     return(item)
         return(False)
 
-    def _findDataByKeySlow(self, key, value): # override????? surely finditer?
+    def _findDataByKeyGreedy(self, key, value): # override????? surely finditer?
         """
         finds all - returns a list
         """
@@ -347,18 +398,17 @@ class genelist:
         """
         return([x[key] for x in self.linearData])
 
-    def _findByLabel(self, key, toFind):
+    def _findByLabel(self, key, value):
         """
         (Internal)
         key is the key to search with
         toFind is some sort value to compare
+
+        (This is used in at least draw._heatmap_and_plot())
         """
         for line in self.linearData:
-            try:
-                if toFind == line[key]:
-                    return(line)
-            except ValueError:
-                pass
+            if value == line[key]:
+                return(line)
         return(None) # not found;
 
     def _findByCoords(self, key, coords):
@@ -380,25 +430,48 @@ class genelist:
         """
         **Purpose**
 
-        save the geneList as a csv
-        Note: This is not always available.
-        As the geneList becomes more complex it loses the ability to be
-        expressed simply as a csv-file. In those cases you must use
-        the save() method to save a binary representation.
+            save the geneList or similar object as a csv
+            Note: This is not always available.
+            As the geneList becomes more complex it loses the ability to be
+            expressed simply as a csv-file. In those cases you must use
+            the save() method to save a binary representation.
+
+            saveCSV is guaranted to be 'consistent' if you can succesfully save
+            as a csv then you can reload the same list as that particular
+            type. Be careful though. Behaviour like this will work fine:
+
+            microarray.saveCSV(filename="file.csv")
+            anewlist = genelist(filename="file.csv")
+            anewlist # this list is now a genelist and not a microarray.
+                     # You must load as a microarry:
+            amicroarry = microarray(filename="file.csv")
+
+            saving to a csv will will blank the history, and any other meta-
+            data generated about the list.
 
         **Arguments**
 
-        filename
-            filename to save, including the full path.
+            filename
+                filename to save, including the full path.
+
+            key_order (List)
+                send a list, specifying the order you'd like to write the keys
+                by default sveCSV() will write to the file in an essentially
+                random order. But if you want to specify the order then
+                send a list of key names and it will save them in that order.
+
+                Also, you need only specify the left side of the column.
+                Any unspecified columns will be appended to the right
+                hand side in a random order.
 
         **Result**
 
-        returns None.
-        saves a CSV representation of the geneList.
+            returns None.
+            saves a CSV representation of the geneList.
         """
         assert filename, "No filename specified"
 
-        valig_args = ["filename"]
+        valig_args = ["filename", "key_order"]
         for k in kargs:
             if k not in valig_args:
                 raise ArgumentError, (self.saveCSV, k)
@@ -406,52 +479,64 @@ class genelist:
         oh = open(filename, "w")
         writer = csv.writer(oh)
         if not self.linearData: # data is empty, fail graciously.
-            if not config.SILENT: print "Info: csv file '%s' is empty" % filename
-            oh.write("List is Empty\n")
+            config.log.error("csv file '%s' is empty" % filename)
             oh.close()
             return(None)
 
-        toWrite = self.getKeys()
-        writer.writerow(toWrite) # write the header row.
+        # work out key order and the like:
+        write_keys = []
+        if "key_order" in kargs:
+            write_keys = kargs["key_order"]
+            # now add in any missing keys to the right side of the list:
+            for item in self.getKeys():
+                if item not in write_keys:
+                    write_keys.append(item)
+        else:
+            # just selece them all:
+            write_keys = self.getKeys()
+
+        writer.writerow(write_keys) # write the header row.
 
         for data in self.linearData:
             line = []
-            for key in toWrite: # this preserves the order of the dict.
+            for key in write_keys: # this preserves the order of the dict.
                 if key in data:
                     line.append(data[key])
                 else:
                     line.append("") # a blank key, fail gracefully.
             writer.writerow(line)
         oh.close()
+        config.log.info("Saved a csv file to '%s'" % filename)
         return(None)
 
     def saveFASTA(self, **kargs):
         """
         **Purpose**
 
-        Save data as a FASTA file. You can only do this if the
-        data has a "seq" tag. The 'name' of the fasta is derived from
-        the name="key" value you specify.
+            Save data as a FASTA file. You can only do this if the
+            data has a "seq" tag. The 'name' of the fasta is derived from
+            the name="key" value you specify.
 
         **Arguments**
 
-        filename
-            absolute path to the file (including path)
+            filename
+                absolute path to the file (including path)
 
-        name = (Optional, defaults to "null_n")
-            a key in the list to use as a name.
-            defaults to "null_n", where n is the position in the list
+            name = (Optional, defaults to "null_n")
+                a key in the list to use as a name for each fasta entry.
+                defaults to "null_n", where n is the position in the list
 
         **Result**
 
-        returns True if complete.
-        Saves a fasta file of the sequence data in this list.
+            returns True if complete.
+            Saves a fasta file of the sequence data to filename.
 
         """
         valid_args = ["filename", "name"]
         for key in kargs:
             assert key in valid_args, "saveFASTA() - Argument '%s' is not recognised" % key
 
+        assert "filename" in kargs, "No filename specified"
         assert self.linearData[0]["seq"], "No sequence data available in this list"
 
         oh = open(kargs["filename"], "w")
@@ -470,52 +555,45 @@ class genelist:
             oh.write(">%s\n" % save_name)
             oh.write("%s\n" % item["seq"])
         oh.close()
-        if not config.SILENT: print "Info: Saved FASTA file: %s" % kargs["filename"]
+        config.log.info("Saved FASTA file: %s" % kargs["filename"])
         return(True)
 
-    def save(self, filename=None, **kargs):
+    def saveBED(self, filename=None, **kargs):
         """
         **Purpose**
-
-        Save the geneList as a binary representation.
-        This is guaranteed to be available for all geneList representations.
-        this method is used in caching the file.
-        use list = load("path/to/filename")
+            save the genelist in bed format
+            list must have a valid loc key
 
         **Arguments**
+            filename
+                Name of the file to save the bed to
 
-        filename
-            path to the file (including path)
+            extra_keys = []
+                A list of extra keys to save into the bed.
 
-        compressed
-            use compression (not currently implemented)
-
-        **Result**
-
-        returns None
-        Saves a binary representation of the geneList
-
+        **Returns**
+            A saved bed file and None
         """
-        valid_args = ["filename", "compressed"]
-        for k in kargs:
-            if k not in valig_args:
-                raise ArgumentError, (self.save, k)
+        oh = open(filename, "w")
 
-        assert filename, "no filename specified"
+        if "extra_keys" in kargs:
+            assert len(kargs["extra_keys"]) >= 2, "Bed files must have at least two extra keys"
+            extra_keys = kargs["extra_keys"]
+        else: # guess some extra keys, e.g. strand
+            extra_keys = []
+            for typical_key in ["strand", "name", "symbol", "note"]:
+                if typical_key in self.linearData[0]: # should be an official way to do this!
+                    extra_keys.append(typical_key)
 
-        compressed = False
-        if "compressed" in kargs:
-            compressed = kargs["compressed"]
-        if compressed:
-            if not config.SILENT: print "Warning: compression not currently implemented"
+        extra_data ="0\t0" # fake two entries if no extra keys
+        for item in self.linearData:
+            if extra_keys:
+                extra_data = "\t".join([item[k] for k in extra_keys])
+            oh.write("chr%s\t%s\t%s\t%s\n" % (item["loc"]["chr"], item["loc"]["left"], item["loc"]["right"], extra_data))
 
-        oh = open(filename, "wb")
-        if compressed:
-            cPickle.dump(self, oh, -1)
-        else:
-            cPickle.dump(self, oh, -1)
         oh.close()
-        print "Info: Saved Binary version of list: %s" % filename
+        config.log.info("Saved '%s' bed file" % filename)
+        return(filename)
 
     def sort(self, key=None):
         """
@@ -576,6 +654,23 @@ class genelist:
 
     #------------------------------ Overrides --------------------------
 
+    def __contains__(self, item):
+        """
+        (Override)
+        There may be some obscure filures with this item - to do with
+        returned lists. IF you send a [ {} ... {} ] like object
+        derived from a genelist then it will fail (but then it should?)
+        but if you use slices it should be okay:
+        a = genelist[0] # returns a single dict
+        a = genelist[0:10] # returns a new genelist
+        """
+        if not self.linearData:
+            return(False)
+
+        if item in self.linearData[0]:
+            return(True)
+        return(False)
+
     def __len__(self):
         """
         (Override)
@@ -598,7 +693,7 @@ class genelist:
         try:
             for n in self.linearData:
                 yield n
-        except:
+        except StopIteration:
             raise StopIteration
 
     def __str__(self):
@@ -611,10 +706,10 @@ class genelist:
             # welcome to perl
             for index in xrange(config.NUM_ITEMS_TO_PRINT):
                 out.append("%s: %s" % (index, ", ".join(["%s: %s" % (key, self.linearData[index][key]) for key in self.linearData[index]])))
-            out = "%s\r\n... truncated, showing %s/%s" % ("\r\n".join(out), config.NUM_ITEMS_TO_PRINT, len(self.linearData)+1)
+            out = "%s\n... truncated, showing %s/%s" % ("\n".join(out), config.NUM_ITEMS_TO_PRINT, len(self.linearData)+1)
 
             if config.PRINT_LAST_ITEM:
-                out = "%s\r\n%s" % (out, "%s: %s" % (len(self.linearData), ", ".join(["%s: %s" % (key, self.linearData[-1][key]) for key in self.linearData[-1]])))
+                out = "%s\n%s" % (out, "%s: %s" % (len(self.linearData), ", ".join(["%s: %s" % (key, self.linearData[-1][key]) for key in self.linearData[-1]])))
 
             return(out)
         elif len(self.linearData) == 0:
@@ -623,7 +718,7 @@ class genelist:
             out = []
             for index in xrange(len(self.linearData)):
                 out.append("%s: %s" % (index, ", ".join(["%s: %s" % (key, self.linearData[index][key]) for key in self.linearData[index]])))
-            out = "%s\r\nShowing %s/%s" % ("\r\n".join(out), len(self.linearData), len(self.linearData)+1)
+            out = "%s\nShowing %s/%s" % ("\n".join(out), len(self.linearData), len(self.linearData)+1)
 
             return(out)
 
@@ -640,19 +735,21 @@ class genelist:
         confers a = geneList[0] behaviour
 
         This is a very slow way to access the data...
-
-        This is not quite 100% correct?
-        I think it works, but that is more accidental than purposeful...
+        NOTE:
+        a = genelist[0] # returns a single dict
+        a = genelist[0:10] # returns a new 3 item genelist
+        a = genelist["name"] returns a list containing a vertical slice of all of the "name" keys
 
         """
         newl = False
         if isinstance(index, int):
-            newl = copy.copy(self)
-            newl.linearData = [copy.deepcopy(self.linearData[index])] # separate the data so it can be modified.
-            newl._optimiseData()
+            # this should return a single dictionary.
+            return(self.linearData[index])
         elif isinstance(index, str):
+            # returns all labels with that item.
             return(self._findAllLabelsByKey(index))
         elif isinstance(index, slice):
+            # returns a new genelist corresponding to the slice.
             newl = copy.copy(self)
             newl.linearData = copy.deepcopy(self.linearData[index]) # separate the data so it can be modified.
             newl._optimiseData()
@@ -723,7 +820,7 @@ class genelist:
         """
         mkeys = self._collectIdenticalKeys(gene_list)
         if not mkeys: # unable to match.
-            print "Warning: No matching keys, the resulting list would be meaningless"
+            config.warning("No matching keys, the resulting list would be meaningless")
             return(False)
         newl = self.__copy__()
         newl.linearData = []
@@ -740,7 +837,7 @@ class genelist:
         """
         mkeys = self._collectIdenticalKeys(gene_list)
         if not mkeys: # unable to match.
-            print "Warning: No matching keys, unable to perform subtraction"
+            config.warning("Warning: No matching keys, unable to perform subtraction")
             return(False)
 
         newl = self.__copy__()
@@ -775,7 +872,7 @@ class genelist:
         for key in self.linearData[0]:
             if key in gene_list.linearData[0]:
                 return(True) # just one key in common required.
-        if not config.SILENT: print "Warning: gene lists are not equivalent, (you are comparing non-identical format lists)"
+        config.warning("gene lists are not equivalent, (you are comparing non-identical format lists)")
         return(False)
 
     def __hash__(self):
@@ -792,7 +889,6 @@ class genelist:
             except: # I bet the list is empty.
                 return(hash(self.name))
 
-
     def __ne__(self, gene_list):
         """
         (Internal)
@@ -801,21 +897,19 @@ class genelist:
         """
         return(not self.__eq__(gene_list))
 
-    def __copy__(self):
-        """
-        (Override)
-        Confer copy to mean a deep copy as opposed to a shallow copy.
-        """
-        return(copy.deepcopy(self))
-
-    def __shallowcopy__(self):
-        """
-        (New)
-
-        Some weird behaviour here, I know, this is so I can still get access to
-        the shallow copy mechanism even though 90% of the operations are copies.
-        """
-        return(copy.copy(self))
+    # this causes a circular reference?
+    #def __copy__(self):
+    #    """
+    #    (Override)
+    #    Okay, the copy system is a mess. This is here so that I move to
+    #    follow the usual python arrangement. Later __copy__ will
+    #    become the same as copy.copy(), whilst __deppcopy__
+    #    will be copy.deepcopy() and __shallowcopy__ will be removed.
+    #    """
+    #    newl = copy.copy(self) # only need a shallow copy of the framework
+    #    newl.linearData = copy.deepcopy(self.linearData) # deepcopy the linearData
+    #    newl._optimiseData()
+    #    return(newl)
 
     def append(self, item=None):
         """
@@ -823,10 +917,6 @@ class genelist:
 
             Append an item onto the geneList.
             The appended item must have all valid keys to work.
-            To test if the item can be appended to this list call::
-
-                if list == item: # test they are compatible.
-                    list.append(item) # append to list.
 
             NOTE: Be careful in it's usage, it optimises the data on each
             append, potentially slow with large numbers of appends()
@@ -840,8 +930,7 @@ class genelist:
         **Arguments**
 
             item
-                The item to append. It must be the same format as the list
-                to append()
+                The item to append.
 
         **Result**
             returns None
@@ -851,15 +940,14 @@ class genelist:
         # Don't I want to test for geneList like structures?
         # Test for equivalence of keys?
         self.linearData.append(item) # this just appends to the list?
+        self._history.append("Appended an item")
         self._optimiseData() # oof!!!
 
     def getColumns(self, return_keys=None):
         """
         return a new geneList only containing the coluns specified in return _keys (a list)
         """
-        if not isinstance(return_keys, list):
-            return_keys = []
-            return_keys.append(return_keys)
+        assert isinstance(return_keys, list), "return_keys must have a list"
 
         newl = self.__copy__()
         newl.linearData = []
@@ -870,12 +958,77 @@ class genelist:
             newl.linearData.append(newd)
         newl._optimiseData()
         self._history.append("Column sliced, for the columns: %s" % return_keys)
+        config.log.info("Column sliced, for the columns: %s" % ", ".join(return_keys))
+        return(newl)
+
+    def getGeneSet(self, list_of_items, key=None, use_re=True, **kargs):
+        """
+        **Purpose**
+            extract the data set of a list of genes, construct a new
+            genelist and return it.
+            You can send regular expressions and they will be
+            interpreted correctly.
+
+        **Arguments**
+            list_of_items
+                the list of items to collect
+
+            key
+                the key to search in.
+                If None, all keys are searched.
+
+            case_sensitive (Optional, default=False)
+                Set to True to make the search case sensitive.
+
+        **Returns**
+            A new genelist containing only those items.
+        """
+        newl = self.__copy__()
+        newl.linearData = []
+
+        if use_re: # re-ise the items.
+            if "case_sensitive" in kargs and kargs["case_sensitive"]:
+                list_of_items = [re.compile(i) for i in list_of_items]
+            else:
+                list_of_items = [re.compile(i, re.IGNORECASE) for i in list_of_items]
+
+            if not key: # split here for clarity.
+                for item in self.linearData:
+                    for k in item: # no key specified, check all.
+                        for r in list_of_items:
+                            if r.search(str(item[k])):
+                                newl.linearData.append(item)
+            else:
+                for item in self.linearData:
+                    for r in list_of_items:
+                        if r.search(str(item[key])): # sometimes gene names accidentally get stored as numbers
+                            newl.linearData.append(item)
+        else: # no re.
+            if not key: # split here for clarity.
+                for item in self.linearData:
+                    for k in item: # no key specified, check all.
+                        for r in list_of_items:
+                            if r == item[k]:
+                                newl.linearData.append(item)
+            else:
+                for item in self.linearData:
+                    for r in list_of_items:
+                        if r == item[key]:
+                            newl.linearData.append(item)
+
+        if newl:
+            newl._optimiseData()
+        else:
+            return(None)
+        self._history.append("Rows sliced to extract %s elements" % len(newl))
+        config.log.info("Sliced %s rows out" % len(newl))
         return(newl)
 
     def getCategories(self):
         """
         Get all of the categories in the list;
         """
+        config.debug("genelist.getCategories()")
         return([key for key in self.linearData[0]])
 
     def map(self, genelist=None, peaklist=None, microarray=None, genome=None, key=None, **kargs):
@@ -889,23 +1042,23 @@ class genelist:
             example if you have a microarray you should perform the map in this
             order::
 
-                result = gene_list.map(microarray=microarray, "refseq")
+                result = gene_list.map(microarray=microarray, key="refseq")
 
             'result' will now be a microarray object with all the appropriate
             methods.
 
             If however, you did this by mistake::
 
-                result = microarray.map(genelist=gene_list, "refseq")
+                result = microarray.map(genelist=gene_list, key="refseq")
 
             It will still work fine, but now, trying::
 
-                result.drawHeatmap(...)
+                result.drawHeatmap(filename="foo.png")
 
             will fail, because the result is a vanilla gene_list rather than
             a microarray as you might intend.
 
-            Also note, the algortihm is 'greedy' and will only take the first
+            Also note, this method is 'greedy' and will only take the first
             matching entry it finds.
 
         **Arguments**
@@ -923,16 +1076,20 @@ class genelist:
             image_filename (Optional)
                 save a venn diagram
 
+            venn_proportional (Optional)
+                enable experimental proportional venn diagrams
+
             title (Optional, default = None)
-                title for the image figures.
+                title for the venn diagram.
 
         **Result**
 
             returns a new gene_list-like object, inheriting methods from the
-            left hand side of the equation.
+            right hand side of the equation.
 
         """
-        valid_args = ["genelist", "peaklist", "microarray", "key", "image_filename", "title"]
+        valid_args = ["genelist", "peaklist", "microarray", "key",
+            "image_filename", "title", "venn_proportional"]
         for k in kargs:
             if not k in valid_args:
                 raise ArgumentError, (self.map, k)
@@ -947,43 +1104,50 @@ class genelist:
         assert key in self.linearData[0], "'%s' key not found in self '%s'" % (key, self.name)
         map_key = key
 
+        venn_proportional = False
+        if "venn_proportional" in kargs and kargs["venn_proportional"]:
+            venn_proportional = True
+
         p = progressbar(len(self.linearData))
         # speed up with a triangular search?
         newl = gene_list.__copy__()
         newl.linearData = []
         for index, item in enumerate(self.linearData):
             for other in gene_list:
-                #print item, other
                 if item[map_key] == other[map_key]:
-                    new_entry = copy.deepcopy(item)
-                    for key in other:
-                        if key != map_key:
-                            new_entry[key] = other[key]
+                    new_entry = copy.deepcopy(other) # inherit from the right
+                    for key in item: # copy across keys
+                        if key != map_key: # don't copy the map_key
+                            if key not in new_entry: # Don't copy if already exists
+                                new_entry[key] = item[key]
                     newl.linearData.append(new_entry)
-                    break
+                    break # lazy algorithm
             p.update(index)
-        if not config.SILENT: print "Info: Mapped two lists by %s, found: %s" % (map_key, len(newl))
+        config.info("Mapped '%s' vs '%s', using %s, found: %s" % (self.name, gene_list.name, map_key, len(newl)))
 
-        if "image_filename" in kargs:
-            title = "" # load a title if present
+        if "image_filename" in kargs and kargs["image_filename"]:
+            """
+            Potentially a bug here, that causes the overlap to
+            be underestimated? As the map routine is lazy it will fail
+            to match duplicates...
+            """
+            title = "".join(kargs["image_filename"].split(".")[:-1]) # load a title if present
             if "title" in kargs:
                 title = kargs["title"]
 
-            filename_root = kargs["image_filename"].split(".")[:-1]
-            filename_root = "".join(filename_root)
+            filename_root = "".join(kargs["image_filename"].split(".")[:-1])
 
             labels = {"left": self.name, "right": gene_list.name, "title": title}
             # and modify the output and draw the venn
             self.draw._vennDiagram2(len(self)-len(newl), len(gene_list)-len(newl), len(newl),
-                filename="%s_venn.png" % filename_root, proportional=False,
+                filename="%s_venn.png" % filename_root, proportional=venn_proportional,
                 labels=labels)
 
-        if len(newl):
+        newl._history.append("Mapped '%s' vs '%s' using key '%s'" % (self.name, gene_list.name, key))
+        if len(newl.linearData):
             newl._optimiseData()
             return(newl)
-        else:
-            if not config.SILENT: print "Warning: No keys matched using: %s" % map_key
-            return(False)
+        return(None)
 
     def _findNearbyGenes(self, coords, distance=10000):
         """
@@ -992,7 +1156,8 @@ class genelist:
         distance = distance from the coords;
         # relies on you list having a valid tss_loc
         """
-        assert coords, "Cannot annotate: %s" % coords
+
+        #assert coords, "Cannot annotate: %s" % coords
         assert "tss_loc" in self.linearData[0], "no available tss_loc key"
 
         if not self.isChromosomeAvailable(str(coords["chr"])): return(False) # has this chromsome.
@@ -1011,15 +1176,15 @@ class genelist:
                 ret.append(line)
         return(ret)
 
-    def annotate(self, gene_list=None, key_to_match="loc", distance=10000, resolution=2000, image_filename=None, **kargs):
+    def annotate(self, genelist=None, key_to_match="loc", distance=10000, resolution=2000, image_filename=None, **kargs):
         """
         **Purpose**
-            Annotate this gene_list by referring to some other gene_list-like
-            object, often a genome. It will map loc within a certain distance
+            Annotate this genelist by referring to some other genelist-like
+            object, often a genome. It will map 'loc' within a certain distance
 
         **Arguments**
 
-            gene_list
+            genelist
                 A genelist-like object
 
             key_to_match
@@ -1063,23 +1228,20 @@ class genelist:
             Saves the frequency of hits relative to the location tag as a PNG image
             in the current path with the filename: "{list_name}_tss_dist_distribution.png"
         """
-        valig_args = ["gene_list", "key_to_match", "distance", "resolution", "image_filename"]
-        for k in kargs:
-            if k not in valig_args:
-                raise ArgumentError, (self.annotate, k)
 
-        # -------------- Error Checking
-        if not config.SILENT: print "Info: Annotate %s..." % gene_list.name
 
-        assert gene_list, "you must specify a gene_list"
-        assert key_to_match in gene_list.linearData[0], "The '%s' key is not found in the gene_list" % key_to_match
+        if "peaklist" in kargs: # override if sent a peaklist
+            genelist = kargs["peaklist"]
+
+        assert genelist, "you must specify a genelist"
+        assert key_to_match in genelist.linearData[0], "The '%s' key is not found in the genelist" % key_to_match
         assert "tss_loc" in self.linearData[0], "The annotation list does not have a valid transcription start-site key, are the gene_list and genome the wrong way around?"
 
         # --------------- Parse the kargs
         if "image_filename" in kargs: image_filename = kargs["image_filename"]
 
         # --------------- Proper
-        newl = gene_list.__copy__() # make a new copy, I need to copy to preserve the attributes.
+        newl = genelist.__copy__() # make a new copy, I need to copy to preserve the attributes.
         # or if it is a derived class.
         newl.linearData = [] # blank the data though
 
@@ -1088,13 +1250,12 @@ class genelist:
 
         total_hits = 0
 
-        p = progressbar(len(gene_list))
+        p = progressbar(len(genelist))
 
-        for index, entry in enumerate(gene_list):
+        for index, entry in enumerate(genelist):
             hits = self._findNearbyGenes(entry[key_to_match], distance)
             if hits:
                 total_hits += len(hits)
-                if not config.SILENT and config.VERBOSE: print "Found: %s hits for entry: %s/%s" % (len(hits), index, len(gene_list))
                 for annotation in hits:
                     # I want to merge the two lists in a new dict;
                     new_entry = {}
@@ -1121,12 +1282,12 @@ class genelist:
                 xlabel="Distance to transcription start site (base pairs)",
                 ylabel="Frequency (Raw)")
 
-        if not config.SILENT: print "Info: Annotated %s, found: %s" % (newl.name, len(newl))
+        config.log.info("Annotated %s, found: %s within: %s bp" % (newl.name, len(newl), distance))
         newl._optimiseData()
-        self._history.append("Annotate list, %s using: %s, using key: %s" % (self.name, gene_list.name, key_to_match))
+        newl._history.append("Annotated list, %s using: %s, with key: %s" % (self.name, genelist.name, key_to_match))
         return(newl)
 
-    def collide(self, loc_key="loc", delta=200, title="", **kargs):
+    def collide(self, loc_key="loc", delta=200, title=None, **kargs):
         """
         NOTE: collide() should be a subset of overlap()...
 
@@ -1196,12 +1357,12 @@ class genelist:
             raise AssertionError, "No valid gene_list" # bodge the error as I do loading at the same time.
             # yes it could be done in a one line assert, but how then do I load gene_list?
 
-        assert loc_key in self.linearData[0], "no location key"
-        assert loc_key in gene_list.linearData[0], "no location key"
+        assert loc_key in self[0], "The 'loc_key' '%s' not found in this list" % (loc_key, )
+        assert loc_key in gene_list[0], "The 'loc_key' '%s' not found in the other list" % (loc_key, )
 
         merge = False
         if "merge" in kargs:
-            merge = True
+            merge = kargs["merge"]
 
         mode = "and"
         if "logic" in kargs and kargs["logic"] != "and":
@@ -1221,21 +1382,19 @@ class genelist:
             dist_array = []
 
         # get a progress bar
-        p = progressbar(len(self.linearData))
+        p = progressbar(len(self))
 
-        for indexA, item in enumerate(self.linearData):
-            locA = item[loc_key]
+        for indexA, item in enumerate(self):
+            locA = item[loc_key].pointify().expand(delta)
             if gene_list.isChromosomeAvailable(locA["chr"]):
-                Acentre = (locA["right"] + locA["left"]) / 2
 
                 for local_index, other in enumerate(gene_list.dataByChr[locA["chr"]]):
                     indexB = gene_list.dataByChrIndexLookBack[locA["chr"]][local_index] # sweet sweet hack, see _optimiseData for where this comes from
-                    locB = other[loc_key]
-                    Bcentre = (locB["right"] + locB["left"]) / 2
+                    locB = other[loc_key].pointify().expand(delta)
 
-                    #print Acentre - delta, Acentre + delta, Bcentre - delta, Bcentre + delta, utils.qcollide(Acentre - delta, Acentre + delta, Bcentre - delta, Bcentre + delta)
+                    #print locA, locB, locA.qcollide(locB)
 
-                    if utils.qcollide(Acentre - delta, Acentre + delta, Bcentre - delta, Bcentre + delta):
+                    if locA.qcollide(locB):
                         if mode != "and":
                             foundB[indexB] = True # only matters if logic="not"
                             foundA[indexA] = True
@@ -1248,9 +1407,8 @@ class genelist:
                         else:
                             a = copy.deepcopy(item)
 
-                        a["dist"] = Acentre - Bcentre # add a new key.
-                        a["loc"] = location(loc=locA)
-                        a["loc"].pointify()
+                        a["dist"] = locA.qdistance(locB) # add a new key.
+                        a["loc"] = locA.pointify()
 
                         for tag_key in ["tags", "tag", "tag_height"]: # if I find these keys I will add them together.
                             if tag_key in item and tag_key in other:
@@ -1266,7 +1424,7 @@ class genelist:
                             result_array[indexB] += 1
                             x_data.append(indexA)
                             y_data.append(indexB)
-                            dist_array.append(Acentre - Bcentre)
+                            dist_array.append(a["dist"])
             p.update(indexA)
 
         # if logic = "not", I want the opposite of all the items found
@@ -1276,18 +1434,14 @@ class genelist:
                 for index, item in enumerate(self):
                     if not foundA[index]:
                         a = copy.deepcopy(item)
-                        loc = a["loc"]
-                        a["loc"] = location(loc=loc) # pointify result
-                        a["loc"].pointify()
+                        a["loc"] = a["loc"].pointify() # pointify result
                         newl.linearData.append(a)
 
             if mode == "not" or mode == "notright":
                 for index, item in enumerate(gene_list):
                     if not foundB[index]:
                         a = copy.deepcopy(item)
-                        loc = a["loc"]
-                        a["loc"] = location(loc=loc) # pointify result
-                        a["loc"].pointify()
+                        a["loc"] = a["loc"].pointify() # pointify result
                         newl.linearData.append(a)
 
         if "image_filename" in kargs:
@@ -1323,9 +1477,9 @@ class genelist:
 
         if not config.SILENT:
             if mode == "and":
-                 print "Info: Collided two lists using '%s' key, found: %s overlaps" % (loc_key, len(newl))
+                config.log.info("Collided two lists using '%s' key, found: %s overlaps" % (loc_key, len(newl)))
             elif mode == "not":
-                print "Info: \"not\" Collided two lists using %s, found: %s non-overlapping sites" % (loc_key, len(newl))
+                config.log.info( "'not' Collided two lists using %s, found: %s non-overlapping sites" % (loc_key, len(newl)))
         newl._optimiseData()
         self._history.append("List Collision %s versus %s, with key: %s" % (self.name, gene_list.name, loc_key))
         return(newl)
@@ -1390,8 +1544,8 @@ class genelist:
         else:
             raise AssertionError, "No valid gene_list"
 
-        assert loc_key in self.linearData[0], "No location key"
-        assert loc_key in gene_list.linearData[0], "No location key"
+        assert loc_key in self[0], "No location key"
+        assert loc_key in gene_list[0], "No location key"
 
         merge = False
         if "merge" in kargs:
@@ -1406,12 +1560,12 @@ class genelist:
         newl = gene_list.__copy__()
         newl.linearData = []
         if "image_filename" in kargs:
-            raise NotImplementeError, "Plotting the dotplot of overlap is not implemented yet"
+            raise NotImplementedError, "Plotting the dotplot of overlap is not implemented yet"
             result_array = [0 for x in xrange(max(len(gene_list), len(self)))]
             x_data = []
             y_data = []
 
-        p = progressbar(len(self.linearData))
+        p = progressbar(len(self))
         for indexA, item in enumerate(self.linearData):
             locA = item[loc_key]
             if gene_list.isChromosomeAvailable(locA["chr"]):
@@ -1419,7 +1573,8 @@ class genelist:
                     indexB = gene_list.dataByChrIndexLookBack[locA["chr"]][local_index] # sweet sweet hack, see _optimiseData for where this comes from
                     locB = other[loc_key]
 
-                    if utils.collide(locA["left"]-delta, locA["right"]+delta, locB["left"]-delta, locB["right"]+delta):
+                    if utils.qcollide(locA["left"]-delta, locA["right"]+delta, locB["left"]-delta, locB["right"]+delta):
+
                         if mode != "and":
                             foundB[indexB] = True # only matters if logic="not"
                             foundA[indexA] = True
@@ -1456,23 +1611,21 @@ class genelist:
                 for index, item in enumerate(self):
                     if not foundA[index]:
                         a = copy.deepcopy(item)
-                        a["loc"] = location(loc = a["loc"]) # pointify result
-                        a["loc"].pointify()
+                        a["loc"] = a["loc"].pointify() # pointify result
                         newl.linearData.append(a)
 
             if mode == "not" or mode == "notright":
                 for index, item in enumerate(gene_list):
                     if not foundB[index]:
                         a = copy.deepcopy(item)
-                        a["loc"] = location(loc=a["loc"]) # pointify result
-                        a["loc"].pointify()
+                        a["loc"] = a["loc"].pointify() # pointify result
                         newl.linearData.append(a)
 
-        if not config.SILENT:
-            if mode == "and":
-                 print "Info: Collided two lists using %s, found: %s overlaps" % (loc_key, len(newl))
-            elif mode == "not":
-                print "Info: \"not\" Collided two lists using %s, found: %s non-overlapping sites" % (loc_key, len(newl))
+        if mode == "and":
+            config.log.info("Collided two lists using %s, found: %s overlaps" % (loc_key, len(newl)))
+        elif mode == "not":
+            config.log.info("'not' Collided two lists using %s, found: %s non-overlapping sites" % (loc_key, len(newl)))
+
         newl._optimiseData()
         self._history.append("List Collision %s, using: %s, with key: %s" % (self.name, gene_list.name, loc_key))
         return(newl)
@@ -1482,7 +1635,7 @@ class genelist:
         get the origins and history and where this list has been, and all of the operators
         performed on it.
         """
-        if not config.SILENT: print self._history
+        print self._history
 
     def removeDuplicates(self, key=None, **kargs):
         """
@@ -1500,15 +1653,168 @@ class genelist:
         newl.linearData = []
         ulist = [] # unique list
         count = 0
-        for item in self:
+        p = progressbar(len(self))
+        for i, item in enumerate(self):
             if not item[key] in ulist:
                 ulist.append(item[key])
                 newl.linearData.append(copy.deepcopy(item))
             else:
                 count += 1
+            p.update(i)
 
         newl._optimiseData()
 
-        if not config.SILENT: print "Info: Removed %s duplicates" % count
+        config.log.info("Removed %s duplicates" % count)
         self._history.append("Removed Duplicates: %s duplicates" % count)
+        return(newl)
+
+    def act(self, operation, key1, key2, result_key=None):
+        """
+        **Purpose**
+            perfrom some sort of action (or operation) on two keys
+            this is an inter-list operation that performs action on key1
+            and key2 and then stores the result in result_key
+
+        **Arguments**
+            operation
+                They type of operation to perform.
+                valid operations are:
+                ["add", "sub", "div", "pow", "mul", "log2", "log10", "ln",
+                "cat"]
+                Most of them are self explanatory and act on numbers.
+                The exception is cat, which concatenates two strings into
+                one string. The order is always 'key1key2'. cat will
+                also happily concatente two numbers into a string
+                make sure this is what you actually want.
+
+            key1, key2
+                the two keys to act on.
+
+            result_key (Optional)
+                the name of the key to store the result in.
+                (defualts to '<key1><operation><key2>')
+
+        **Returns**
+            This is an IN PLACE operation and returns None.
+        """
+        valid_operations = ["add", "sub", "div", "pow", "mul", "cat"]
+
+        op_str_map = {"add": "+", "sub": "-", "div": "/", "pow": "^", "mul": "*"} # used in history
+
+        if operation not in valid_operations:
+            raise BadOperationError, ("%s.act()" % self.__repr__(), operation)
+
+        if not result_key:
+            result_key = "%s%s%s" % (key1, op_str_map[operation], key2)
+
+        for item in self.linearData:
+            #try:
+            if operation == "add":
+                item[result_key] = item[key1] + item[key2]
+            elif operation == "sub":
+                item[result_key] = item[key1] - item[key2]
+            elif operation == "div":
+                try:
+                    item[result_key] = item[key1] / item[key2]
+                except ZeroDivisionError:
+                    item[result_key] = 0.0
+                    config.log.warning("Warning: Divide by zero error in the data, value set to '0.0'!")
+            elif operation == "mul":
+                item[result_key] = item[key1] * item[key2]
+            elif operation == "pow":
+                item[result_key] = item[key1] ** item[key2]
+            elif operation == "cat":
+                item[result_key] = "%s%s" % (item[key1], item[key2])
+
+        self._history.append("Action: '%s' %s '%s'" % (key1, op_str_map[operation], key2))
+        return(None)
+
+    def load_list(self, list_to_load):
+        """
+        **Purpose**
+            You've generated your own [{ ... }, { ...}] like list
+            (A list of dicts) and you want to either reload it into
+            a genelist-like object or load it into an empty genelist.
+            This is the method to do that officially.
+
+            This method should be used with great care. Some sanity
+            checking is done. But not very much.
+
+        **Arguments**
+            list_to_load
+                must be a list of dicts.
+
+        **Returns**
+            None. This is one of the few IN PLACE methods. and returns
+            None.
+        """
+        try:
+            list_to_load[0]
+            i = list_to_load.__iter__()
+        except TypeError:
+            raise AssertionError, "Type Error, the list appears not to be actually a list"
+
+        try:
+            item = list_to_load[0]
+            i = [item[k] for k in item]
+        except:
+            raise AssertionError, "Type Error, the list of items appears not to contain a dictionary item"
+
+        self.linearData = list_to_load
+        self._optimiseData()
+        return(None)
+
+    def raw_data(self):
+        """
+        **Purpose**
+            The internal representation of the data will/may be changing in the
+            future - to get access to the underlying list you can get it here.
+            In future the actual data may be a lot more messy.
+            This will return whatever representation is an iterable()
+            containing dictionaries. Like, say, a list of dictionaries
+            (the current implementation)
+
+        **Returns**
+            The underlying data object. At the moment
+            it returns a list of dictionaries, but in the future this may
+            change.
+        """
+        return(self.linearData)
+
+    def unfold(self, key=""):
+        """
+        **Purpose**
+            This method 'unfolds' the list based on a key that also contains
+            a list. It's easiest just to illustrate how it works:
+
+            a = [{"type": "one", "data": [1,2]}, {"type": "two", "data": [60,70]}]
+
+            b = unfold(key="data")
+
+            b = [{"type": "one", "data": 1}, {"type": "one", "data": 2},
+                {"type": "two", "data": 60}, {"type": "two", "data": 70}]
+
+            WARNING: This method can be very dangerous in the wrong hands.
+            Be certain that the output is actually what you are after!
+
+        **Arguments**
+            key
+                The key name of a list that will unfold the list
+
+        **Returns**
+            The unfolded list
+
+        """
+        assert isinstance(self.linearData[0][key], list), "the unfold key '%s' is not a list"
+
+        newl = self.__copy__()
+        newl.linearData = []
+
+        for item in self:
+            for u in item[key]:
+                newitem = copy.copy(item)
+                newitem[key] = u
+                newl.linearData.append(newitem)
+
+        newl._optimiseData()
         return(newl)

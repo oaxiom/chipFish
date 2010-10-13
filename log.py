@@ -1,37 +1,19 @@
 """
-config.py
+Logging module for chipfish.
 
-config must be imported before any other glbase library.
+Basically from glbase.
+
+The standard way to call is:
+log.info()
+log.critical()
+log.error
 
 """
 
-# config cannot import any other glbase module
-
-import os, logging
-
-# container for global environment variables.
-
-# The current version of GLbase
-VERSION = "0.161.hg"
-DATE = "6th Jul 2010"
-
-SILENT = False # set this to True to silence all glbase output.
-DEBUG = True
-
-# flags for the availability of three core libraries.
-MATPLOTLIB_AVAIL = False
-NUMPY_AVAIL = False
-SCIPY_AVAIL = False
-
-NUM_ITEMS_TO_PRINT = 3 # number of items to print by default.
-PRINT_LAST_ITEM = True
-
-DEFAULT_DPI = 150
-DEFAULT_DRAWER = "png" # slated for deprecation.
+SILENT= False # silence all
 
 # set up the logger here.
-# this needs to be moved to log.py
-# You can access it using config.log()
+
 # set up logging to file - see previous section for more details
 logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s %(name)-8s %(levelname)-8s %(message)s',
@@ -46,7 +28,7 @@ logging.getLogger('').addHandler(console)
 # use config.log. ... () to get to the logger
 log = logging.getLogger('glbase')
 
-# helpers
+# helpers - a bunch of aliases
 info = log.info
 warning = log.warning
 debug = log.debug

@@ -11,7 +11,7 @@ degenerate character N=[ATCG]
 
 import sys, os, numpy, string, csv, random, math
 
-from errors import AssertionError
+#from errors import AssertionError
 
 def library(args):
     """
@@ -87,28 +87,32 @@ def iti(_fm, _fmcpos, _cl, _list): # my iterator
     return(True)
 
 def movingAverage(listIn, window=20, normalise=False, bAbsiscaCorrect=True):
-    if len(listIn) < window:
-        if len(listIn) > 10:
-            window = len(listIn) / 2
-        else:
-            return(listIn) # cannot get a movingAverage that will make sense.
+    assert window < len(listIn), "the window size for the moving average is too large"
+    assert window >= 1, "the window size is too small (%s < 1)" % window
+
+    if window == 1: # just return the original array
+        return(numpy.arange(0, len(listIn)), listIn)
+
 
     if bAbsiscaCorrect:
         half_window_left = int(math.ceil(window / 2.0)) # correct for floating error division.
         half_window_right = int(math.floor(window / 2.0))
-        x = range(half_window_left, len(listIn)-half_window_right)
+        x = numpy.arange(half_window_left, len(listIn)-half_window_right)
     else:
-        x = range(0, len(listIn)-window)
+        x = numpy.arange(0, len(listIn)-window)
+
     y = []
 
-    for n in xrange(len(listIn)-window):
+    for n in xrange(half_window_left, len(listIn)-half_window_right):
         score = 0
-        for i in xrange(n, n+window, 1):
+        for i in xrange(n-half_window_left, n+half_window_right, 1):
             score += listIn[i]
+
         if normalise:
             y.append(float(score) / window)
         else:
             y.append(score)
+
     return(x, y)
 
 def osc(last, type):
@@ -219,7 +223,6 @@ def expandElement(_element, _preserve=True): #
             lib.append(dir[left]+_element+dir[right])
 
     return  lib
-
 
 def expandElementRightOnly(_element, _preserve=True): #
     """
@@ -381,7 +384,7 @@ def convertFASTAtoDict(filename):
     #entry = {"seq": "", "name": "empty"}
     for line in openfile:
         if line[:1] != ">": # not a FASTA block, so add this line to the sequence
-            entry["seq"] += line.lower().replace('\r', '').replace("\n", "") # strip out the new line WINDOWS specific!
+            entry["seq"] += line.replace('\r', '').replace("\n", "") # strip out the new line WINDOWS specific!
 
         if line[:1] == ">": # fasta start block
             entry = {"seq": "", "name": "empty"} # make a new node

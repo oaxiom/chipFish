@@ -11,6 +11,7 @@ Used in places like the CSV format language and in selecting criteria, etc...
 import cPickle, math, sys, os
 import utils, config
 
+from data import *
 from location import location
 
 # ----------------------------------------------------------------------
@@ -25,7 +26,7 @@ def glload(filename):
     oh = open(os.path.realpath(filename), "rb")
     newl = cPickle.load(oh)
     oh.close()
-    if not config.SILENT: print "Info: Loaded '%s' binary file" % (filename)
+    config.log.info("Loaded '%s' binary file with '%s' items" % (filename, len(newl)))
     return(newl)
 
 def change_drawing_mode(self, mode):

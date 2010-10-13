@@ -4,33 +4,57 @@
 Part of glbase,
 converts a sequence file to a track (graph)-like display
 
-
 """
 
 import sys, os, csv, time, cProfile, pstats
 
-sys.path.append(os.path.realpath("../"))
-from error import AssertionError # these imports are why it can't be moved...
-from track import track # the chipFish track implementation.
-import delayedlist # get delayedlist from glbase
+from glbase.track import track
+import glbase.delayedlist as delayedlist # get delayedlist from glbase
+import glbase.genelist as genelist
+from glbase.flags import exporttxt_loc_only_format
 
 def seqToTrk(infilename, outfilename, **kargs):
+    """
+    **Purpose**
+        Convert a list of genomic coordinates to a trk database (Actually an SQL
+        db)
+
+    **Arguments**
+        infilename
+            the name of the filename to read from. This should be a csv.
+            The data is loaded using a delayedlist(), so memory
+            is not a big problem.
+
+        outfilename
+            The name of the trk file to write to.
+
+        format (Optional, default=GERALD export.txt)
+            a format specifier in the glbase format describing the csv
+            file.
+
+    **Returns**
+        True on completion
+        and a trk file in outfilename
+
+    """
     assert os.path.realpath(infilename), "no filename specified"
     assert os.path.realpath(outfilename), "no save filename specified"
 
-    gerald_format = {"loc": {"code": "location(chr=column[10].strip(\".fa\"), left=column[12], right=int(column[12])+25)"},
-        "strand": 13,
-        "dialect": csv.excel_tab}
-    # strand is F/R ??
-    #mikkelsen_format = {"loc": {"code": "location(chr=column[0].strip(\".fa\"), left=column[1], right=int(column[2]))"},
-    #    "strand": 3,
-    #    "dialect": csv.excel_tab} # this is actually a bed?
+    if "format" in kargs and kargs["format"]:
+        default_format = kargs["format"]
+    else:
+        default_format = exporttxt_loc_only_format
 
-    seqfile = delayedlist(filename=os.path.realpath(infilename), format=gerald_format)
+    if "force_cache" in kargs and kargs["force_cache"]: # This is undocumented and generally a really bad idea
+        seqfile = genelist(filename=os.path.realpath(infilename), format=default_format)
+    else:
+        seqfile = delayedlist(filename=os.path.realpath(infilename), format=default_format)
     n = 0
     m = 0
 
-    t = track(filename=outfilename, stranded=False, new=True, **kargs) # strands not currently supported :(
+    t = track(filename=outfilename, stranded=False, new=True, **kargs)
+
+    print "Started %s -> %s" % (infilename, outfilename)
 
     s = time.time()
     for item in seqfile:
@@ -40,7 +64,7 @@ def seqToTrk(infilename, outfilename, **kargs):
         if n > 1000000:
             m += 1
             n = 0
-            print "%s,000,000" % m
+            print "%s,000,000 tags read" % m
             #break
     e = time.time()
     # 1000 = averages 8-9 s
@@ -60,7 +84,6 @@ def seqToTrk(infilename, outfilename, **kargs):
 
 if __name__ == "__main__":
     # testing:
-    print "Info: This may take a while..."
     PROFILE = False
     if PROFILE:
         cProfile.run("seqToTrk(\"/home/hutchinsa/ChIP_Raw/CMN019_121_unique_hits.txt\", \"../data/NSMash1.trk\")", "seqToTrk.profile")
