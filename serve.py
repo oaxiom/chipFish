@@ -7,141 +7,248 @@ This is the abandonment of the GUI
 import time, os, sys
 import cli as chipFish_draw
 from glbase_wrapper import location
-from wsgiref.simple_server import make_server
 
-HOST_NAME = ""
-PORT_NUMBER = 8081
+cf = chipFish_draw.serverApp()
 
-cf = chipFish_draw.cfApp()
+if len(sys.argv) < 2:
+    print "serve.py <genome> <track_list_file.txt>"
+    quit()
 
-pythonpath = os.getenv("PYTHONPATH", '')
-pythonpath += ":" + os.path.abspath(sys.path[0]).split()[0]
-os.environ["PYTHONPATH"] = pythonpath
-os.chdir("htdocs/") # The location I want to serve from
-
-class yApp:
-    """Produce the same output, but using a class
-    """
-    def __init__(self, environ, start_response):
-        self.environ = environ
-        self.start = start_response
-
-    def __iter__(self):
-        self.environ["PATH"] = "/Users/hutchinsandrew/chipfish/htdocs/"
-        self.environ["PWD"] = "/Users/hutchinsandrew/chipfish/htdocs/"
-        self.environ["HOME"] = "/Users/hutchinsandrew/chipfish/htdocs/"
-        os.chdir("/Users/hutchinsandrew/chipfish/htdocs/")
-        print self.environ
-        status = '200 OK'
-        response_headers = [('Content-type','text/html')]
-        self.start(status, response_headers)
-        cf.draw.setLocation(loc=location(loc="chr19:34010332-34653006"))
-        #cf.draw.exportImage("/Users/hutchinsandrew/chipfish/htdocs/last_image.png")
-        ret = """
-        <html><head><title>chipFish</title></head>\n
-        <body><p>This is a test...</p>\n
-        <p><img src='/Users/hutchinsandrew/chipfish/htdocs/tmp/last_image.png' alt='browser image genome' /></p>\n
-
-        </body></html>\n
-        """
-        yield(ret)
-
-httpd = make_server('', 8080, yApp)
-print "Serving HTTP on port 8080..."
-
-# Respond to requests until process is killed
-httpd.serve_forever()
+cf.startup(sys.argv[1])
 
 
 """
 
+Adapted from SimpleHTTPRequiestHandler
 
+"""
+__version__ = "0.1"
 
+__all__ = ["HTTPRequestHandler"]
+
+import os, sys, time
+import posixpath
 import BaseHTTPServer
-import SimpleHTTPServer
+import urllib
+import cgi
+import shutil
+import mimetypes
+try:
+    from cStringIO import StringIO
+except ImportError:
+    from StringIO import StringIO
 
-import cli as chipFish_draw
-from glbase_wrapper import location
+class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+    """HTTP request handler with GET and HEAD commands.
 
-HOST_NAME = ""
-PORT_NUMBER = 8081
+    The GET and HEAD requests are identical except that the HEAD
+    request omits the actual contents of the file.
 
-cf = chipFish_draw.cfApp()
+    """
 
-pythonpath = os.getenv("PYTHONPATH", '')
-pythonpath += ":" + os.path.abspath(sys.path[0]).split()[0]
-os.environ["PYTHONPATH"] = pythonpath
-os.chdir("htdocs/") # The location I want to serve from
-
-class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
-    def do_HEAD(s):
-        s.send_response(200)
-        s.send_header("Content-type", "text/html")
-        s.end_headers()
+    server_version = "SimpleHTTP/" + __version__
 
     def do_GET(self):
-        #Respond to a GET request.
-        #self.path = os.path.join(os.path.expanduser("~"), "chipFish/htdocs/")
+        """Serve a GET request."""
+        f = self.send_head()
+        if f:
+            self.copyfile(f, self.wfile)
+            f.close()
+
+    def do_HEAD(self):
+        """Serve a HEAD request."""
+        f = self.send_head()
+        if f:
+            f.close()
+
+    def send_head(self):
+        """Common code for GET and HEAD commands.
+
+        This sends the response code and MIME headers.
+
+        Return value is either a file object (which has to be copied
+        to the outputfile by the caller unless the command was HEAD,
+        and must be closed by the caller under all circumstances), or
+        None, in which case the caller has nothing further to do.
+
+        """
+        path, query = self.translate_get(self.path)
+
+        print path, query
+
+        if query:
+            if "loc" in query and query["loc"]:
+                self.__chipFish_draw(query["loc"])
+            elif "chr" in query and "left" in query and "right" in query:
+                self.__chipFish_draw(loc=location(chr=query["chr"], left=query["left"], right=query["right"]))
+
+        f = None
+        if os.path.isdir(path):
+            if not self.path.endswith('/'):
+                # redirect browser - doing basically what apache does
+                self.send_response(301)
+                self.send_header("Location", self.path + "/")
+                self.end_headers()
+                return(None)
+
+            for index in "index.html", "index.htm":
+                index = os.path.join(path, index)
+                if os.path.exists(index):
+                    path = index
+                    break
+            else: # No index, serve a directory listing
+                #pass # Disable directory listing. (Pass a 404?)
+                path = "htdocs/index.html"
+
+        ctype = self.guess_type(path)
+        try:
+            # Always read in binary mode. Opening files in text mode may cause
+            # newline translations, making the actual size of the content
+            # transmitted *less* than the content-length!
+            f = open(path, 'rb')
+        except IOError:
+            self.send_error(404, "File not found")
+            return None
 
         self.send_response(200)
-        self.send_header("Content-type", "text/html")
+        self.send_header("Content-type", ctype)
+        fs = os.fstat(f.fileno())
+        self.send_header("Content-Length", str(fs[6]))
+        self.send_header("Last-Modified", self.date_time_string(fs.st_mtime))
         self.end_headers()
-        self.wfile.write("<html><head><title>chipFish</title></head>\n")
-        self.wfile.write("<body><p>This is a test...</p>\n")
-        self.wfile.write("<p>You accessed path: %s</p>\n" % self.path)
+        return f
 
-        #if self.a and not self.a:
+    def __chipFish_draw(self, loc=None):
+        assert loc, "no location!"
 
-        cf.draw.setLocation(loc=location(loc="chr19:34010332-34653006"))
-        #cf.draw.exportImage("tmp/last_image.png")
-        self.wfile.write("<p><img src='tmp/last_image.png' alt='browser image genome' /></p>\n")
+        cf.draw.setLocation(loc=location(loc=loc))
+        cf.draw.exportImage("htdocs/tmp/last_image.png")
 
-        self.wfile.write("</body></html>\n")
+    def list_directory(self, path):
+        """Helper to produce a directory listing (absent index.html).
 
+        Return value is either a file object, or None (indicating an
+        error).  In either case, the headers are sent, making the
+        interface the same as for send_head().
+
+        """
+        try:
+            list = os.listdir(path)
+        except os.error:
+            self.send_error(404, "No permission to list directory")
+            return None
+        list.sort(key=lambda a: a.lower())
+        f = StringIO()
+        displaypath = cgi.escape(urllib.unquote(self.path))
+        f.write('<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">')
+        f.write("<html>\n<title>Directory listing for %s</title>\n" % displaypath)
+        f.write("<body>\n<h2>Directory listing for %s</h2>\n" % displaypath)
+        f.write("<hr>\n<ul>\n")
+        for name in list:
+            fullname = os.path.join(path, name)
+            displayname = linkname = name
+            # Append / for directories or @ for symbolic links
+            if os.path.isdir(fullname):
+                displayname = name + "/"
+                linkname = name + "/"
+            if os.path.islink(fullname):
+                displayname = name + "@"
+                # Note: a link to a directory displays with @ and links with /
+            f.write('<li><a href="%s">%s</a>\n'
+                    % (urllib.quote(linkname), cgi.escape(displayname)))
+        f.write("</ul>\n<hr>\n</body>\n</html>\n")
+        length = f.tell()
+        f.seek(0)
+        self.send_response(200)
+        self.send_header("Content-type", "text/html")
+        self.send_header("Content-Length", str(length))
+        self.end_headers()
+        return f
+
+    def translate_get(self, get):
+        """Translate a /-separated PATH to the local filename syntax.
+
+        Components that mean special things to the local file system
+        (e.g. drive or directory names) are ignored.  (XXX They should
+        probably be diagnosed.)
+
+        """
+        path = get.split('?',1)[0]
+        query = None
+        if "?" in get:
+            cmds = get.split("?")[1].split("&")
+            query = {}
+            for q in cmds:
+                query[q.split("=")[0]] = q.split("=")[1]
+
+        path = path.split('#',1)[0]
+        path = posixpath.normpath(urllib.unquote(path))
+        words = path.split('/')
+        words = filter(None, words)
+        path = os.getcwd()
+        for word in words:
+            drive, word = os.path.splitdrive(word)
+            head, word = os.path.split(word)
+            if word in (os.curdir, os.pardir): continue
+            path = os.path.join(path, word)
+
+        return (path, query)
+
+    def copyfile(self, source, outputfile):
+        """Copy all data between two file objects.
+
+        The SOURCE argument is a file object open for reading
+        (or anything with a read() method) and the DESTINATION
+        argument is a file object open for writing (or
+        anything with a write() method).
+
+        The only reason for overriding this would be to change
+        the block size or perhaps to replace newlines by CRLF
+        -- note however that this the default server uses this
+        to copy binary data as well.
+
+        """
+        shutil.copyfileobj(source, outputfile)
+
+    def guess_type(self, path):
+        """Guess the type of a file.
+
+        Argument is a PATH (a filename).
+
+        Return value is a string of the form type/subtype,
+        usable for a MIME Content-type header.
+
+        The default implementation looks the file's extension
+        up in the table self.extensions_map, using application/octet-stream
+        as a default; however it would be permissible (if
+        slow) to look inside the data to make a better guess.
+
+        """
+
+        base, ext = posixpath.splitext(path)
+        if ext in self.extensions_map:
+            return self.extensions_map[ext]
+        ext = ext.lower()
+        if ext in self.extensions_map:
+            return self.extensions_map[ext]
+        else:
+            return self.extensions_map['']
+
+    if not mimetypes.inited:
+        mimetypes.init() # try to read system mime.types
+    extensions_map = mimetypes.types_map.copy()
+    extensions_map.update({
+        '': 'application/octet-stream', # Default
+        '.py': 'text/plain',
+        '.c': 'text/plain',
+        '.h': 'text/plain',
+        })
+
+
+def serve(HandlerClass = HTTPRequestHandler, ServerClass = BaseHTTPServer.HTTPServer):
+    # Hack the port.
+    sys.argv[1] = 8080
+    BaseHTTPServer.test(HandlerClass, ServerClass)
 
 if __name__ == '__main__':
-    server_class = BaseHTTPServer.HTTPServer
-    httpd = server_class((HOST_NAME, PORT_NUMBER), MyHandler)
-    print time.asctime(), "Server Starts - %s:%s" % (HOST_NAME, PORT_NUMBER)
-    try:
-        httpd.serve_forever()
-    except KeyboardInterrupt:
-        pass
-    httpd.server_close()
-    print time.asctime(), "Server Stops - %s:%s" % (HOST_NAME, PORT_NUMBER)
-
-
-
-def httpd_serve_forever(port=8080) :
-    #Start a webserver on a local port.
-    import BaseHTTPServer
-    import CGIHTTPServer
-
-    class __HTTPRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
-        def is_cgi(self) :
-            if self.path == "/create.cgi":
-                self.cgi_info = '', 'create.cgi'
-                return True
-            return False
-
-    # Add current directory to PYTHONPATH. This is
-    # so that we can run the standalone server
-    # without having to run the install script.
-    pythonpath = os.getenv("PYTHONPATH", '')
-    pythonpath += ":" + os.path.abspath(sys.path[0]).split()[0]
-    os.environ["PYTHONPATH"] = pythonpath
-
-    htdocs = "htdocs/path/to/"
-    os.chdir(htdocs)
-
-    HandlerClass = __HTTPRequestHandler
-    ServerClass = BaseHTTPServer.HTTPServer
-    httpd = ServerClass(('', port), HandlerClass)
-    print "Serving HTTP on localhost:%d ..." % port
-
-    try :
-        httpd.serve_forever()
-    except KeyboardInterrupt:
-        sys.exit(0)
-# end httpd_serve_forever()
-""" # From weblog.
+    serve()

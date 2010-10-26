@@ -14,7 +14,7 @@ import cPickle, sys, os, struct, math, sqlite3, zlib
 from location import location
 from data import positive_strand_labels, negative_strand_labels
 
-from numpy import array, zeros # Carray
+from numpy import array, zeros, set_printoptions # Carray
 
 TRACK_CACHE_SIZE = 10 # number of track segments to cache.
 
@@ -184,7 +184,7 @@ class track:
         """
         # check if the array is already on the cache.
         extended_loc = location(loc=str(loc)) # this should be fixed in a later version of glbase...
-        extended_loc.expand(read_extend) # this behaviour may not work in a future version?
+        #extended_loc.expand(read_extend) # this behaviour may not work in a future version?
         locs_required = [extended_loc] # make sure to include the read_extend, but don't modify the location to get.
 
         # get the reads only in the ranges required.
@@ -203,6 +203,11 @@ class track:
             elif strand in negative_strand_labels:
                 strand = negative_strand_labels
 
+        # Bound the resolution to 1bp if int(resolution) reports <1
+        min_res = int(resolution)
+        if min_res == 0:
+            min_res = 1
+
         for r in reads:
             if not strand or strand and r[2] in strand:
                 if r[2] in positive_strand_labels:
@@ -212,9 +217,10 @@ class track:
                     read_left = r[0] - read_extend
                     read_right = r[1]
 
-                for rloc in xrange(read_left, read_right, int(resolution)):
-                    array_relative_location = int((rloc - read_extend - loc["left"]) / resolution) # convert relative to the array
+                rel_array_left = int((read_left - read_extend - loc["left"]) / resolution)
+                rel_array_right = int((read_right - read_extend - loc["left"]) / resolution)
 
+                for array_relative_location in xrange(rel_array_left, rel_array_right, 1):
                     if array_relative_location >= 0 and array_relative_location < len(a): # within array
                         a[array_relative_location] += 1
 

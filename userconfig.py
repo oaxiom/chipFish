@@ -23,12 +23,13 @@ class userconfig:
         self.__userpath = os.path.expanduser("~")
 
         func_map = {"posix": self.__posix,
-            "mac": self.__mac} #"win": self.__win, # not currently implemented.
+            "mac": self.__mac}
+            #"win": self.__win, # not currently implemented.
 
-        if os.name in func_map:
-            func_map[os.name]()
-        else:
+        if os.name not in func_map:
             raise ErrorOSNotSupported
+
+        func_map[os.name]()
 
         # at this point several paths are now valid:
         # self.__userpath

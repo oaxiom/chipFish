@@ -91,7 +91,7 @@ class ErrorLibrarySQLite(Exception):
 class ErrorUserDataNotFound(Exception):
     """
     Error: the user data cannot be found or is otherwise mangled
-    This should be fixable? 
+    This should be fixable?
     Should intelligently fail?
     """
     def __init__(self):
@@ -126,5 +126,14 @@ class ErrorTrackDrawTypeNotFound(Exception):
     """
     def __init__(self, message):
         self.message = "Error: The tracks draw type '%s' cannot be found/determined/guessed" % message
+    def __str__(self):
+        return(repr(self.message))
+
+class ErrorGenomeNotSupported(Exception):
+    """
+    Error: The tracks draw type cannot be found/determined/guessed.
+    """
+    def __init__(self, message):
+        self.message = "Error: The genome '%s' is not supported on this build of chipfish" % message
     def __str__(self):
         return(repr(self.message))
