@@ -145,15 +145,15 @@ class gDraw:
 
             if track["type"] == "graph":
                 draw_data["array"] = track["data"].get_data("graph", location(loc=self.curr_loc),
-                    resolution=self.bps_per_pixel, read_extend=150)
+                    resolution=self.bps_per_pixel, read_extend=0)
             elif track["type"] == "bar":
                 draw_data["array"] = track["data"].get_data("bar", location(loc=self.curr_loc),
-                    resolution=self.bps_per_pixel, read_extend=150)
+                    resolution=self.bps_per_pixel, read_extend=0)
             elif track["type"] == "spot":
                 draw_data["array"] = track["data"].get_data("spot", location(loc=self.curr_loc))
             elif track["type"] == "graph_split_strand":
                 draw_data["array"] = track["data"].get_data("graph", location(loc=self.curr_loc),
-                    strand=True, resolution=self.bps_per_pixel, read_extend=150)
+                    strand=True, resolution=self.bps_per_pixel, read_extend=0)
 
             # and draw:
             colbox = draw_modes_dict[draw_data["type"]](draw_data)
