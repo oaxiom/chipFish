@@ -42,8 +42,7 @@ from glbase_wrapper import location
 from data import *
 from ruler import ruler
 
-MAX_TRACKS = 10 # maximum number of tracks
-
+MAX_TRACKS = 10 # maximum number of tracks - should be in config
 
 import wx.lib.wxcairo
 import cairo

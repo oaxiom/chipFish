@@ -813,9 +813,9 @@ class serverApp:
             self.draw.bindTrack(track(filename="../Tracks/TCD4_naive_H3k4me3.trk", name="TCD4 Naive H3K4me3"))
             self.draw.bindTrack(track(filename="../Tracks/TCD4_naive_H3k27me3.trk", name="TCD4 Naive H3K27me3"))
             #self.draw.bindTrack(track(filename="../Tracks/TCD4_Th1_H3k4me3.trk", name="TCD4 h1 H3K4me3"))
-            #self.draw.bindTrack(track(filename="../Tracks/TCD4_Th1_H3k27me3.trk", name="TCD4 h1 H3K27me3"))
+            self.draw.bindTrack(track(filename="../Tracks/TCD4_Th1_H3k27me3.trk", name="TCD4 h1 H3K27me3"))
             #self.draw.bindTrack(track(filename="../Tracks/TCD4_Th2_H3k4me3.trk", name="TCD4 h2 H3K4me3"))
-            #self.draw.bindTrack(track(filename="../Tracks/TCD4_Th2_H3k27me3.trk", name="TCD4 h2 H3K27me3"))
+            self.draw.bindTrack(track(filename="../Tracks/TCD4_Th2_H3k27me3.trk", name="TCD4 h2 H3K27me3"))
             #self.draw.bindTrack(track(filename="../Tracks/ESCTCF.trk", name="ESCTCF"))
         elif genome == "mm9":
             # mm9
