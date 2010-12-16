@@ -105,7 +105,7 @@ class userconfig:
         """
         (Override)
         Confer
-        a = userconfig("last_png_path")
+        a = userconfig["last_png_path"]
         """
         return(self.__data[key])
 
@@ -113,6 +113,8 @@ class userconfig:
         """
         (Override)
         make properties writable.
+
+        userconfig["last_png_path"] = ""
         """
         self.__data[key] = value
 

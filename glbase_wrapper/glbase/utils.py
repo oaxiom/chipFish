@@ -670,8 +670,8 @@ def FASTAToLIST(filename):
     # all done;
     return (elementList)
 
-def repeatMask(DNA_seq):
-    return(DNA_seq.replace("a", "n").replace("c", "n").replace("g", "n").replace("t", "n").replace("N", "n"))
+def repeat_mask(seq):
+    return(seq.replace("a", "n").replace("c", "n").replace("g", "n").replace("t", "n"))
 
 def loadTSVAsLIST(file):
     oh = open(file, "rU")

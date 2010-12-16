@@ -79,7 +79,7 @@ class _base_genelist:
         if "compressed" in kargs:
             compressed = kargs["compressed"]
         if compressed:
-            config.log.warning("compression not currently implemented")
+            config.log.warning("compression not currently implemented, saving anyway")
 
         oh = open(filename, "wb")
         if compressed:
@@ -87,4 +87,4 @@ class _base_genelist:
         else:
             cPickle.dump(self, oh, -1)
         oh.close()
-        config.log.info("Saved Binary version of list: %s" % filename)
+        config.log.info("Saved Binary version of list: '%s'" % filename)

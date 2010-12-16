@@ -1,36 +1,17 @@
 """
-gDraw, part of chipFish
 
-(c) 2008-2009 oAxiom
+This is a cli interface into chipfish.
 
-Not for distribution.
+I had to make this as the python bindings for wxwidgets failed to build
+on the Mac, so I needed a way to output the images.
 
-NOTES:
-------
-. This needs to be split into two
-    at the moment a lot of interface code is spilling
-    over into gDraw. needs to be split into a strictly drawing backend,
-    and an interface class. Actually, why? Cairo is mature...
+This is ripped out of gDraw and others.
 
-. I think this needs to be split further than 2.
-    gDraw should conatain the gui draw interface, and the actual drawing primitives __draw* moved into a
-    _draw module.
-
-. gDraw is the only location to use cairo... Actually, why restrict this? gDraw is getting far too big...
-. Currently using the 'toy' text-rendering API.
-    Is this adequate for our needs?
-    - will only render UTF-8 fonts... Anything else requried?
-    that rules out greek symbols, Chinese, Cyrillic etc...? Right?
-
-TODO:
------
-. change the location to a <location> and use that datatype instead (cleaner)
-. DXF/PS exporter?
 """
 
 from __future__ import division
 
-import sys, os, math
+import sys, os, math, time
 
 import opt
 
@@ -38,23 +19,13 @@ from error import *
 from constants import *
 from boundbox import bbox
 from operator import itemgetter
-from glbase_wrapper import location
+from glbase_wrapper import location, track, location, peaklist
 from data import *
 from ruler import ruler
 
-MAX_TRACKS = 10 # maximum number of tracks - should be in config
+MAX_TRACKS = 10 # maximum number of tracks
 
-import wx.lib.wxcairo
 import cairo
-
-class drawPanel(wx.Panel):
-    """
-    An empty Panel class that sets things up suitably for Cairo.
-    """
-    def __init__(self, parent, paint_Procedure):
-        wx.Panel.__init__(self, parent, -1, size=(-1,-1), style=wx.FULL_REPAINT_ON_RESIZE) # This has to be set to full repaint :)
-        self.Bind(wx.EVT_PAINT, paint_Procedure, self)
-        self.Fit()
 
 class gDraw:
     def __init__(self, genome):
@@ -77,7 +48,7 @@ class gDraw:
         self.lbp = 1
         self.rbp = 1000
 
-        # set up dummy values for the view these get updated to sensible values later
+        # set up dummy values for the view
         self.w = 100
         self.h = 200
 
@@ -144,15 +115,15 @@ class gDraw:
 
             if track["type"] == "graph":
                 draw_data["array"] = track["data"].get_data("graph", location(loc=self.curr_loc),
-                    resolution=self.bps_per_pixel, read_extend=0)
+                    resolution=self.bps_per_pixel, read_extend=150)
             elif track["type"] == "bar":
                 draw_data["array"] = track["data"].get_data("bar", location(loc=self.curr_loc),
-                    resolution=self.bps_per_pixel, read_extend=0)
+                    resolution=self.bps_per_pixel, read_extend=150)
             elif track["type"] == "spot":
                 draw_data["array"] = track["data"].get_data("spot", location(loc=self.curr_loc))
             elif track["type"] == "graph_split_strand":
                 draw_data["array"] = track["data"].get_data("graph", location(loc=self.curr_loc),
-                    strand=True, resolution=self.bps_per_pixel, read_extend=0)
+                    strand=True, resolution=self.bps_per_pixel, read_extend=150)
 
             # and draw:
             colbox = draw_modes_dict[draw_data["type"]](draw_data)
@@ -181,15 +152,6 @@ class gDraw:
             self.ctx.rectangle(*box.get_dimensions())
             self.ctx.fill()
         self.ctx.stroke()
-
-    def bindPanel(self, panel):
-        """
-        This is special usage, and not so intuitive at the moment...
-        Maybe in the future it will be better.
-        bind a wx.Panel into gDraw.
-        """
-        self.panel = drawPanel(panel, self.OnPaint)
-        return(self.panel)
 
     def bindTrack(self, track, track_type=None):
         """
@@ -259,53 +221,6 @@ class gDraw:
             self.rbp = loc["right"]
         # sanity checking? Neccesary?
 
-    def getLocation(self):
-        """
-        **Purpose**
-            get the current view genome location
-
-        **Arguments**
-            None
-
-        **Returns**
-            returns a <location>
-        """
-        return(location(chr=self.chromosome, left=self.lbp, right=self.rbp))
-
-    def move(self, mode="centre", percent=5):
-        """
-        move the view by a fixed percent according to 'mode'
-        valid modes are:
-            left = left
-            right = right
-            zoomout = zoom out
-            zoomin = zoom in
-        will move the display by n percent.
-        """
-        if mode not in valid_move_modes:
-            return(False)
-
-        # get the current bp move percent.
-        move_percent = int((self.rbp - self.lbp) * (percent / 100.0))
-
-        if mode == "right":
-            self.lbp += move_percent
-            self.rbp += move_percent
-        elif mode == "left":
-            self.lbp -= move_percent
-            self.rbp -= move_percent
-        elif mode == "zoomout":
-            self.lbp -= move_percent
-            self.rbp += move_percent
-        elif mode == "zoomin":
-            self.lbp += move_percent
-            self.rbp -= move_percent
-            if self.lbp >= self.rbp: # check not zoomed in too far.
-                mid_point = self.rbp + self.lbp / 2
-                self.lbp = mid_point - 1
-                self.rbp = mid_point + 1
-        return(True)
-
     def __drawChr(self, location_span):
         """
         draw the basic chromosome
@@ -373,7 +288,7 @@ class gDraw:
 
         """
         x,y,w,h = self.__getTextExtents("Chromosome %s" % str(self.chromosome))
-        self.__drawText(5, opt.ruler.height_px + 22, opt.ruler.font, "Chromosome %s" % str(self.chromosome), size=12)
+        self.__drawText(5, opt.ruler.height_px + 22, opt.ruler.font, "Chromosome %s" % str(self.chromosome), size=14)
 
         self.__setPenColour(opt.ruler.colour)
         # work out a good scale representation
@@ -430,11 +345,6 @@ class gDraw:
         surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, 1024, guess_height)
         ctx = cairo.Context(surface)
 
-        # preserve view variables
-        oldw = self.w
-        oldh = self.h
-        oldfullw = self.fullw
-
         self.w = 1024
         self.fullw = 1024 # no bar side buttons
         self.h = guess_height
@@ -448,21 +358,10 @@ class gDraw:
         surface.write_to_png(filehandle)
         filehandle.close()
 
-        # put back the gDraw view values.
-        self.w = oldw
-        self.h = oldh
-        self.fullw = oldfullw
-
         # clean ups
         del ctx
         del surface
         return(actual_filename)
-
-    def getPanel(self):
-        """
-        get the current panel.
-        """
-        return(self.panel)
 
     def forceRedraw(self):
         """
@@ -510,7 +409,7 @@ class gDraw:
         self.ctx.fill()
         return( (0, base_loc[1]-opt.track.height_px[track_type], self.w, opt.track.height_px[track_type]-2) )
 
-    def __drawTrackGraph(self, track_data, scaled=True, min_scaling=100):
+    def __drawTrackGraph(self, track_data, scaled=True, min_scaling=300):
         """
         **Arguments**
             track_data
@@ -526,8 +425,9 @@ class gDraw:
                 full height of the track. Instead the track will be scaled to
                 this value as a minimum.
         """
+        track_max = max(track_data["array"])
+
         if scaled:
-            track_max = max(track_data["array"])
 
             if min_scaling and track_max < min_scaling:
                 scaling_value = min_scaling / float(opt.track.height_px["graph"])
@@ -540,7 +440,7 @@ class gDraw:
 
         colbox = self.__drawTrackBackground(track_data["track_location"], "graph")
         self.__setPenColour( (0,0,0) )
-        self.ctx.set_line_width(0.5)
+        self.ctx.set_line_width(2)
         coords = []
         lastpx = -1
         for index, value in enumerate(new_array):
@@ -555,7 +455,7 @@ class gDraw:
             self.ctx.line_to(item[0], item[1])
 
         self.ctx.stroke()
-        self.__drawText(0, loc[1] - 15 , opt.graphics.font, track_data["name"])
+        self.__drawText(0, loc[1] - 25 , opt.graphics.font, track_data["name"])
 
         return(colbox)# collision box dimensions
 
@@ -609,7 +509,7 @@ class gDraw:
                 self.__setPenColour( (0.8,0,0) )
             elif i == 1:
                 self.__setPenColour( (0,0,0.8) )
-            self.ctx.set_line_width(0.5)
+            self.ctx.set_line_width(2)
             coords = []
             lastpx = -1
             for index, value in enumerate(s):
@@ -628,7 +528,7 @@ class gDraw:
 
         # - strand
 
-        self.__drawText(0, loc[1] - 15 , opt.graphics.font, track_data["name"])
+        self.__drawText(0, loc[1] - 25 , opt.graphics.font, track_data["name"])
         return(colbox)
 
     def __drawTrackSpot(self, track_data, **kargs):
@@ -669,7 +569,7 @@ class gDraw:
         self.__drawText(0, sc[1]-17 , opt.graphics.font, track_data["name"])
         return(colbox)
 
-    def __drawText(self, x, y, font, text, size=12, colour=(0,0,0), style=None):
+    def __drawText(self, x, y, font, text, size=20, colour=(0,0,0), style=None):
         """
         (Internal - helper)
         Draw text to the screen, font is a string for the font name.
@@ -680,6 +580,7 @@ class gDraw:
         self.__setPenColour(colour)
         self.ctx.select_font_face(font, txtToCairoA[style], txtToCairoB[style])
         self.ctx.move_to(x, y)
+        self.ctx.set_font_size(size)
         self.ctx.show_text(text)
 
     def __drawGene(self, data):
@@ -760,7 +661,7 @@ class gDraw:
             self.ctx.line_to(loc[0], loc[1]-20+opt.graphics.arrow_height_px)
             self.ctx.line_to(loc[0], loc[1]-20)
             self.ctx.fill()
-            self.__drawText(loc[0]+opt.graphics.arrow_width_px+3, loc[1]-20+opt.graphics.arrow_height_px, "Arial", data["name"], 12)
+            self.__drawText(loc[0]+opt.graphics.arrow_width_px+3, loc[1]-20+opt.graphics.arrow_height_px, "Arial", data["name"], size=18)
         elif data["strand"] == "-":
             loc = self.__realToLocal(data["loc"]["right"], 0)
             # arrow.
@@ -770,7 +671,7 @@ class gDraw:
             self.ctx.line_to(loc[0], loc[1]+20+opt.graphics.arrow_height_px)
             self.ctx.line_to(loc[0], loc[1]+20)
             self.ctx.fill()
-            self.__drawText(loc[0]+opt.graphics.arrow_width_px+3, loc[1]+20+opt.graphics.arrow_height_px, "Arial", data["name"], 12)
+            self.__drawText(loc[0]+opt.graphics.arrow_width_px+3, loc[1]+20+opt.graphics.arrow_height_px, "Arial", data["name"], size=18)
         else:
             raise ErrorInvalidGeneDefinition
 
@@ -857,16 +758,3 @@ class gDraw:
         else:
             return(False)
         return(True)
-
-    def isColliding(self, x, y):
-        """
-        this shouldn't be here?
-
-        returns a collision type (see boundbox)
-        or FALSE
-        """
-        for box in self.colBoxes:
-            c = box.collideB((x,y))
-            if c:
-                print c["type"]
-                return(c["type"])

@@ -12,8 +12,8 @@ import os, logging
 # container for global environment variables.
 
 # The current version of GLbase
-VERSION = "0.161.hg"
-DATE = "6th Jul 2010"
+VERSION = "0.165.hg"
+DATE = "14th Dec 2010"
 
 SILENT = False # set this to True to silence all glbase output.
 DEBUG = True
@@ -64,7 +64,7 @@ def set_log_level(level):
         "info": logging.INFO,
         "debug": logging.DEBUG}
 
-    assert level in level_map, "no valid level used to set the logger"
+    assert level in level_map, "no valid level used to set the logger, valid modes are 'info' or 'debug'"
 
     log.setLevel(level_map[level])
     return(True)

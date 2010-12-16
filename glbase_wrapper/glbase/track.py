@@ -1,15 +1,11 @@
 """
 track, part of glbase
 
-TODO:
------
-. store the name (and other attribs?) in the db
-
 """
 
 from __future__ import division
 
-import cPickle, sys, os, struct, math, sqlite3, zlib
+import cPickle, sys, os, struct, math, sqlite3, zlib, time
 
 from location import location
 from data import positive_strand_labels, negative_strand_labels
@@ -41,9 +37,44 @@ class track:
         # set-up the tables
         if new:
             self.__setup_tables(filename) # return an empty track
+            self.meta_data = {"name": self.name,
+                "source_filename": filename,
+                "creation_date": time.strftime("%a, %d %b %Y %H:%M:%S +0000", time.gmtime()),
+                "version": "1.01"}
+            self.__setup_meta_data(self.meta_data)
         else:
             self.__load_tables(filename)
+            self.__load_meta_data()
+
         self.__c = None
+
+    def __getitem__(self, key):
+        """
+        make meta data accesible like a dict
+        """
+        if key == "info": # catch this special key
+            for k in self.meta_data:
+                print "%s\t:\t%s" % (k, self.meta_data[k])
+        else:
+            assert key in self.meta_data, "'%s' not found in this track" % key
+            return(self.meta_data[key])
+
+    def __load_meta_data(self):
+        """
+        retrieve the meta data from the
+        """
+        c = self.__connection.cursor()
+
+        c.execute("SELECT * FROM info")
+
+        result = c.fetchall()
+
+        self.meta_data = {}
+        for item in result:
+            self.meta_data[item[0]] = item[1]
+
+        self.__connection.commit()
+        c.close()
 
     def __load_tables(self, filename):
         """
@@ -73,6 +104,19 @@ class track:
         c = self.__connection.cursor()
 
         c.execute("CREATE TABLE main (chromosome TEXT PRIMARY KEY, seq_reads INT)")
+        c.execute("CREATE TABLE info (key TEXT PRIMARY KEY, value TEXT)")
+
+        self.__connection.commit()
+        c.close()
+
+    def __setup_meta_data(self, info_dictionary):
+        """
+        Load a dictionary of meta data into the info table
+        """
+        c = self.__connection.cursor()
+
+        for key in info_dictionary:
+            c.execute("INSERT INTO info VALUES (?, ?)", (key, info_dictionary[key]))
 
         self.__connection.commit()
         c.close()

@@ -8,12 +8,19 @@ converts a sequence file to a track (graph)-like display
 
 import sys, os, csv, time, cProfile, pstats
 
+base_path = os.path.dirname(os.path.realpath( __file__ ))
+sys.path.append(os.path.realpath(os.path.join(base_path, "../"))) # Temporarily add to the path
+sys.path.append(os.path.realpath(os.path.join(base_path, "../../")))
+
 from glbase.track import track
 import glbase.delayedlist as delayedlist # get delayedlist from glbase
 import glbase.genelist as genelist
 from glbase.flags import exporttxt_loc_only_format
 
-def seqToTrk(infilename, outfilename, **kargs):
+sys.path.remove(os.path.realpath(os.path.join(base_path, "../")))
+sys.path.remove(os.path.realpath(os.path.join(base_path, "../../")))
+
+def seqToTrk(infilename, outfilename, name, stranded=True, **kargs):
     """
     **Purpose**
         Convert a list of genomic coordinates to a trk database (Actually an SQL
@@ -26,11 +33,17 @@ def seqToTrk(infilename, outfilename, **kargs):
             is not a big problem.
 
         outfilename
-            The name of the trk file to write to.
+            The filename of the trk file to write to.
+
+        name
+            A name describing the track
 
         format (Optional, default=GERALD export.txt)
             a format specifier in the glbase format describing the csv
             file.
+
+        stranded (Optional, default=True)
+            expects a "strand" key and will store the strand.
 
     **Returns**
         True on completion
@@ -49,22 +62,26 @@ def seqToTrk(infilename, outfilename, **kargs):
         seqfile = genelist(filename=os.path.realpath(infilename), format=default_format)
     else:
         seqfile = delayedlist(filename=os.path.realpath(infilename), format=default_format)
+
     n = 0
     m = 0
 
-    t = track(filename=outfilename, stranded=False, new=True, **kargs)
+    t = track(filename=outfilename, stranded=stranded, new=True, name=name, **kargs)
 
-    print "Started %s -> %s" % (infilename, outfilename)
+    config.log.info("Started %s -> %s" % (infilename, outfilename))
 
     s = time.time()
     for item in seqfile:
-        t.add_location(item["loc"], strand=item["strand"])
+        if "strand" in item and stranded:
+            t.add_location(item["loc"], strand=item["strand"])
+        else:
+            t.add_location(item["loc"])
 
         n += 1
         if n > 1000000:
             m += 1
             n = 0
-            print "%s,000,000 tags read" % m
+            config.log.info("%s,000,000 tags read" % m) # How to correct for 1000 M tags?
             #break
     e = time.time()
     # 1000 = averages 8-9 s
@@ -77,9 +94,9 @@ def seqToTrk(infilename, outfilename, **kargs):
     # track_new
     # 2.5 s # overhead is almost all delayedlist now...
 
-    print "Finalise:"
+    config.log.info("Finalise...")
     t.finalise()
-    print "Took: %s s" % (e-s)
+    config.log.info("Took: %s s" % (e-s))
     return(True)
 
 if __name__ == "__main__":

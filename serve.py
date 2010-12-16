@@ -5,17 +5,15 @@ This is the abandonment of the GUI
 
 """
 import time, os, sys
-import cli as chipFish_draw
+from app import app
 from glbase_wrapper import location
-
-cf = chipFish_draw.serverApp()
 
 if len(sys.argv) < 2:
     print "serve.py <genome> <track_list_file.txt>"
     quit()
 
+cf = app()
 cf.startup(sys.argv[1])
-
 
 """
 
@@ -78,9 +76,9 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
         if query:
             if "loc" in query and query["loc"]:
-                self.__chipFish_draw(query["loc"])
+                self.update_app(query["loc"])
             elif "chr" in query and "left" in query and "right" in query:
-                self.__chipFish_draw(loc=location(chr=query["chr"], left=query["left"], right=query["right"]))
+                self.update_app(loc=location(chr=query["chr"], left=query["left"], right=query["right"]))
 
         f = None
         if os.path.isdir(path):
@@ -118,52 +116,11 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.end_headers()
         return f
 
-    def __chipFish_draw(self, loc=None):
+    def update_app(self, loc=None):
         assert loc, "no location!"
 
         cf.draw.setLocation(loc=location(loc=loc))
         cf.draw.exportImage("htdocs/tmp/last_image.png")
-
-    def list_directory(self, path):
-        """Helper to produce a directory listing (absent index.html).
-
-        Return value is either a file object, or None (indicating an
-        error).  In either case, the headers are sent, making the
-        interface the same as for send_head().
-
-        """
-        try:
-            list = os.listdir(path)
-        except os.error:
-            self.send_error(404, "No permission to list directory")
-            return None
-        list.sort(key=lambda a: a.lower())
-        f = StringIO()
-        displaypath = cgi.escape(urllib.unquote(self.path))
-        f.write('<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">')
-        f.write("<html>\n<title>Directory listing for %s</title>\n" % displaypath)
-        f.write("<body>\n<h2>Directory listing for %s</h2>\n" % displaypath)
-        f.write("<hr>\n<ul>\n")
-        for name in list:
-            fullname = os.path.join(path, name)
-            displayname = linkname = name
-            # Append / for directories or @ for symbolic links
-            if os.path.isdir(fullname):
-                displayname = name + "/"
-                linkname = name + "/"
-            if os.path.islink(fullname):
-                displayname = name + "@"
-                # Note: a link to a directory displays with @ and links with /
-            f.write('<li><a href="%s">%s</a>\n'
-                    % (urllib.quote(linkname), cgi.escape(displayname)))
-        f.write("</ul>\n<hr>\n</body>\n</html>\n")
-        length = f.tell()
-        f.seek(0)
-        self.send_response(200)
-        self.send_header("Content-type", "text/html")
-        self.send_header("Content-Length", str(length))
-        self.end_headers()
-        return f
 
     def translate_get(self, get):
         """Translate a /-separated PATH to the local filename syntax.
