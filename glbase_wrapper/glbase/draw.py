@@ -393,26 +393,26 @@ class draw:
         # bargraph -----------------------------------------------------
 
         ax3 = fig.add_subplot(144)
-        #ax3.plot(peakdata, arange(len(peakdata))) # doesn't use the movingAverage generated x, scale it across the entire graph.
+        ax3.plot(peakdata, arange(len(peakdata))) # doesn't use the movingAverage generated x, scale it across the entire graph.
         #print len(peakdata), len(x)
-        ax3.plot(peakdata, x) # doesn't use the movingAverage generated x, scale it across the entire graph.
+        #ax3.plot(peakdata, x) # Use the movingAverage generated x, don't scale it across the entire graph.
         ax3.set_frame_on(False)
         ax3.set_position([0.6,0.05,0.3,0.85])
         ax3.set_yticklabels("")
         ax3.set_xticklabels("")
-        ax3.set_xlim([0, len(kargs["col_names"])])
-        ax3.set_ylim([0, len(kargs["row_names"])])
+        #ax3.set_xlim([0, len(kargs["col_names"])])
+        ax3.set_ylim([0, len(peakdata)])
         [item.set_markeredgewidth(0.0) for item in ax3.yaxis.get_ticklines()]
         [item.set_markeredgewidth(0.0) for item in ax3.xaxis.get_ticklines()]
 
         m = utils.mean(peakdata)
         s = utils.std(peakdata)
 
-        ax3.axvline(x=m, color='black', linestyle="-", linewidth=0.5)
+        ax3.axvline(x=m, color='black', linestyle=":", linewidth=0.5)
         ax3.axvline(x=(m+s), color='r', linestyle=":", linewidth=0.5)
         ax3.axvline(x=(m-s), color='r', linestyle=":", linewidth=0.5)
 
-        return(self._saveFigure(fig, kargs["filename"], dpi=dpi))
+        return(self._saveFigure(fig, kargs["filename"]))
 
     def _boxplot(self, data=None, filename=None, **kargs):
         """
@@ -440,7 +440,7 @@ class draw:
         if "xaxis" in kargs: axis.set_xticks(kargs["xaxis"])
         if "yaxis" in kargs: axis.set_yticks(kargs["yaxis"])
 
-        return(self._saveFigure(fig, filename, dpi=dpi))
+        return(self._saveFigure(fig, filename))
 
     def _scatter(self, x=None, y=None, filename=None, **kargs):
         """
@@ -617,7 +617,7 @@ class draw:
             ax3.set_position(position_genomic)
             self._genome_segment(ax3, kargs["loc"], kargs["genomic_features"])
 
-        return(self._saveFigure(fig, filename, dpi=dpi))
+        return(self._saveFigure(fig, filename))
 
     def _plot_and_histogram(self, filename=None, data=None, figsize=(5,5), **kargs):
         """
@@ -678,7 +678,7 @@ class draw:
             ax3.set_position(position_genomic)
             self._genome_segment(ax3, kargs["loc"], kargs["genomic_features"])
 
-        return(self._saveFigure(fig, filename, dpi=dpi))
+        return(self._saveFigure(fig, filename))
 
     def _qplotxy(self, list_of_tuples_data, filename=None, labels=None, **kargs):
         """

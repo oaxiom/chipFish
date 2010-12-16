@@ -236,6 +236,11 @@ class genelist(_base_genelist):
         else:
             skiplines = 0 # skip any header row by default.
 
+        if "skiptill" in format and format["skiptill"]:
+            skiptill = format["skiptill"]
+        else:
+            skiptill = "Done"
+
         if "sniffer" in format:
             # I need to construct my own format
             format = {}
@@ -253,22 +258,26 @@ class genelist(_base_genelist):
                 if isinstance(format["debug"], int) and index > format["debug"]: break # If an integer, collect that many items.
 
             if index > skiplines:
-                # there is a reason for that, it is so that in the formats it appears:
-                # "refseq": column[1] # see :)
-                if column: # list is empty, so omit.
-                    if (not (column[0] in typical_headers)):
-                        d = {}
-                        for key in format:
-                            if not (key in ignorekeys): # ignore these tags
-                                if not key in d:
-                                    d[key] = {}
-                                if isinstance(format[key], dict) and "code" in format[key]:
-                                    # a code block insertion goes here - any valid lib and one line python code fragment
-                                    # store it as a dict with the key "code"
-                                    d[key] = eval(format[key]["code"])
-                                else:
-                                    d[key] = self._guessDataType(column[format[key]])
-                        temp_data.append(d)
+                if not skiptill == "Done":
+                    if column and column[0] == skiptill:
+                        skiptill = "Done"
+                else:
+                    # there is a reason for that, it is so that in the formats it appears:
+                    # "refseq": column[1] # see :)
+                    if column: # list is empty, so omit.
+                        if (not (column[0] in typical_headers)):
+                            d = {}
+                            for key in format:
+                                if not (key in ignorekeys): # ignore these tags
+                                    if not key in d:
+                                        d[key] = {}
+                                    if isinstance(format[key], dict) and "code" in format[key]:
+                                        # a code block insertion goes here - any valid lib and one line python code fragment
+                                        # store it as a dict with the key "code"
+                                        d[key] = eval(format[key]["code"])
+                                    else:
+                                        d[key] = self._guessDataType(column[format[key]])
+                            temp_data.append(d)
         oh.close()
 
         d = []
@@ -426,6 +435,9 @@ class genelist(_base_genelist):
                 ret.append(line)
         return(ret)
 
+    def saveTSV(self, filename=None, **kargs):
+        self.saveCSV(filename, tsv=True, **kargs)
+
     def saveCSV(self, filename=None, **kargs):
         """
         **Purpose**
@@ -464,24 +476,32 @@ class genelist(_base_genelist):
                 Any unspecified columns will be appended to the right
                 hand side in a random order.
 
-        **Result**
+                Note that saveCSV() always saves all columns of data.
 
+            tsv (True|False)
+                save as a tsv file see also saveTSV()
+
+        **Result**
             returns None.
             saves a CSV representation of the geneList.
         """
         assert filename, "No filename specified"
 
-        valig_args = ["filename", "key_order"]
+        valig_args = ["filename", "key_order", "tsv"]
         for k in kargs:
             if k not in valig_args:
                 raise ArgumentError, (self.saveCSV, k)
 
         oh = open(filename, "w")
-        writer = csv.writer(oh)
         if not self.linearData: # data is empty, fail graciously.
-            config.log.error("csv file '%s' is empty" % filename)
+            config.log.error("csv file '%s' is empty, no file written" % filename)
             oh.close()
             return(None)
+
+        if "tsv" in kargs and kargs["tsv"]:
+            writer = csv.writer(oh, dialect=csv.excel_tab)
+        else:
+            writer = csv.writer(oh)
 
         # work out key order and the like:
         write_keys = []
@@ -522,7 +542,7 @@ class genelist(_base_genelist):
             filename
                 absolute path to the file (including path)
 
-            name = (Optional, defaults to "null_n")
+            name = (Optional, tries to use "seq_loc" key otherwise defaults to "null_n")
                 a key in the list to use as a name for each fasta entry.
                 defaults to "null_n", where n is the position in the list
 
@@ -545,6 +565,8 @@ class genelist(_base_genelist):
             name = kargs["name"]
         else:
             name = "null_"
+            if "seq_loc" in self: # Default to seq_loc if available
+                name = "seq_loc"
 
         for index, item in enumerate(self.linearData):
             if name == "null_":
@@ -598,6 +620,12 @@ class genelist(_base_genelist):
     def sort(self, key=None):
         """
         Sort the data into a particular order based on key.
+        This sorts the list in-place in the same style as Python.
+        ie.
+
+        ret = list.sort() - is True and not the sorted list
+
+        list.sort() - now list contains the sorted list
 
         **Arguments**
 
@@ -1478,10 +1506,10 @@ class genelist(_base_genelist):
         if not config.SILENT:
             if mode == "and":
                 config.log.info("Collided two lists using '%s' key, found: %s overlaps" % (loc_key, len(newl)))
-            elif mode == "not":
-                config.log.info( "'not' Collided two lists using %s, found: %s non-overlapping sites" % (loc_key, len(newl)))
+            elif mode in ["not", "notleft", "notright"]:
+                config.log.info( "'%s' collided two lists using %s, found: %s non-overlapping sites" % (mode, loc_key, len(newl)))
         newl._optimiseData()
-        self._history.append("List Collision %s versus %s, with key: %s" % (self.name, gene_list.name, loc_key))
+        self._history.append("List Collision %s versus %s, with key %s, using mode %s" % (self.name, gene_list.name, loc_key, mode))
         return(newl)
 
     def overlap(self, loc_key="loc", delta=200, **kargs):
@@ -1496,7 +1524,7 @@ class genelist(_base_genelist):
 
         Be careful in your usage of collide() and overlap(), they both merge
         coordinates, but collide() uses the centre of the peak, whereas
-        overlap() uses the centre's of the peaks.
+        overlap() uses the peak span.
 
         **Arguments**
 

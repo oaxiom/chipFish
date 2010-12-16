@@ -286,11 +286,15 @@ class genome(genelist):
             Use, -, r, bottom, reverse, 1, for the reverse complement strand
             If the strand is not specified then the + strand will be returned.
 
+        mask (Optional, default=False)
+            'repeat mask' the returned sequence (i.e. convert lower-case
+            acgt to NNNN)
+
         **Result**
 
         returns a string containing the sequence at 'coords'
         """
-        valid_args = ["coords", "loc", "strand"]
+        valid_args = ["coords", "loc", "strand", "mask"]
         for key in kargs:
             assert key in valid_args, "getSequence() - Argument '%s' is not recognised" % key
 
@@ -328,6 +332,10 @@ class genome(genelist):
         if "strand" in kargs:
             if kargs["strand"] in negative_strand_labels:
                 ret = utils.rc(ret)
+
+        if "mask" in kargs and kargs["mask"]:
+            ret = utils.repeat_mask(ret)
+
         return(ret)
 
     def getSequences(self, **kargs):
@@ -339,7 +347,7 @@ class genome(genelist):
 
         I've checked this extensively - if you provide the correct location
         it will send back the correct sequence. Any further errors are
-        generally from wrong locations.
+        generally from wrong locations. So Heh.
 
         **Arguments**
 
@@ -369,11 +377,19 @@ class genome(genelist):
         delta=n
             expand the coordinates by n, added onto the left and right
 
-        pointify (True|False)
+        pointify (True|False, default=False)
             turn the location into a single base pair based on the centre
             of the coordinates (best used in combination with delta to
             expand reads symmetrically, pointify will be performed before
             the expansion of the coordinates)
+
+        mask (default=False)
+            use the upper and lower case of the fasta files to 'mask'
+            the sequence. This will turn acgt to NNNN.
+
+            This is not a proper repat masker and relies on your genome
+            being repeat masked. For human and mouse this is usually true,
+            but for other genomes has not been tested.
 
         **Result**
 
@@ -383,7 +399,7 @@ class genome(genelist):
         the seq spans across.
         """
         valid_args = ["genelist", "loc_key", "strand_key", "deltaleft", "deltaright", "delta",
-            "pointify"]
+            "pointify", "mask"]
         for key in kargs:
             assert key in valid_args, "getSequences - Argument '%s' is not recognised" % key
 
@@ -399,6 +415,10 @@ class genome(genelist):
         strand_key = False
         if "strand_key" in kargs:
             strand_key = kargs["strand_key"]
+
+        mask = False
+        if "mask" in kargs and kargs["mask"]:
+            mask = True
 
         for item in newl.linearData: # this will break delayedlists...
             newloc = item[loc_key]
@@ -422,11 +442,12 @@ class genome(genelist):
                     newloc = newloc.expandRight(kargs["deltaright"])
 
             if strand_key:
-                seq = self.getSequence(loc=newloc, strand=item[strand_key])
+                seq = self.getSequence(loc=newloc, strand=item[strand_key], mask=mask)
                 item["strand"] = item[strand_key]
             else:
-                seq = self.getSequence(loc=newloc) # defaults to + strand.
+                seq = self.getSequence(loc=newloc, mask=mask) # defaults to + strand.
                 item["strand"] = "+" # overwrite the strand to reflect the seq
+
             item["seq"] = seq
             item["seq_loc"] = newloc
 

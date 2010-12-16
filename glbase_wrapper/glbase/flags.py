@@ -47,7 +47,7 @@ format_illumina_anotations = {"array_systematic_name":0, "refseq": 3, "entrez": 
 format_macs_peak_loc = {"loc": 0, "tag_height": {"code": "int(column[4])", "fold": 8}} # format for coord modified macs file.
 
 format_macs_output = {"loc": {"code": "location(chr=column[0], left=column[1], right=column[2])"}, "tag_height": 5,
-    "skiplines": 13, "dialect": csv.excel_tab}
+    "skiptill": "chr", "dialect": csv.excel_tab, "fold_change": 7}
 
 exporttxt_loc_only_format = {"loc": {"code": "location(chr=column[10].strip(\".fa\"), left=column[12], right=int(column[12])+25)"},
         "strand": 13,
@@ -56,6 +56,11 @@ exporttxt_loc_only_format = {"loc": {"code": "location(chr=column[10].strip(\".f
 exporttxt_all_format = {"loc": {"code": "location(chr=column[10].strip(\".fa\"), left=column[12], right=int(column[12])+25)"},
         "strand": 13, "seq": 6, "quality_score": 7,
         "dialect": csv.excel_tab} # export.txt file (output from the illumina pipeline), but only loads the location and strand.
+
+# This is not a full implementation of the sam file specification.
+# but it will accept a sam file as outputted by tophat.
+sam_tophat = {"name": 0, "loc": {"code": "location(chr=column[2], left=column[3], right=column[3])"},
+    "mapq": 3, "seq": 9, "dialect": csv.excel_tab, "skiplines": -1}
 
 # Load in CCAT files:
 # CCAT1.3 file format:

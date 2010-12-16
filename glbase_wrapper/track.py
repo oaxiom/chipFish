@@ -10,8 +10,9 @@ import sys, os
 sys.path.append("..") # get the parent options
 import opt
 
-sys.path.append(opt.path.glbase_package)
+#sys.path.append(opt.path.glbase_package)
 import glbase # import like this to get around namespace issues
+#sys.path.remove(opt.path.glbase_package
 
 class track(glbase.track):
     """

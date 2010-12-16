@@ -44,6 +44,7 @@ class peaklist(genelist):
 
         if "filename" in kargs and kargs["filename"]:
             self.loadCSV(filename=kargs["filename"], format=format_override)
+            config.log.info("Loaded '%s' found %s items" % (kargs["filename"], len(self.linearData)))
 
         if "name" in kargs and kargs["name"]:
             self.name = kargs["name"]
