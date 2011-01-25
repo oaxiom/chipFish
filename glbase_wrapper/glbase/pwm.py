@@ -237,7 +237,7 @@ class pwm:
         **Returns**
             The actual filename used to save the figure.
         """
-        pass
+        raise NotImplementedError
 
     def scan_fasta_list(self, fasta_list):
         """

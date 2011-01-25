@@ -43,6 +43,10 @@ format_gs_out = {"refseq": 4, "entrez": 8, "fold_change": 1, "array_systematic_n
 format_array_simplified = {"refseq": 10, "array_systematic_name": 0, "entrez": 8}
 format_illumina_anotations = {"array_systematic_name":0, "refseq": 3, "entrez": 7}
 
+format_gtf = {"feature_type": 1, "feature": 2, "gtf_decorators": 8,
+	"loc": {"code": "location(chr=column[0], left=column[3], right=column[4])"},  
+	"skiplines": -1, "dialect": csv.excel_tab, "debug": True}
+
 # load in MACS files:
 format_macs_peak_loc = {"loc": 0, "tag_height": {"code": "int(column[4])", "fold": 8}} # format for coord modified macs file.
 
@@ -98,6 +102,11 @@ format_mm9_refgene = {"loc": {"code": "location(chr=column[2], left=column[4], r
         "exons_count": 8,
         } # description is lost from the mm9 table?
 
+format_ensembl = {"loc": {"code": "location(chr=column[2], left=column[4], right=column[5])"},
+	"tss_loc": {"code": "strandSorter(column[2], column[4], column[5], column[3])"},
+	"ensmbl": 1, "name": 12, "exon_count": 8,
+	"dialect": csv.excel_tab, "skiplines": 0} 
+	
 # hg18 default refseq export.
 format_hg18_refseq = {"loc": {"code": "location(chr=column[0], left=column[1], right=column[2])"},
         "strand": 5, "dialect": csv.excel_tab,

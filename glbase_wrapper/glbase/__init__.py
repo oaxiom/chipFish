@@ -68,7 +68,7 @@ import utils
 
 from tools.seqToTrk import seqToTrk
 
-config.log.info("\033[0;34mglbase\033[0;30m: Version: %s, %s" % (config.VERSION, config.DATE))
+config.log.info("glbase - version: %s, %s" % (config.VERSION, config.DATE))
 
 # export all of the libraries, methods and helpers.
 __all__ = ["genelist", "flags", "microarray", "genome",

@@ -200,7 +200,9 @@ class genelist(_base_genelist):
         elif not format:
             format = sniffer
 
+        #if "debug" in format and format["debug"]:
         #self._loadCSV(filename=self.fullfilename, format=format, **kargs)
+        #else:
         try:
             self._loadCSV(filename=self.fullfilename, format=format, **kargs)
         except:
@@ -277,6 +279,13 @@ class genelist(_base_genelist):
                                         d[key] = eval(format[key]["code"])
                                     else:
                                         d[key] = self._guessDataType(column[format[key]])
+                                elif key == "gtf_decorators": # special exceptions for gtf files
+                                    gtf = column[format["gtf_decorators"]]
+                                    for item in gtf.split(";"):
+                                        print item
+                                        key = item.split(" ")[0]
+                                        value = item.split(" ")[1].strip("\"")
+                                        d[key] = self._guessDataType(value)
                             temp_data.append(d)
         oh.close()
 
@@ -436,6 +445,12 @@ class genelist(_base_genelist):
         return(ret)
 
     def saveTSV(self, filename=None, **kargs):
+        """
+        **Purpose**
+            Save the file as a TSV file.
+            
+            see saveCSV() for details
+        """
         self.saveCSV(filename, tsv=True, **kargs)
 
     def saveCSV(self, filename=None, **kargs):
@@ -1059,7 +1074,8 @@ class genelist(_base_genelist):
         config.debug("genelist.getCategories()")
         return([key for key in self.linearData[0]])
 
-    def map(self, genelist=None, peaklist=None, microarray=None, genome=None, key=None, **kargs):
+    def map(self, genelist=None, peaklist=None, microarray=None, genome=None, key=None, 
+        greedy=False, **kargs):
         """
         **Purpose**
 
@@ -1086,8 +1102,9 @@ class genelist(_base_genelist):
             will fail, because the result is a vanilla gene_list rather than
             a microarray as you might intend.
 
-            Also note, this method is 'greedy' and will only take the first
-            matching entry it finds.
+            Also note, this method is 'lazy' and will only take the first
+            matching entry it finds. This can be changed with the greedy arg.
+            But at expense of speed.
 
         **Arguments**
 
@@ -1109,15 +1126,18 @@ class genelist(_base_genelist):
 
             title (Optional, default = None)
                 title for the venn diagram.
+            
+            greedy (Optional, default=False)
+                set to True to collect all matching entries, including duplicates
 
         **Result**
 
             returns a new gene_list-like object, inheriting methods from the
-            right hand side of the equation.
+            right hand side of the function.
 
         """
         valid_args = ["genelist", "peaklist", "microarray", "key",
-            "image_filename", "title", "venn_proportional"]
+            "image_filename", "title", "venn_proportional", "greedy"]
         for k in kargs:
             if not k in valid_args:
                 raise ArgumentError, (self.map, k)
@@ -1149,7 +1169,8 @@ class genelist(_base_genelist):
                             if key not in new_entry: # Don't copy if already exists
                                 new_entry[key] = item[key]
                     newl.linearData.append(new_entry)
-                    break # lazy algorithm
+                    if not greedy:
+                    	break # lazy algorithm
             p.update(index)
         config.info("Mapped '%s' vs '%s', using %s, found: %s" % (self.name, gene_list.name, map_key, len(newl)))
 
