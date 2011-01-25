@@ -12,17 +12,18 @@ import os, logging
 # container for global environment variables.
 
 # The current version of GLbase
-VERSION = "0.165.hg"
-DATE = "14th Dec 2010"
+VERSION = "0.166.hg"
+DATE = "17th Jan 2011"
 
 SILENT = False # set this to True to silence all glbase output.
 DEBUG = True
 
-# flags for the availability of three core libraries.
+# flags for the availability of three core libraries. [Deprecated now?]
 MATPLOTLIB_AVAIL = False
 NUMPY_AVAIL = False
 SCIPY_AVAIL = False
 
+# Some simple options for printing genelists
 NUM_ITEMS_TO_PRINT = 3 # number of items to print by default.
 PRINT_LAST_ITEM = True
 
@@ -32,7 +33,6 @@ DEFAULT_DRAWER = "png" # slated for deprecation.
 # set up the logger here.
 # this needs to be moved to log.py
 # You can access it using config.log()
-# set up logging to file - see previous section for more details
 logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s %(name)-8s %(levelname)-8s %(message)s',
                     datefmt='%m-%d %H:%M',
@@ -40,13 +40,13 @@ logging.basicConfig(level=logging.DEBUG,
                     filemode='w')
 console = logging.StreamHandler()
 console.setLevel(logging.INFO)
-console.setFormatter(logging.Formatter('\033[0;34m%(levelname)-8s\033[0;30m: %(message)s'))# # console
+console.setFormatter(logging.Formatter('%(levelname)-8s: %(message)s'))# # console
 logging.getLogger('').addHandler(console)
 
 # use config.log. ... () to get to the logger
 log = logging.getLogger('glbase')
 
-# helpers
+# helpers [Should be deprecated. Call config.log.<level>() to call info
 info = log.info
 warning = log.warning
 debug = log.debug

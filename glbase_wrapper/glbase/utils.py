@@ -758,7 +758,6 @@ def isPalindromic(seq):
     is a sequence palindromic?
     returns True or False
     """
-    revc = rc_expanded(seq.lower())
-    if revc == seq:
+    if rc_expanded(seq.lower()) == seq.lower():
         return(True)
     return(False)

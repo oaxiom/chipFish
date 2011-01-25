@@ -42,7 +42,8 @@ compdict = {'A': 'T',
             }
 
 ignorekeys = frozenset(["dialect", "duplicates_key",
-"skiplines", "debug", "special", "skiptill"]) # these are functional tags - so I should ignore them.
+"skiplines", "debug", "special", "skiptill", 
+"gtf_decorators"]) # these are functional tags - so I should ignore them.
 
 typical_headers = frozenset(["chipseq_loc", "loc", "chr", "#",
 "Gene Name", "", "GenBank", "RefSeq",

@@ -20,7 +20,7 @@
 
 import sys, os, csv, string, math, copy
 
-from numpy import array, arange, meshgrid, zeros, linspace, mean, object_
+from numpy import array, arange, meshgrid, zeros, linspace, mean, object_, std
 from array import array as qarray # this should be deprecated later.
 
 import config
@@ -126,6 +126,7 @@ class microarray(genelist):
                 conditions[i] = float(c)
 
         self._optimiseData()
+        config.log.info("Loaded Microarray data %s items long" % len(self))
 
     def __repr__(self):
         return("glbase.microarray")
@@ -190,24 +191,26 @@ class microarray(genelist):
         #self.serialisedArrayDataDict[0]
         return(True)
 
-    def saveCSV(self, filename=None, **kargs):
+    def saveTSV(self, filename=None, tsv=True, **kargs):
         """
         (Override)
         **Purpose**
 
-            Save the microarray data as a csv file
+            Save the microarray data as a tsv file
 
         **Arguments**
 
             filename
                 The filename (with a valid path) to save the file to.
+                
+            tsv (True|False, default=True)
 
         **Returns**
 
             returns None
             A saved csv file in filename.
         """
-        valig_args = ["filename"]
+        valig_args = ["filename", "tsv"]
         for k in kargs:
             if k not in valig_args:
                 raise ArgumentError, (self.saveCSV, k)
@@ -215,7 +218,10 @@ class microarray(genelist):
         assert filename, "you must specify a filename"
 
         oh = open(os.path.realpath(filename), "w")
-        writer = csv.writer(oh) # why save as a tsv?
+        if tsv:
+            writer = csv.writer(oh, dialect=csv.excel_tab)
+        else:
+            writer = csv.writer(oh)
 
         writeOrder = [key for key in self.linearData[0] if key != "conditions"]
 
@@ -431,9 +437,9 @@ class microarray(genelist):
                 name = names[i] # verbose for clarity
                 if name != condition_name:
                     if bUseFoldChange:
-                        new_array_data.append(math.pow(2, -(float(toNormal) / float(datum))))
+                        new_array_data.append(math.pow(2, -(float(toNormal) / (float(datum)+0.0000001))))
                     else:
-                        new_array_data.append(float(toNormal) / float(datum))
+                        new_array_data.append(float(toNormal) / (float(datum)+0.0000001))
                 elif keep_normed:
                     new_array_data.append(1.0) # er... this should be 0.5 ?
 
@@ -585,6 +591,9 @@ class microarray(genelist):
 
         transforms the data based on base
         helper for drawBoxPlot() and draw drawCurves()
+        
+        Zeros are trimmed from the data. This is important because now the output
+        may not be synchronised to the input. Care should be taken with this transform.
         """
         assert serialisedArrayDataList, "[Internal] __log_transform_data() - no data provided"
 
@@ -600,10 +609,13 @@ class microarray(genelist):
             do_log = False
 
         if do_log:
-            data = copy.deepcopy(serialisedArrayDataList)
-            for set in data:
+            data = []
+            for set in serialisedArrayDataList:
+                row = []
                 for index, item in enumerate(set):
-                    set[index] = math.log(item, do_log)
+                    if item != 0.0:
+                        row.append(math.log(item, do_log))
+                data.append(row)
             return(data)
         else:
             return(serialisedArrayDataList)
@@ -642,10 +654,18 @@ class microarray(genelist):
 
                 log=True
                 log="e"
+                
+                Data points that are 0.0 will be trimmed from the data.
+                This means the number of samples plotted may not
+                be the same as the number of points in the microarray
+                data.
 
             cumulative (True|False, default False)
 
                 draw cumulative curves.
+                
+            verbose (True|Fals, default=False
+                print out the means and standard distributions.
 
         **Result**
 
@@ -680,8 +700,18 @@ class microarray(genelist):
         # normalise data, for each condition.
         plot.cla()
 
+        if "verbose" in kargs and kargs["verbose"]:
+            print "name\tmean\tstd" 
+
         for i, c in enumerate(self.getConditionNames()):
             plot.hist(data[i], bins=window_size, histtype="step", label=c, **extra_args)
+            m =  mean(data[i])
+            d = std(data[i])
+            plot.axvline(x=m, color="red")
+            plot.axvline(x=m-d, color='grey', ls=":")
+            plot.axvline(x=m+d, color='grey', ls=":")
+            if "verbose" in kargs and kargs["verbose"]:
+                print "%s\t%.2f\t%.2f" % (c, m, d)
 
         if xlimits: plot.xlim(xlimits)
         plot.legend()

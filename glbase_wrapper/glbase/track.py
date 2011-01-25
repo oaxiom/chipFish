@@ -10,7 +10,7 @@ import cPickle, sys, os, struct, math, sqlite3, zlib, time
 from location import location
 from data import positive_strand_labels, negative_strand_labels
 
-from numpy import array, zeros, set_printoptions # Carray
+from numpy import array, zeros, set_printoptions, int32 # Carray
 
 TRACK_CACHE_SIZE = 10 # number of track segments to cache.
 
@@ -238,7 +238,7 @@ class track:
             reads += self.get_reads(l, strand)
 
         # make a single array
-        a = zeros(int( (loc["right"]-loc["left"]+resolution)/resolution ))
+        a = zeros(int( (loc["right"]-loc["left"]+resolution)/resolution ), dtype=int32)
 
         # work out and standardise strand:
         if strand:
@@ -256,13 +256,13 @@ class track:
             if not strand or strand and r[2] in strand:
                 if r[2] in positive_strand_labels:
                     read_left = r[0]
-                    read_right = r[1] + read_extend
+                    read_right = r[1] + read_extend + 1 # coords are open
                 elif r[2] in negative_strand_labels:
                     read_left = r[0] - read_extend
-                    read_right = r[1]
+                    read_right = r[1] + 1 # coords are open 
 
-                rel_array_left = int((read_left - read_extend - loc["left"]) / resolution)
-                rel_array_right = int((read_right - read_extend - loc["left"]) / resolution)
+                rel_array_left = int((read_left - loc["left"]) / resolution)
+                rel_array_right = int((read_right - loc["left"]) / resolution)
 
                 for array_relative_location in xrange(rel_array_left, rel_array_right, 1):
                     if array_relative_location >= 0 and array_relative_location < len(a): # within array
@@ -295,7 +295,7 @@ class track:
                 size of the DNA shear.
 
         **Returns**
-            an 'array('i', [0, 1, 2 ... n])' contiginous array
+            an 'numpy.array([0, 1, 2 ... n], dtype=int32)' contiginous array of integers
             or a tuple containing two arrays, one for each strand.
         """
         if strand: raise NotImplementedError, "Eh... strand not supported yet..."
@@ -313,16 +313,16 @@ class track:
                 right_most = i[1]+read_extend
 
         # make an array.
-        a = zeros(int(right_most+int(resolution), int(resolution)))
+        a = zeros(int(right_most+int(resolution), int(resolution)), dtype=int32)
 
         for r in reads:
             # read_extend
             if r[2] in positive_strand_labels:
                 left = r[0]
-                right = r[1] + read_extend
+                right = r[1] + read_extend + 1
             elif r[2] in negative_strand_labels:
                 left = r[0] - read_extend
-                right = r[1]
+                right = r[1] + 1
 
             # check for array wrap arounds:
             if left < 0: left = 0
