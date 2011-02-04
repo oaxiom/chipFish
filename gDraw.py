@@ -25,7 +25,7 @@ from ruler import ruler
 
 MAX_TRACKS = 10 # maximum number of tracks
 
-import cairo
+import cairo, numpy
 
 class gDraw:
     def __init__(self, genome):
@@ -115,7 +115,7 @@ class gDraw:
 
             if track["type"] == "graph":
                 draw_data["array"] = track["data"].get_data("graph", location(loc=self.curr_loc),
-                    resolution=self.bps_per_pixel, read_extend=150)
+                    resolution=self.bps_per_pixel, read_extend=300)
             elif track["type"] == "bar":
                 draw_data["array"] = track["data"].get_data("bar", location(loc=self.curr_loc),
                     resolution=self.bps_per_pixel, read_extend=150)
@@ -123,7 +123,7 @@ class gDraw:
                 draw_data["array"] = track["data"].get_data("spot", location(loc=self.curr_loc))
             elif track["type"] == "graph_split_strand":
                 draw_data["array"] = track["data"].get_data("graph", location(loc=self.curr_loc),
-                    strand=True, resolution=self.bps_per_pixel, read_extend=150)
+                    strand=True, resolution=self.bps_per_pixel, read_extend=200)
 
             # and draw:
             colbox = draw_modes_dict[draw_data["type"]](draw_data)
@@ -409,11 +409,11 @@ class gDraw:
         self.ctx.fill()
         return( (0, base_loc[1]-opt.track.height_px[track_type], self.w, opt.track.height_px[track_type]-2) )
 
-    def __drawTrackGraph(self, track_data, scaled=True, min_scaling=300):
+    def __drawTrackGraph(self, track_data, scaled=True, min_scaling=30, clamp=True):
         """
         **Arguments**
             track_data
-                must be some kind of array/iterable, with a 1px resolution.
+                must be some kind of array, with a 1px resolution.
 
             scaled (True|False)
                 scale the data vertically for the available track
@@ -424,19 +424,31 @@ class gDraw:
                 sets it so that a height of 1 is not expanded to the
                 full height of the track. Instead the track will be scaled to
                 this value as a minimum.
+            
+            clamp (default=True)
+                clamp the display scale from 1 .. n
+                rather than 0 .. n
         """
         track_max = max(track_data["array"])
 
-        if scaled:
+        new_array = numpy.array(track_data["array"], dtype=numpy.float32)
 
+        if clamp:
+            for i, v in enumerate(new_array):
+                if v > 0.0:
+                    new_array[i] = v
+                else:
+                    new_array[i] = 1
+
+        if scaled:
             if min_scaling and track_max < min_scaling:
                 scaling_value = min_scaling / float(opt.track.height_px["graph"])
             else:
                 scaling_value = track_max / float(opt.track.height_px["graph"])
             # only works if numpy array?
-            new_array = track_data["array"] / scaling_value
+            new_array = new_array / scaling_value
         else:
-            new_array = track_data["array"]
+            new_array = new_array
 
         colbox = self.__drawTrackBackground(track_data["track_location"], "graph")
         self.__setPenColour( (0,0,0) )
@@ -459,7 +471,7 @@ class gDraw:
 
         return(colbox)# collision box dimensions
 
-    def __drawTrackGraph_split_strand(self, track_data, scaled=True, min_scaling=100):
+    def __drawTrackGraph_split_strand(self, track_data, scaled=True, min_scaling=30):
         """
         **Purpose**
             Similar to Graph, but draws the track into a top strand and a bottom strand.
