@@ -1,7 +1,7 @@
 """
 opt, part of chipFish
 
-(c) 2008-2009 oAxiom
+(c) 2008-2011 oAxiom
 
 Not for distribution.
 
@@ -22,7 +22,7 @@ class generic:
     """
     debug = True
     app_path = sys.path[0]
-    VERSION = "0.1"
+    VERSION = "0.2"
 
 class path:
     """
@@ -36,6 +36,7 @@ class interface:
     """
     user interface options
     """
+    huge_move = 90
     big_move = 30 # in percent
     small_move = 10 # in percent
 
@@ -61,7 +62,9 @@ class graphics:
     lncrna_colour = (0.1, 0.8, 0.1)
     microRNA_colour = (0.6, 0.1, 0)
 
-    font = "Arial"
+	# Font related defaults
+    font = "sans-serif"
+    default_font_size = 12 # Generally refers here to the track Text sizes
 
     right_border_width = 20 # in pixels, size of rightmost click border.
 
@@ -83,7 +86,7 @@ class ruler:
     """
     options specific to the genome ruler.
     """
-    font = "Arial"
+    font = "sans-serif"
     font_size = 10
     height_px = 10 # height of ruler in pixels.
     text_height = 10 # distance from top of screen of the ruler text.
@@ -94,8 +97,8 @@ class track:
     """
     options for the tracks
     """
-    height_px = {"graph": 150,
-        "graph_split_strand": 150, # same as graph
+    height_px = {"graph": 100,
+        "graph_split_strand": 100, # same as graph
         "bar": 30,
         "spot": 30} # height's of the tracks in pixels.
     genome_base_offset = 60 # offset from the genome track to the first track.
@@ -103,6 +106,7 @@ class track:
     spot_default_colour = (0.8, 0.1, 0.1)
     spot_filled = True # fill the spot circle
     spot_shape = "circle" # supported = circle, triangle
+    font_scale_size = 8
 
 def saveOptions():
     pass

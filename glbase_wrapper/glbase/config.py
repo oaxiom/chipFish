@@ -12,8 +12,8 @@ import os, logging
 # container for global environment variables.
 
 # The current version of GLbase
-VERSION = "0.166.hg"
-DATE = "17th Jan 2011"
+VERSION = "0.169.hg"
+DATE = "27th Jan 2011"
 
 SILENT = False # set this to True to silence all glbase output.
 DEBUG = True
