@@ -6,7 +6,7 @@ An amalgamation of a set of pwms.
 
 """
 
-import sys, os, csv, random
+import sys, os, csv, random, string
 import config, utils
 
 from numpy import zeros, array, mean, std
@@ -38,6 +38,7 @@ class pwms(genelist):
                 Valid formats currently supported are:
                 "uniprobe"
                 "transfac"
+                "jaspar_matrix_only"
 
                 to add, but currently unsupported formats:
                 "jaspar"
@@ -55,6 +56,8 @@ class pwms(genelist):
             self.__load_uniprobe(filename)
         elif format == "jaspar":
             raise NotImplementedError
+        elif format == "jaspar_matrix_only":
+            self.__load_jaspar_matrix_only(filename)
         elif format == "transfac":
             self.__load_transfac(filename)
 
@@ -72,27 +75,77 @@ class pwms(genelist):
 
         this function will then step through the data and load all of it in.
         """
+        post_process = False
+        
         for subdir, dirs, files in os.walk(path):
             for file in files:
                 # get rid of the extension and use this to append the motif.
                 if (file[0] != ".") and ("readme" not in file): # Mac OSX specific malarky.
-                    new_pwm = {"name": file.split(".")[0]}
+                    name = file.split(".")[0]
 
                     oh = open(os.path.join(subdir, file), "rU")
-
-                    name = oh.readline()
+                    
                     data = []
+                    
                     for line in oh:
-                        l = line.split("\t")[1:]
-                        l = [float(i) for i in l]
-                        if len(l) > 0:
-                            data.append(l)
-
+                        if "#" not in line:
+                            l = line.replace("\n", "").split("\t")[1:]
+                            if len(l) > 3:
+                                l = [float(i) for i in l]
+                                data.append(l)
+                            if "Probability matrix" in line:
+                            	post_process = True
+                            	# THere's a change in format 
+                            	# later, and they give 4 motifs
+                            	# for the same TF (different representations)
+                            	# we only want the last one 9the probabilty matrix
+						
                     # convert to numpy.
                     pfm = array(data)
+                    
+                    if post_process:
+						# keep only the last four columns
+						pfm = pfm[14:18]
+						post_process = False
+                    
                     pfm = pfm.T
 
-                    self.linearData.append({"name": new_pwm["name"], "pwm": pwm.pwm(name=new_pwm["name"], pwm_matrix=pfm, isPFM=True)})
+                    self.linearData.append({"name": name, 
+                        "pwm": pwm.pwm(name=name, pwm_matrix=pfm, isPFM=False)})
+
+    def __load_jaspar_matrix_only(self, filename):
+        """
+        Load the JASPAR data, this accepts the "matrix_only" option from the JASPAR website
+        
+        the file should be something like "matrix_only.txt" and should look like this:
+        >MA0002.1 RUNX1
+        A  [10 12  4  1  2  2  0  0  0  8 13 ]
+        C  [ 2  2  7  1  0  8  0  0  1  2  2 ]
+        G  [ 3  1  1  0 23  0 26 26  0  0  4 ]
+        T  [11 11 14 24  1 16  0  0 25 16  7 ]
+        """
+        oh = open(filename, "rU")
+        
+        done = False
+        while not done:
+            line = oh.readline()
+            if ">" in line:
+                name = line.replace(">", "").replace("\n", "").split(" ")[1]
+                id = line.replace(">", "").split(" ")[0]
+                A = [float(x) for x in oh.readline().strip("ACGT[]\n ").replace("   ", " ").replace("  ", " ").replace("    ", " ").split(" ")]
+                C = [float(x) for x in oh.readline().strip("ACGT[]\n ").replace("   ", " ").replace("  ", " ").replace("    ", " ").split(" ")]
+                G = [float(x) for x in oh.readline().strip("ACGT[]\n ").replace("   ", " ").replace("  ", " ").replace("    ", " ").split(" ")]
+                T = [float(x) for x in oh.readline().strip("ACGT[]\n ").replace("   ", " ").replace("  ", " ").replace("    ", " ").split(" ")]
+                data = [A, C, G, T]
+                #print data
+                
+                pfm = array(data)
+                pfm = pfm.T
+                
+                self.linearData.append({"name": name, "pwm": pwm.pwm(name=name, pwm_matrix=pfm, isPFM=False), "id": id})
+            else:
+                done = True # no empty lines in the JASPAR format
+                
 
     def __load_transfac(self, filename):
         """

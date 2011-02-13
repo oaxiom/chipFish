@@ -51,6 +51,8 @@ class gDraw:
         # set up dummy values for the view
         self.w = 100
         self.h = 200
+        self.ctx = None
+        self.last_guess_height = -1
 
     def OnPaint(self, event, cairo_context=None):
         """
@@ -60,17 +62,6 @@ class gDraw:
             If you pass a Cairo Context cairo will paint to that
             rather than generate a context for the gui.
         """
-        # try to get cairo:
-        if not cairo_context:
-            try:
-                dc = wx.PaintDC(self.panel) # make each time OnPaint is called.
-                #dc = wx.AutoBufferedPaintDC(self) # not clear why this doesn't work ...
-                self.size = dc.GetSizeTuple()
-                self.setViewPortSize(self.size[0], self.size[1])
-                cairo_context = wx.lib.wxcairo.ContextFromDC(dc)
-            except:
-                raise ErrorCairoAcquireDevice
-
         self.ctx = cairo_context
 
         draw_modes_dict = {
@@ -111,11 +102,11 @@ class gDraw:
             # basic data:
             draw_data = {"type": track["type"],
                 "track_location": track["track_location"],
-                "name": track["data"].name}
+                "name": track["data"]["name"]}
 
             if track["type"] == "graph":
                 draw_data["array"] = track["data"].get_data("graph", location(loc=self.curr_loc),
-                    resolution=self.bps_per_pixel, read_extend=300)
+                    resolution=self.bps_per_pixel, read_extend=1000)
             elif track["type"] == "bar":
                 draw_data["array"] = track["data"].get_data("bar", location(loc=self.curr_loc),
                     resolution=self.bps_per_pixel, read_extend=150)
@@ -342,34 +333,25 @@ class gDraw:
         # guess the maximum height required:
         guess_height = abs(self.tracks[-1]["track_location"]) + opt.track.height_px[self.tracks[-1]["type"]] + opt.ruler.height_px + 30 + 32 # 32 is the 'chromosome %s' padding, 30 is some other padding I'm not really certain where it comes from...
 
-        surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, 1024, guess_height)
-        ctx = cairo.Context(surface)
+        if not self.ctx or guess_height != self.last_guess_height:
+            self.surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, 1024, guess_height)
+            self.ctx = cairo.Context(self.surface)
+            self.last_guess_height = guess_height
 
         self.w = 1024
         self.fullw = 1024 # no bar side buttons
         self.h = guess_height
 
         # forceRedraw onto my surface.
-        self.OnPaint(None, ctx)
+        self.OnPaint(None, self.ctx)
 
         # save image
         actual_filename = filename
         filehandle = open(actual_filename, "wb")
-        surface.write_to_png(filehandle)
+        self.surface.write_to_png(filehandle)
         filehandle.close()
 
-        # clean ups
-        del ctx
-        del surface
         return(actual_filename)
-
-    def forceRedraw(self):
-        """
-        Should be named forcePaint?
-        Use me to force a repaint, rather than calling OnPaint directly.
-        """
-        self.OnPaint(None)
-        return(True)
 
     #------------------------------------------------------------------
     # Internal painters
@@ -429,7 +411,6 @@ class gDraw:
                 clamp the display scale from 1 .. n
                 rather than 0 .. n
         """
-        track_max = max(track_data["array"])
 
         new_array = numpy.array(track_data["array"], dtype=numpy.float32)
 
@@ -439,6 +420,9 @@ class gDraw:
                     new_array[i] = v
                 else:
                     new_array[i] = 1
+
+        track_max = max(track_data["array"])
+        track_min = min(track_data["array"])
 
         if scaled:
             if min_scaling and track_max < min_scaling:
@@ -452,7 +436,7 @@ class gDraw:
 
         colbox = self.__drawTrackBackground(track_data["track_location"], "graph")
         self.__setPenColour( (0,0,0) )
-        self.ctx.set_line_width(2)
+        self.ctx.set_line_width(1.1)
         coords = []
         lastpx = -1
         for index, value in enumerate(new_array):
@@ -467,7 +451,9 @@ class gDraw:
             self.ctx.line_to(item[0], item[1])
 
         self.ctx.stroke()
-        self.__drawText(0, loc[1] - 25 , opt.graphics.font, track_data["name"])
+        self.__drawText(0, loc[1] - opt.track.height_px["graph"] + 20, opt.graphics.font, track_data["name"])
+        self.__drawText(self.w - 20, loc[1] - 5, opt.graphics.font, track_min)
+        self.__drawText(self.w - 20, loc[1] - opt.track.height_px["graph"] + opt.track.font_scale_size + 5, opt.graphics.font, track_max)
 
         return(colbox)# collision box dimensions
 
@@ -581,7 +567,7 @@ class gDraw:
         self.__drawText(0, sc[1]-17 , opt.graphics.font, track_data["name"])
         return(colbox)
 
-    def __drawText(self, x, y, font, text, size=20, colour=(0,0,0), style=None):
+    def __drawText(self, x, y, font, text, size=opt.graphics.default_font_size, colour=(0,0,0), style=None):
         """
         (Internal - helper)
         Draw text to the screen, font is a string for the font name.
@@ -593,7 +579,7 @@ class gDraw:
         self.ctx.select_font_face(font, txtToCairoA[style], txtToCairoB[style])
         self.ctx.move_to(x, y)
         self.ctx.set_font_size(size)
-        self.ctx.show_text(text)
+        self.ctx.show_text(str(text))
 
     def __drawGene(self, data):
         """

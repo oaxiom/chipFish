@@ -16,6 +16,7 @@ from glbase.track import track
 import glbase.delayedlist as delayedlist # get delayedlist from glbase
 import glbase.genelist as genelist
 from glbase.flags import exporttxt_loc_only_format
+from glbase import config
 
 sys.path.remove(os.path.realpath(os.path.join(base_path, "../")))
 sys.path.remove(os.path.realpath(os.path.join(base_path, "../../")))

@@ -1,7 +1,7 @@
 """
 error, part of chipFish
 
-(c) 2008-2009 oAxiom
+(c) 2008-2011 oAxiom
 
 Not for distribution.
 
@@ -9,6 +9,7 @@ Class containter for error handling.
 
 . remove the error class, and raise exceptions.
 . assertions to add
+. use config.log.error
 """
 
 import sys, os
@@ -42,6 +43,21 @@ class AssertionError(Exception):
 
 # ---------------------------------------------------------------------
 # Exceptions
+
+class ErrorUnrecognisedTrackMode(Exception):
+    """
+    Error
+		A mode in the server track descriptor file was not recognised
+		at the time of writing (this may be out of date), only tracks and beds
+		are supported.
+    """
+    def __init__(self, message):
+        """
+        Output the error message and tidy up the traceback, and perform other stuff.
+        """
+        self.message = "Error: Mode in track descriptor file '%s' not recognised" % (message)
+        if not config.DEBUG: # this only works in Py3k right?
+            self.__traceback__ = None
 
 class ErrorCairoDraw(Exception):
     """

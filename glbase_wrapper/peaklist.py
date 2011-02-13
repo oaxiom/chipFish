@@ -27,8 +27,24 @@ class peaklist(glbase.peaklist):
     # descriptions, text for localisation
     __doc__ = "Overriden: Not Present"
     __tooltype__ = "Vanilla peaklist"
-    _default_draw_type = "spot"
+    _default_draw_type = "bar"
     _available_draw_types = ("bar", "spot")
+
+    def __init__(self, *args, **kargs):
+        glbase.peaklist.__init__(self, *args, **kargs)
+        
+        self.meta_data = {"name": self.name}
+
+    def __getitem__(self, key):
+        """
+        Emulate a dict
+        """
+        if key == "info": # catch this special key
+            for k in self.meta_data:
+                print "%s\t:\t%s" % (k, self.meta_data[k])
+        else:
+            assert key in self.meta_data, "'%s' not found in this track" % key
+            return(self.meta_data[key])
 
     # new methods:
     def get_data(self, type, loc, strand=None, resolution=1, **kargs):

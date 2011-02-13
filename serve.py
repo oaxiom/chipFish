@@ -13,7 +13,7 @@ if len(sys.argv) < 2:
     quit()
 
 cf = app()
-cf.startup(sys.argv[1])
+cf.startup(sys.argv[1], sys.argv[2])
 
 """
 

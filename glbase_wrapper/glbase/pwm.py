@@ -67,7 +67,7 @@ class pwm:
             self.__matrix = pwm_matrix
 
         if isPFM:
-            config.log.info("Converting the frequency matrix '%s' to a log-odds weight matrix" % self.name)
+            config.log.debug("Converting the frequency matrix '%s' to a log-odds weight matrix" % self.name)
             self.convertPFMtoPWM() # because almost always matrices are in PFM format, not PWM format.
         self.__do_minmax()
 
