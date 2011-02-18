@@ -19,7 +19,7 @@ from error import *
 from constants import *
 from boundbox import bbox
 from operator import itemgetter
-from glbase_wrapper import location, track, location, peaklist
+from glbase_wrapper import location, track, location, peaklist, utils
 from data import *
 from ruler import ruler
 
@@ -106,7 +106,7 @@ class gDraw:
 
             if track["type"] == "graph":
                 draw_data["array"] = track["data"].get_data("graph", location(loc=self.curr_loc),
-                    resolution=self.bps_per_pixel, read_extend=1000)
+                    resolution=self.bps_per_pixel, read_extend=200)
             elif track["type"] == "bar":
                 draw_data["array"] = track["data"].get_data("bar", location(loc=self.curr_loc),
                     resolution=self.bps_per_pixel, read_extend=150)
@@ -391,7 +391,7 @@ class gDraw:
         self.ctx.fill()
         return( (0, base_loc[1]-opt.track.height_px[track_type], self.w, opt.track.height_px[track_type]-2) )
 
-    def __drawTrackGraph(self, track_data, scaled=True, min_scaling=30, clamp=True):
+    def __drawTrackGraph(self, track_data, scaled=True, min_scaling=30, clamp=True, sliding_window_smoothing=True):
         """
         **Arguments**
             track_data
@@ -410,19 +410,26 @@ class gDraw:
             clamp (default=True)
                 clamp the display scale from 1 .. n
                 rather than 0 .. n
+                
+            sliding_window_smoothing (default=False)
+                use a sliding window to 'smooth the data'
         """
 
-        new_array = numpy.array(track_data["array"], dtype=numpy.float32)
+        data = track_data["array"]
+        if sliding_window_smoothing:
+            data = utils.sliding_window(data, len(data)/80)
+
+        data = numpy.array(data, dtype=numpy.float32)
 
         if clamp:
-            for i, v in enumerate(new_array):
+            for i, v in enumerate(data):
                 if v > 0.0:
-                    new_array[i] = v
+                    data[i] = v
                 else:
-                    new_array[i] = 1
+                    data[i] = 1
 
-        track_max = max(track_data["array"])
-        track_min = min(track_data["array"])
+        track_max = max(data)
+        track_min = min(data)
 
         if scaled:
             if min_scaling and track_max < min_scaling:
@@ -430,27 +437,24 @@ class gDraw:
             else:
                 scaling_value = track_max / float(opt.track.height_px["graph"])
             # only works if numpy array?
-            new_array = new_array / scaling_value
+            new_array = data / scaling_value
         else:
-            new_array = new_array
+            new_array = data
 
         colbox = self.__drawTrackBackground(track_data["track_location"], "graph")
         self.__setPenColour( (0,0,0) )
         self.ctx.set_line_width(1.1)
         coords = []
         lastpx = -1
-        for index, value in enumerate(new_array):
+        for index, value in enumerate(data):
             loc = self.__realToLocal(self.lbp + index, track_data["track_location"])
-            #if int(loc[0]) > lastpx: # this means only draw one per pixel
-            #    lastpx = loc[0]
-            #    coords.append( (index, loc[1] - 30 - value)) # +30 locks it to the base of the track
             coords.append( (index, loc[1] - value)) # +30 locks it to the base of the track
 
-        self.ctx.move_to(coords[0][0], coords[0][1]) # start x,y
+        self.ctx.move_to(0, coords[0][1]) # start x,y
         for item in coords:
             self.ctx.line_to(item[0], item[1])
-
         self.ctx.stroke()
+        
         self.__drawText(0, loc[1] - opt.track.height_px["graph"] + 20, opt.graphics.font, track_data["name"])
         self.__drawText(self.w - 20, loc[1] - 5, opt.graphics.font, track_min)
         self.__drawText(self.w - 20, loc[1] - opt.track.height_px["graph"] + opt.track.font_scale_size + 5, opt.graphics.font, track_max)
