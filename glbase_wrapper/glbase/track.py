@@ -8,9 +8,14 @@ from __future__ import division
 import cPickle, sys, os, struct, math, sqlite3, zlib, time
 
 from location import location
+import utils, config
 from data import positive_strand_labels, negative_strand_labels
+from draw import draw
+import matplotlib.cm as cm
+import matplotlib.pyplot as plot
+import scipy.stats as stats
 
-from numpy import array, zeros, set_printoptions, int32 # Carray
+from numpy import array, zeros, set_printoptions, int32, append, linspace
 
 TRACK_CACHE_SIZE = 10 # number of track segments to cache.
 
@@ -47,6 +52,7 @@ class track:
             self.__load_meta_data()
 
         self.__c = None
+        self.__draw = None # Lazy set-up in track. Don't init draw unless needed.
 
     def __getitem__(self, key):
         """
@@ -197,7 +203,8 @@ class track:
 
         c.close()
 
-    def get_array(self, loc, strand=None, resolution=1, read_extend=0, **kargs):
+    def get_array(self, loc, strand=None, resolution=1, read_extend=0, kde_smooth=False, 
+    	view_wid=0, **kargs):
         """
         **Purpose**
             get the data between location 'loc' and return it formatted as
@@ -221,14 +228,20 @@ class track:
                 estimated size of the peak.
                 If the reads are end-based, then set this to the estimated
                 size of the DNA shear.
+            
+            kde_smooth (Experimental)
+                perform kde smoothng on the data, using the integer specified as an option.
+                In this case the read_extend acts as a tag shift instead of a read_extend
+                Hence set that to half of the expected shear size.
 
         **Returns**
             an 'numpy.array([0, 1, 2 ... n])' contiginous array
             or a tuple containing two arrays, one for each strand.
         """
         # check if the array is already on the cache.
-        extended_loc = location(loc=str(loc)) # this should be fixed in a later version of glbase...
-        #extended_loc.expand(read_extend) # this behaviour may not work in a future version?
+        # um.... 
+        # Yes...
+        extended_loc = location(loc=str(loc)).expand(read_extend)
         locs_required = [extended_loc] # make sure to include the read_extend, but don't modify the location to get.
 
         # get the reads only in the ranges required.
@@ -237,10 +250,13 @@ class track:
         for l in locs_required:
             reads += self.get_reads(l, strand)
 
+        if kde_smooth:
+            return(self.__kde_smooth(loc, reads, resolution, 0, view_wid, read_extend))
+
         # make a single array
         a = zeros(int( (loc["right"]-loc["left"]+resolution)/resolution ), dtype=int32)
 
-        # work out and standardise strand:
+        # work out and standardise strand option so that all forms of strand are recognised
         if strand:
             if strand in positive_strand_labels:
                 strand = positive_strand_labels
@@ -269,6 +285,36 @@ class track:
                         a[array_relative_location] += 1
 
         return(a)
+
+    def __kde_smooth(self, loc, reads, resolution, bandwidth, view_wid, read_shift=100):
+        """
+        Internal abstraction for kde smoothing
+        
+        Returns a new array 
+        """
+        # Shift the reads
+        newr = []
+        for r in reads:
+            if r[2] in positive_strand_labels:
+                newr.append(float((r[0] + read_shift) - loc["left"])) # Must be floats for kde to work
+            elif r[2] in negative_strand_labels:
+                newr.append(float((r[1] - read_shift) - loc["left"]))
+        
+        a = linspace(0, loc["right"] - loc["left"], view_wid)
+        
+        # Hack gaussian_kde()
+        def covariance_factor(self):
+            return 0.01
+        
+        kde = stats.gaussian_kde(newr)
+        setattr(kde, 'covariance_factor', covariance_factor.__get__(kde, type(kde)))
+        kde._compute_covariance()
+
+        kk = kde.evaluate(a) * 1000000 # resacle to get in integer range.
+        res = array(kk, dtype=int32)
+        
+        return(res)
+                
 
     def get_array_chromosome(self, chromosome, strand=None, resolution=1, read_extend=0, **kargs):
         """
@@ -430,74 +476,97 @@ class track:
                 print " ", i
         c.close()
 
-if __name__ == "__main__":
-    # a few testers to see how it works.
+    def draw_pileup(self, genelist=None, key="loc", filename=None, heatmap_filename=None, bin_size=500, window_size=5000, read_extend=200, use_kde=False, **kargs): 
+        """
+        **Purpose**
+            draw cumulative 'pileups' of the tag density in the track based on a genelist
+            containing a "loc" tag
+        
+        **Arguments**
+            genelist (Required)
+                A genelist-like object containing a "loc"-like key tag
+            
+            key (Optional, default="key")
+                the loc key to use for the locations.
+                
+            filename (Required)
+                the name of the image file to save the pileup graph to.
+                
+            heatmap_filename (Optional)
+                draw a heatmap, where each row is a single gene. And red is the tag density
+                
+            bin_size (Optional, default=500)
+                bin_size to use for the heatmap
+                
+            window_size (Optional, default=5000)
+                The window size +- around the centre of the peak to build the tag density map
+                from
+                
+            read_extend (Optional, default=200)
+                extend the read x bp either 5' or 3' depending upon the strand of the read.
+                
+            use_kde 
+            	Use KDE versions of the tracks instead
+                
+        **Returns**
+            If succesful returns a list containing the amalgamated pileup.
+        """
+        assert genelist, "you must provide a valid genelist-like object for draw_pileups()"
+        assert key in genelist.linearData[0], "the genelist appears to be lacking a loc key"
+        assert filename, "a filename is required for the pileup graph"
+        
+        n = 0
+        h = 0
+        pileup = None
+        sampled = False
+        binned_data = None
+        setup_bins = False
 
-    """
-    t = track(filename="data/SpMash1_new.trk")
-    # speed tester
+        for i, g in enumerate(genelist):
+                l = g[key].pointify().expand(window_size)
+                if not use_kde:
+                	a = self.get_array(l, read_extend=read_extend) # read_extend=shear size
+                if use_kde:
+                	a = self.get_array(l, read_extend=read_extend, kde_smooth=True, view_wid=window_size) # read_extend=tag shift
+                	
+                if not sampled:
+                        pileup = a
+                        sampled = True
+                else:
+                        pileup = pileup + a
 
-    from random import randint
-    import time
-    from numpy import mean, std
+                if not setup_bins:
+                    binned_data = array([utils.bin_data(a, bin_size)])
+                    setup_bins = True
+                else:
+                    #print binned_data, [utils.bin_data(a, bin_size)]
+                    binned_data = append(binned_data, [utils.bin_data(a, bin_size)], axis=0)
 
-    chroms = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,"X", "Y"]
-    results = []
-    lens = [] # sanity checking.
+                n += 1
+                if n> 10000:
+                        h += 1
+                        n = 0
+                        config.log.info("Done %s0,000" % h)
+                        #break
 
-    for s in xrange(10): # number of samples
-        s = time.time()
-        for n in xrange(10):
-            r = t.get_reads(location(loc="chr5:114423935-114444335"))# % (chroms[randint(0, len(chroms)-1)])))
-        e = time.time()
-        results.append(e - s)
-    print "Took: mean %s +- %s" % (mean(results), std(results))
-    print "number of reads:", len(r)
+        # matplotlib pileup graph
+        plot.cla()
+        fig = plot.figure()
+        ax = fig.add_subplot(111)
+        ax.plot(pileup)
+        fig.savefig(filename)
+        config.log.info("Saved pileup tag desity to '%s'" % filename)
+        
+        # Heatmap
+        if not self.__draw:
+            self.__draw = draw(self)
+        
+        if heatmap_filename:
+            if "vmax" in kargs and kargs["vmax"]: 
+                real_filename = self.__draw._simple_heatmap(data=binned_data, filename=heatmap_filename, dpi=150, figsize=(6, 24), vmin=0, vmax=kargs["vmax"])
+            else:
+                real_filename = self.__draw._simple_heatmap(data=binned_data, filename=heatmap_filename, dpi=150, figsize=(6, 24))
+            config.log.info("saved heatmap to '%s'" % real_filename)
 
-    """
-    t = track(filename="data/test_new.trk", new=True)
-    t.add_location(location(loc="chr1:1-30"))
-    t.add_location(location(loc="chr1:1-30"))
-    t.add_location(location(loc="chr1:10-22"))
-    t.add_location(location(loc="chr1:10-21"))
-    t.add_location(location(loc="chr1:10-20"))
-    t.add_location(location(loc="chr1:10-19"))
-    t.add_location(location(loc="chr1:11-21"))
-    t.add_location(location(loc="chr1:12-22"))
-    t.add_location(location(loc="chr1:24-25"))
-    t.add_location(location(loc="chr1:25-26"))
-    t.add_location(location(loc="chr1:26-27"))
-    t.add_location(location(loc="chr1:26-26"))
-    t.add_location(location(loc="chr1:27-27"))
-
-    t.add_location(location(loc="chr1:1-100"), strand="+")
-    t.add_location(location(loc="chr1:26-100"), strand="+")
-
-    t.add_location(location(loc="chr2:100-200"), strand="-")
-    t.add_location(location(loc="chr2:110-210"), strand="-")
-    t.add_location(location(loc="chr2:120-220"), strand="-")
-    t.add_location(location(loc="chr2:250-260"), strand="-")
-
-    print "Finalise:"
-    t.finalise() # must call this
-    t._debug__print_all_tables()
-
-    # see the test_case for a formal test.
-    print t.get_reads(location(loc="chr1:1-26"))
-    print t.get_array(location(loc="chr1:1-26"))
-    print t.get_array(location(loc="chr1:10-20"))
-    print t.get_array(location(loc="chr1:20-25"))
-
-    print "\nReload"
-    t = track(filename="data/test_new.trk")
-    print t.get_reads(location(loc="chr1:1-26"))
-    print t.get_array(location(loc="chr1:1-26"))
-    print t.get_array(location(loc="chr1:10-20"))
-    print "res_tests"
-    print t.get_array(location(loc="chr1:20-30"))
-    print t.get_array(location(loc="chr1:20-30"), resolution=2)
-    print t.get_array(location(loc="chr1:20-30"), resolution=1.5)
-    #print t.get_array(location(loc="chr1:20-30"), resolution=0.5) # this causes an error
-    print t.get_array(location(loc="chr1:20-30"), resolution=5)
-
-    #print t.get_array_chromosome("1")
+        return(pileup)
+                

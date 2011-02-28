@@ -25,7 +25,7 @@ class track(glbase.track):
     __doc__ = "Overriden: Not Present"
     __tooltype__ = "Vanilla track"
     _default_draw_type = "graph"
-    _available_draw_types = ("graph", "graph_split_strand", "bar")
+    _available_draw_types = ("graph", "graph_split_strand", "bar", "kde_graph")
 
     def get_data(self, type, loc, strand=None, resolution=1, **kargs):
         """
@@ -40,6 +40,7 @@ class track(glbase.track):
 
             strand (True|False)
                 If true return a dictionary {"+": array(), "-": array()}
+                type should also == "graph_split_strand"?
 
             resolution
                 the bp resolution to use for the array.
@@ -48,11 +49,14 @@ class track(glbase.track):
             returns a Numpy array, or a dictionary.
         """
         if type in self._available_draw_types:
-            if not strand:
-                return(self.get_array(loc, resolution=resolution, **kargs))
+            if type == "kde_graph":
+                return(self.get_array(loc, resolution=resolution, kde_smooth=True, **kargs))
             else:
-                return({"+": self.get_array(loc, resolution=resolution, strand="+"),
-                    "-": self.get_array(loc, resolution=resolution, strand="-")})
+                if not strand:
+                    return(self.get_array(loc, resolution=resolution, **kargs))
+                else:
+                    return({"+": self.get_array(loc, resolution=resolution, strand="+"),
+                        "-": self.get_array(loc, resolution=resolution, strand="-")})
         raise AssertionError, "draw mode not available"
 
     # gui stuff.
