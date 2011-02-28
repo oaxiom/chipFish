@@ -13,21 +13,21 @@ import sys, os
 
 # get chipFish options
 #sys.path.append("../")
-import opt
+#import opt
 
 # get the actual glbase package location (probably ./glbase)
 #sys.path.append(opt.path.glbase_package)
 #import glbase # import like this to get around namespace issues
 
-print sys.path
+import glbase
+VERSION = glbase.config.VERSION
 
 # pass through directly from glbase
 from glbase.flags import * # just pass through.
-from glbase.location import location
+import glbase.location as location
 from glbase.helpers import * # pass through
-from glbase.delayedlist import delayedlist
-from glbase.config import VERSION
-#from seqToTrk import seqToTrk # throws an error for some reason?
+import glbase.delayedlist as delayedlist
+from glbase.tools.seqToTrk import seqToTrk # throws an error for some reason?
 
 # get the wrapped versions.
 from genelist import genelist
@@ -38,4 +38,4 @@ from track import track
 # make these functions available in the package
 __all__ = ["genelist", "location", "genome", "delayedlist", "VERSION",
     "track", "peaklist"
-    ] + dir(glbase.flags) + dir(glbase.helpers) # in future I want to get rid of dir() and control what gets exported.
+    ] + dir(glbase.flags) + dir(glbase.helpers) 

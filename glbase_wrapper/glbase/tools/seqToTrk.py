@@ -8,18 +8,11 @@ converts a sequence file to a track (graph)-like display
 
 import sys, os, csv, time, cProfile, pstats
 
-base_path = os.path.dirname(os.path.realpath( __file__ ))
-sys.path.append(os.path.realpath(os.path.join(base_path, "../"))) # Temporarily add to the path
-sys.path.append(os.path.realpath(os.path.join(base_path, "../../")))
-
-from glbase.track import track
-import glbase.delayedlist as delayedlist # get delayedlist from glbase
-import glbase.genelist as genelist
-from glbase.flags import exporttxt_loc_only_format
-from glbase import config
-
-sys.path.remove(os.path.realpath(os.path.join(base_path, "../")))
-sys.path.remove(os.path.realpath(os.path.join(base_path, "../../")))
+from .. import track
+from .. import delayedlist # get delayedlist from glbase
+from .. import genelist
+from ..flags import exporttxt_loc_only_format
+from .. import config
 
 def seqToTrk(infilename, outfilename, name, stranded=True, **kargs):
     """

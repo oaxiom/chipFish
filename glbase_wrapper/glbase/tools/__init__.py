@@ -4,4 +4,6 @@ nothing to see here, move along...
 
 """
 
-pass
+from seqToTrk import seqToTrk
+
+__all__ = ["seqToTrk"]

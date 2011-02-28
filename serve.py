@@ -72,8 +72,6 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         """
         path, query = self.translate_get(self.path)
 
-        print path, query
-
         if query:
             if "loc" in query and query["loc"]:
                 self.update_app(query["loc"])

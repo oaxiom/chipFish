@@ -19,11 +19,11 @@ from error import *
 from constants import *
 from boundbox import bbox
 from operator import itemgetter
-from glbase_wrapper import location, track, location, peaklist, utils
+from glbase_wrapper import location, track, peaklist, utils
 from data import *
 from ruler import ruler
 
-MAX_TRACKS = 10 # maximum number of tracks
+MAX_TRACKS = 100 # maximum number of tracks This is kind of ludicrously high. 
 
 import cairo, numpy
 
@@ -69,6 +69,7 @@ class gDraw:
             "lncRNA": self.__drawGene,
             "microRNA": self.__drawGene,
             "graph": self.__drawTrackGraph,
+            "kde_graph": self.__drawTrackGraph,
             "graph_split_strand": self.__drawTrackGraph_split_strand,
             "bar": self.__drawTrackBar,
             "spot": self.__drawTrackSpot
@@ -106,15 +107,18 @@ class gDraw:
 
             if track["type"] == "graph":
                 draw_data["array"] = track["data"].get_data("graph", location(loc=self.curr_loc),
-                    resolution=self.bps_per_pixel, read_extend=200)
+                    resolution=self.bps_per_pixel, **track["options"])
+            if track["type"] == "kde_graph":
+                draw_data["array"] = track["data"].get_data("graph", location(loc=self.curr_loc),
+                    resolution=self.bps_per_pixel, kde_smooth=True, view_wid=self.w, **track["options"])
             elif track["type"] == "bar":
                 draw_data["array"] = track["data"].get_data("bar", location(loc=self.curr_loc),
-                    resolution=self.bps_per_pixel, read_extend=150)
+                    resolution=self.bps_per_pixel, **track["options"])
             elif track["type"] == "spot":
                 draw_data["array"] = track["data"].get_data("spot", location(loc=self.curr_loc))
             elif track["type"] == "graph_split_strand":
                 draw_data["array"] = track["data"].get_data("graph", location(loc=self.curr_loc),
-                    strand=True, resolution=self.bps_per_pixel, read_extend=200)
+                    strand=True, resolution=self.bps_per_pixel, **track["options"])
 
             # and draw:
             colbox = draw_modes_dict[draw_data["type"]](draw_data)
@@ -144,7 +148,7 @@ class gDraw:
             self.ctx.fill()
         self.ctx.stroke()
 
-    def bindTrack(self, track, track_type=None):
+    def bindTrack(self, track, options=None, track_type=None):
         """
         bind a drawing track extra to genome.
 
@@ -160,11 +164,13 @@ class gDraw:
         if track_type not in valid_track_draw_types:
             raise ErrorTrackDrawTypeNotFound, track_type
 
-        self.tracks.append({"data": track, "track_location": self.__getNextTrackBox(track_type), "type": track_type})
+        self.tracks.append({"data": track, "track_location": 
+        	self.__getNextTrackBox(track_type), "type": track_type,
+        	"options": options})
 
     def __getNextTrackBox(self, track_type):
         """
-        get the next available track location and return the counding coordinates of the block.
+        get the next available track location and return the bounding coordinates of the block.
         """
         currentLoc = 0
         for index, track in enumerate(self.trackBoxes):
@@ -172,7 +178,7 @@ class gDraw:
                 currentLoc += opt.track.height_px[track]
             if not track:
                 self.trackBoxes[index] = track_type
-                return(-(index + (currentLoc))-opt.track.genome_base_offset) # 60 = genome track
+                return(-(index + (currentLoc))-opt.track.genome_base_offset) 
 
     def setViewPortSize(self, w, h):
         """
@@ -391,7 +397,7 @@ class gDraw:
         self.ctx.fill()
         return( (0, base_loc[1]-opt.track.height_px[track_type], self.w, opt.track.height_px[track_type]-2) )
 
-    def __drawTrackGraph(self, track_data, scaled=True, min_scaling=30, clamp=True, sliding_window_smoothing=True):
+    def __drawTrackGraph(self, track_data, scaled=True, min_scaling=20, clamp=True, sliding_window_smoothing=False):
         """
         **Arguments**
             track_data
@@ -436,10 +442,9 @@ class gDraw:
                 scaling_value = min_scaling / float(opt.track.height_px["graph"])
             else:
                 scaling_value = track_max / float(opt.track.height_px["graph"])
-            # only works if numpy array?
-            new_array = data / scaling_value
-        else:
-            new_array = data
+            # only works if numpy array? A: Yes
+            data = data / scaling_value
+        print track_max, 100, scaling_value
 
         colbox = self.__drawTrackBackground(track_data["track_location"], "graph")
         self.__setPenColour( (0,0,0) )

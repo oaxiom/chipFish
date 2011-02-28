@@ -99,6 +99,7 @@ class track:
     """
     height_px = {"graph": 100,
         "graph_split_strand": 100, # same as graph
+        "kde_graph": 100, # ditto
         "bar": 30,
         "spot": 30} # height's of the tracks in pixels.
     genome_base_offset = 60 # offset from the genome track to the first track.
