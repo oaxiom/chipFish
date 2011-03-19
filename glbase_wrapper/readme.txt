@@ -2,10 +2,7 @@
 This is a part of chipFish, it is a series of headers overriding the
 vanilla glbase.
 
-These are not released under the GPL, and as they inherit from glbase,
-they do not need to be.
-
-(c) 2009-10 A.Hutchins and oAxiom.
+(c) 2009-2011 A.Hutchins and oAxiom.
 
 Introduction
 ------------

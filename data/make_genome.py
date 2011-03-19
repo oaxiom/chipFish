@@ -46,3 +46,23 @@ mm9 = glbase_wrapper.genome(name="mm9", filename="mm9_refGene.tsv", format=forma
 print mm9
 mm9.save("mm9_refGene.glb")
 print mm9._findByLabel("name", "Nanog")
+
+"""
+# Continue to use refseq, as the ensembl table is missing the name...
+format_mm9_ensembl = {
+        "loc": {"code": "location(chr=column[2], left=int(column[4]), right=int(column[5]))"},
+        "strand": 3,
+        "name": 12,
+        "refseq": 1,
+        "cds_loc": {"code": "location(chr=column[2], left=column[6], right=column[7])"},
+        "exons_count": 8,
+        "exonStarts": {"code": "[int(x) for x in column[9].strip(\",\").split(\",\")]"},
+        "exonEnds": {"code": "[int(x) for x in column[10].strip(\",\").split(\",\")]"},
+        "dialect" : csv.excel_tab
+        } # This is now in glbase >0.161.hg
+
+ens_mm9 = glbase_wrapper.genome(name="mm9", filename="format_mm9_ensembl.tsv", format=format_mm9_ensembl)
+print ens_mm9
+ens_mm9.save("mm9_refGene.glb")
+print ens_mm9._findByLabel("name", "Nanog")
+"""

@@ -21,8 +21,17 @@ class generic:
     some very generic options and constants.
     """
     debug = True
+    web = True
     app_path = sys.path[0]
-    VERSION = "0.2"
+    v = ["0.3"]
+    if web:
+        v.append("web")
+    if debug:
+        v.append("debug")
+        
+    version = " ".join(v)
+
+__VERSION__ = generic.version
 
 class path:
     """
@@ -62,7 +71,7 @@ class graphics:
     lncrna_colour = (0.1, 0.8, 0.1)
     microRNA_colour = (0.6, 0.1, 0)
 
-	# Font related defaults
+    # Font related defaults
     font = "sans-serif"
     default_font_size = 12 # Generally refers here to the track Text sizes
 
@@ -101,16 +110,10 @@ class track:
         "graph_split_strand": 100, # same as graph
         "kde_graph": 100, # ditto
         "bar": 30,
-        "spot": 30} # height's of the tracks in pixels.
-    genome_base_offset = 60 # offset from the genome track to the first track.
+        "spot": 30,
+        "genome": 50} # height's of the tracks in pixels.
     spot_pixel_radius = 4
     spot_default_colour = (0.8, 0.1, 0.1)
     spot_filled = True # fill the spot circle
     spot_shape = "circle" # supported = circle, triangle
     font_scale_size = 8
-
-def saveOptions():
-    pass
-
-def loadOptions():
-    pass

@@ -21,36 +21,23 @@ class genome(glbase.genome):
 
     Adds descriptions for chipFish to interpret the interfaces from
     """
-
+    # descriptions, text for localisation
+    __doc__ = "Overriden: Not Present"
+    __tooltype__ = "Genome"
+    _default_draw_type = "genome"
+    _available_draw_types = ("genome", "genome_stack") # genome_stack not implemented.
+    
+    
     # extra methods:
+    def get_data(self, type, location):
+        if type == "genome":
+            return(self.getFeatures(location))
+
     def getAllDrawableFeaturesInRange(self, location):
         """
-        (Extra)
-        retrieve all features between location.
-
-        (To move into glbase proper?)
-        Yeah, this is now in glbase as genome.getFeatures(self, location, **kargs)
+        Historical place-holder, for deletion
         """
-        ret = []
-        if self.dataByChr.has_key(location["chr"]):
-            for item in self.dataByChr[location["chr"]]:
-                #print location["left"], location["right"], item["loc"]["left"], item["loc"]["right"]
-                if qcollide(location["left"], location["right"], item["loc"]["left"], item["loc"]["right"]):
-                    """
-                    {'loc': location: contents: {'chr': '3', 'right': 153791001, 'left': 153781632},
-                    'name': 'Asb17',
-                    'n': 6544,
-                    'array_systematic_name': 'scl22442.2.1_3-S',
-                    'tss_loc': location: contents: {'chr': '3', 'right': 153781632, 'left': 153781632},
-                    'refseq': 'NM_025758',
-                    'entrez': 66772,
-                    'strand': '+',
-                    'description': 'ankyrin repeat and SOCS box-containing 17'}
-                    """
-                    # make a suitable draw object
-                    item["type"] = "gene" # set the type flag for gDraw
-                    ret.append(item)
-        return(ret)
+        return(self.get_data("genome", location))
 
     def find(self, text, guage_object=None, case_sensitive=False):
         """

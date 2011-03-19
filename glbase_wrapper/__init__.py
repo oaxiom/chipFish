@@ -6,7 +6,7 @@ override for chipFish
 
 contains misc data from glbase, stuff found in helpers, data, flags etc...
 
-(c) 2009 oAxiom
+(c) 2009-2011 oAxiom
 
 """
 import sys, os
@@ -24,10 +24,10 @@ VERSION = glbase.config.VERSION
 
 # pass through directly from glbase
 from glbase.flags import * # just pass through.
-import glbase.location as location
+from glbase.location import location
 from glbase.helpers import * # pass through
-import glbase.delayedlist as delayedlist
-from glbase.tools.seqToTrk import seqToTrk # throws an error for some reason?
+from glbase.delayedlist import delayedlist
+from glbase.tools.seqToTrk import seqToTrk 
 
 # get the wrapped versions.
 from genelist import genelist

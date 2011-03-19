@@ -3,14 +3,12 @@ import sys, os
 
 import gDraw
 
-from glbase_wrapper import glload, track, location, peaklist, format_bed
+from glbase_wrapper import glload, track, location, peaklist, format_bed, format_minimal_bed
 from error import *
 
 class app():
     """
-    This just inherits at the moment, but later I can use it to split off the gui and
-    drawing elements, and tidy up gDraw to make a lot more public functions
-
+    Inheritence was split off a while ago.
     """
     def __init__(self, genome=None):
         """
@@ -18,10 +16,18 @@ class app():
         """
         self.current_genome = None
 
-    def restart(self, genome="mm9", tracklist=None):
+    def restart(self, tracklist=None):
         """
         see startup()
+        
+        Any clearing out can be performed here.
+        This is not currently in use and is untested.
+        This method would be used to rebind a tracklist
         """
+        # Presumably here I should clean-out the tracklists...
+        # Whoops!
+        
+        # reload through the normal route.
         self.startup(genome, tracklist)
 
     def __do_options(self, options, mode):
@@ -49,29 +55,18 @@ class app():
         
         return(res)
 
-    def startup(self, genome="mm9", tracklist=None):
+    def startup(self, tracklist=None):
         """
         startup or restart the server.
 
         Use this to get started proper and change genomes etc.
 
         **Arguments**
-            genome [mm8|mm9]
-                load a supported genome.
-
             tracklist
                 A text file containing the path to the track files
                 Not Implemented
         """
-        if genome == "mm8":
-            self.g = glload("../Tracks/mm8_refGene.glb")
-        elif genome == "mm9":
-            self.g = glload("data/mm9_refGene.glb")
-        else:
-            raise ErrorGenomeNotSupported, genome
-        self.current_genome = genome
-
-        self.draw = gDraw.gDraw(self.g) # drawer must have access to the genome
+        self.draw = gDraw.gDraw()
 
         if tracklist: # Although it doesn't really make much sense not to supply a tracklist
             oh = open(tracklist, "rU")
@@ -82,13 +77,20 @@ class app():
                     # Options should go here.
                     pass # Anything useful to do with these?
                 else:
-                    if ":" in line:
-                        if "kde_track" in line: # Must go before "track"
+                    if ":" in line: 
+                        # The order of the following modes is important - for example, "bed:" will also
+                        # collect "macs_bed" so "macs_bed" must go first.
+                        # There can only be one mode
+                        if "kde_track:" in line: # Must go before "track"
                             mode = "kde_track"
-                        elif "track" in line:
+                        elif "track:" in line:
                             mode = "track"
-                        elif "bed" in line:
+                        elif "macs_bed:" in line:
+                            mode = "macs_bed"
+                        elif "bed:" in line:
                             mode = "bed"
+                        elif "genome:" in line:
+                            mode = "genome"
                         else:
                             raise ErrorUnrecognisedTrackMode, mode
                             
@@ -106,7 +108,14 @@ class app():
                             elif mode=="bed":
                                 self.draw.bindTrack(peaklist(filename=os.path.join(path, name), format=format_bed), options=options)
                                 print "Bound Bed:", os.path.join(path, name) 
-
+                            elif mode=="macs_bed":
+                                f = format_minimal_bed
+                                f["skiplines"] = 1 # Changes in recent version of macs bed.
+                                self.draw.bindTrack(peaklist(filename=os.path.join(path, name), format=f), options=options)
+                                print "Bound MACS bed file:", os.path.join(path, name)
+                            elif mode=="genome": # must be a glb
+                                self.draw.bindTrack(glload(os.path.join(path, name)))
+                                print "Bound genome:", name 
             oh.close()
 
-        self.draw.setLocation(loc=location(loc="chr1:172724244-172859108")) # Load a dummy location.
+        self.draw.setLocation(loc=location(loc="chr1:172724244-172859108")) # Load a dummy location, my favourite gene Stat3

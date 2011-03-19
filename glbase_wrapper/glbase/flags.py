@@ -31,8 +31,7 @@ format_bed = {"loc": {"code": "location(chr=column[0], left=column[1], right=col
     "skiplines": -1}
 format_minimal_bed = {"loc": {"code": "location(chr=column[0], left=column[1], right=column[2])"}, "dialect": csv.excel_tab,
     "skiplines": -1} # no strand basically, and ignore any other keys.
-format_bed_no_strand = {"loc": {"code": "location(chr=column[0], left=column[1], right=column[2])"}, "dialect": csv.excel_tab,
-    "skiplines": -1}
+format_bed_no_strand = format_minimal_bed
 
 format_fasta = {"special": "fasta"}
 

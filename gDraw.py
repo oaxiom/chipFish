@@ -28,7 +28,7 @@ MAX_TRACKS = 100 # maximum number of tracks This is kind of ludicrously high.
 import cairo, numpy
 
 class gDraw:
-    def __init__(self, genome):
+    def __init__(self):
         """
         initialise the gDraw
         pass a wx.Panel that the drawer can atach to.
@@ -41,8 +41,6 @@ class gDraw:
         self.paintQ = []
         self.tracks = [] # currently visible tracks
         self.trackBoxes = [False for n in xrange(MAX_TRACKS)] # list of TrackBoxes in use.
-
-        self.genome = genome
 
         self.chromosome = "1"
         self.lbp = 1
@@ -72,7 +70,8 @@ class gDraw:
             "kde_graph": self.__drawTrackGraph,
             "graph_split_strand": self.__drawTrackGraph_split_strand,
             "bar": self.__drawTrackBar,
-            "spot": self.__drawTrackSpot
+            "spot": self.__drawTrackSpot,
+            "genome": self.__drawGenome
             }
 
         self.delta = self.rbp - self.lbp
@@ -88,15 +87,6 @@ class gDraw:
         self.__setPenColour(opt.graphics.screen_colour)
         self.ctx.rectangle(0,0,self.fullw,self.h)
         self.ctx.fill()
-
-        if opt.draw.double_lines_for_genome:
-            self.__drawChr(None)
-
-        # get the new paintQ:
-        # draw the genome:
-        genome_items = self.genome.getAllDrawableFeaturesInRange(self.curr_loc)
-        for item in genome_items:
-            draw_modes_dict[item["type"]](item)
 
         # collect the data for the tracks and draw them on the screen.
         for track in self.tracks:
@@ -119,7 +109,8 @@ class gDraw:
             elif track["type"] == "graph_split_strand":
                 draw_data["array"] = track["data"].get_data("graph", location(loc=self.curr_loc),
                     strand=True, resolution=self.bps_per_pixel, **track["options"])
-
+            elif track["type"] == "genome":
+                draw_data["array"] = track["data"].get_data("genome", location(loc=self.curr_loc))
             # and draw:
             colbox = draw_modes_dict[draw_data["type"]](draw_data)
 
@@ -134,6 +125,21 @@ class gDraw:
         # any further (internal) drawing goes here.
         if opt.debug.draw_collision_boxes: self.__debug_draw_col_boxes()
         return(True)
+
+    def __drawGenome(self, track_data, **kargs):
+        # Draw a genome
+        draw_modes_dict = { # In case I ever add other drawing modes...
+            "gene": self.__drawGene,
+            "lncRNA": self.__drawGene,
+            "microRNA": self.__drawGene,
+            }
+    
+        if opt.draw.double_lines_for_genome:
+            self.__drawChr(None)
+
+        # draw the genome:
+        for item in track_data["array"]:
+            draw_modes_dict[item["type"]](item, track_data)
 
     def __debug_draw_col_boxes(self):
         """
@@ -151,12 +157,10 @@ class gDraw:
     def bindTrack(self, track, options=None, track_type=None):
         """
         bind a drawing track extra to genome.
-
-        # valid track types:
-        graph
-        bar
-        spot
-        """
+        
+        valid track types:
+        %s
+        """ % valid_track_draw_types
         # if no track_type try to guess from the track object
         if not track_type:
             track_type = track._default_draw_type
@@ -165,12 +169,12 @@ class gDraw:
             raise ErrorTrackDrawTypeNotFound, track_type
 
         self.tracks.append({"data": track, "track_location": 
-        	self.__getNextTrackBox(track_type), "type": track_type,
-        	"options": options})
+            self.__getNextTrackBox(track_type), "type": track_type,
+            "options": options})
 
     def __getNextTrackBox(self, track_type):
         """
-        get the next available track location and return the bounding coordinates of the block.
+        get the next available track location and return the base (y-axis) of the block.
         """
         currentLoc = 0
         for index, track in enumerate(self.trackBoxes):
@@ -178,7 +182,7 @@ class gDraw:
                 currentLoc += opt.track.height_px[track]
             if not track:
                 self.trackBoxes[index] = track_type
-                return(-(index + (currentLoc))-opt.track.genome_base_offset) 
+                return(-(index + (currentLoc))) 
 
     def setViewPortSize(self, w, h):
         """
@@ -261,23 +265,25 @@ class gDraw:
                 minim = abs(percent - v)
                 best = v
 
-        posLeft = self.__realToLocal(self.rbp-best, -40)
+        posLeft = self.__realToLocal(self.rbp - best, -40)
         posRight = self.__realToLocal(self.rbp, -40)
 
-        self.ctx.set_line_width(0.5)
-        self.ctx.move_to(posLeft[0]-20, posLeft[1]) # move 20px arbitrarily left
-        self.ctx.line_to(posRight[0]-20, posRight[1])
+        self.ctx.set_line_width(1.5)
+        self.__setPenColour((0.5,0.5,0.5))
+        
+        self.ctx.move_to(posLeft[0]-20, opt.ruler.height_px + 8) # move 20px arbitrarily left
+        self.ctx.line_to(posRight[0]-20, opt.ruler.height_px + 8)
         self.ctx.stroke()
 
-        self.ctx.move_to(posLeft[0]-20, posLeft[1]-4) # move 20px arbitrarily left
-        self.ctx.line_to(posLeft[0]-20, posLeft[1]+4)
+        self.ctx.move_to(posLeft[0]-20, opt.ruler.height_px + 8 -4) # move 20px arbitrarily left
+        self.ctx.line_to(posLeft[0]-20, opt.ruler.height_px + 8 +4)
         self.ctx.stroke()
 
-        self.ctx.move_to(posRight[0]-20, posRight[1]-4) # move 20px arbitrarily left
-        self.ctx.line_to(posRight[0]-20, posRight[1]+4)
+        self.ctx.move_to(posRight[0]-20, opt.ruler.height_px + 8 -4) # move 20px arbitrarily left
+        self.ctx.line_to(posRight[0]-20, opt.ruler.height_px + 8 +4)
         self.ctx.stroke()
 
-        self.__drawText(posLeft[0], posRight[1]-5, opt.graphics.font, scales_and_labels[best])
+        self.__drawText(posLeft[0], opt.ruler.height_px + 21, opt.graphics.font, scales_and_labels[best])
 
     def __drawRuler(self):
         """
@@ -320,6 +326,8 @@ class gDraw:
             If no obvious extension is given then the string value in 'types'
             will be used.
             Finally, if that doens't make sense then it will default to a png
+            
+            <This is not implented - it only saves as a png>
 
         **Arguments**
 
@@ -340,6 +348,7 @@ class gDraw:
         guess_height = abs(self.tracks[-1]["track_location"]) + opt.track.height_px[self.tracks[-1]["type"]] + opt.ruler.height_px + 30 + 32 # 32 is the 'chromosome %s' padding, 30 is some other padding I'm not really certain where it comes from...
 
         if not self.ctx or guess_height != self.last_guess_height:
+            # If the surface size changed between the last call and this, I need a newly sized surface.
             self.surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, 1024, guess_height)
             self.ctx = cairo.Context(self.surface)
             self.last_guess_height = guess_height
@@ -444,7 +453,7 @@ class gDraw:
                 scaling_value = track_max / float(opt.track.height_px["graph"])
             # only works if numpy array? A: Yes
             data = data / scaling_value
-        print track_max, 100, scaling_value
+        #print track_max, 100, scaling_value
 
         colbox = self.__drawTrackBackground(track_data["track_location"], "graph")
         self.__setPenColour( (0,0,0) )
@@ -461,8 +470,10 @@ class gDraw:
         self.ctx.stroke()
         
         self.__drawText(0, loc[1] - opt.track.height_px["graph"] + 20, opt.graphics.font, track_data["name"])
-        self.__drawText(self.w - 20, loc[1] - 5, opt.graphics.font, track_min)
-        self.__drawText(self.w - 20, loc[1] - opt.track.height_px["graph"] + opt.track.font_scale_size + 5, opt.graphics.font, track_max)
+        self.__drawText(self.w - 10, loc[1] - 5, opt.graphics.font, 
+            int(track_min), align="right", colour=(0,0,0), style="bold")
+        self.__drawText(self.w - 10, loc[1] - opt.track.height_px["graph"] + opt.track.font_scale_size + 5, opt.graphics.font, 
+            int(track_max), align="right", colour=(0,0,0), style="bold")
 
         return(colbox)# collision box dimensions
 
@@ -576,7 +587,7 @@ class gDraw:
         self.__drawText(0, sc[1]-17 , opt.graphics.font, track_data["name"])
         return(colbox)
 
-    def __drawText(self, x, y, font, text, size=opt.graphics.default_font_size, colour=(0,0,0), style=None):
+    def __drawText(self, x, y, font, text, size=opt.graphics.default_font_size, colour=(0,0,0), style=None, align="left"):
         """
         (Internal - helper)
         Draw text to the screen, font is a string for the font name.
@@ -586,11 +597,15 @@ class gDraw:
         """
         self.__setPenColour(colour)
         self.ctx.select_font_face(font, txtToCairoA[style], txtToCairoB[style])
-        self.ctx.move_to(x, y)
         self.ctx.set_font_size(size)
+        if align == "left":
+            self.ctx.move_to(x, y)
+        elif align == "right":
+            t = self.ctx.text_extents(str(text))
+            self.ctx.move_to(x - t[2], y) 
         self.ctx.show_text(str(text))
 
-    def __drawGene(self, data):
+    def __drawGene(self, data, track_data=None):
         """
         draw Features of the type "Gene"
         should be an dict containing the following keys:
@@ -601,10 +616,14 @@ class gDraw:
         exonStarts: list of exon start locations
         exonEnds: list of ends
         """
-        #print "t:", ((data["left"]-self.lbp) / self.deltaf), ((data["right"]-self.lbp) / self.deltaf)
+        if not track_data: # See if we are bound into a track slot.
+            track_slot_base = 0
+        else:
+            track_slot_base = track_data["track_location"]
 
-        posLeft = self.__realToLocal(data["loc"]["left"], 0)[0]
-        posRight = self.__realToLocal(data["loc"]["right"], 0)[0]
+        posLeft = self.__realToLocal(data["loc"]["left"], track_slot_base)[0]
+        posBase = self.__realToLocal(data["loc"]["left"], track_slot_base)[1]
+        posRight = self.__realToLocal(data["loc"]["right"], track_slot_base)[0]
         self.ctx.set_line_width(1)
         self.__setPenColour(opt.graphics.gene_colour)
 
@@ -622,35 +641,37 @@ class gDraw:
 
         current_offset = opt.graphics.gene_height
         coords = []
-        coords.append(self.__realToLocal(data["loc"]["left"], 0))
-        coords.append(self.__realToLocal(data["loc"]["left"], + opt.graphics.gene_height))
+        coords.append(self.__realToLocal(data["loc"]["left"], track_slot_base))
+        coords.append(self.__realToLocal(data["loc"]["left"], track_slot_base + opt.graphics.gene_height))
         for c in tc:
             if c["t"] == "cdss":
                 current_offset = opt.graphics.cds_height
-                coords.append(self.__realToLocal(c["c"], + opt.graphics.gene_height))
-                coords.append(self.__realToLocal(c["c"], + opt.graphics.cds_height))
+                coords.append(self.__realToLocal(c["c"], track_slot_base + opt.graphics.gene_height))
+                coords.append(self.__realToLocal(c["c"], track_slot_base + opt.graphics.cds_height))
             elif c["t"] == "cdse":
                 current_offset = opt.graphics.gene_height
-                coords.append(self.__realToLocal(c["c"], + opt.graphics.cds_height))
-                coords.append(self.__realToLocal(c["c"], + opt.graphics.gene_height))
+                coords.append(self.__realToLocal(c["c"], track_slot_base + opt.graphics.cds_height))
+                coords.append(self.__realToLocal(c["c"], track_slot_base + opt.graphics.gene_height))
             elif c["t"] == "es":
-                coords.append(self.__realToLocal(c["c"], 0))
-                coords.append(self.__realToLocal(c["c"], + current_offset))
+                coords.append(self.__realToLocal(c["c"], track_slot_base))
+                coords.append(self.__realToLocal(c["c"], track_slot_base + current_offset))
             elif c["t"] == "ee":
-                coords.append(self.__realToLocal(c["c"], + current_offset))
-                coords.append(self.__realToLocal(c["c"], 0))
+                coords.append(self.__realToLocal(c["c"], track_slot_base + current_offset))
+                coords.append(self.__realToLocal(c["c"], track_slot_base))
 
-        coords.append(self.__realToLocal(data["loc"]["right"], + opt.graphics.gene_height))
-        coords.append(self.__realToLocal(data["loc"]["right"], 0))
+        coords.append(self.__realToLocal(data["loc"]["right"], track_slot_base + opt.graphics.gene_height))
+        coords.append(self.__realToLocal(data["loc"]["right"], track_slot_base))
 
         self.ctx.move_to(coords[0][0], coords[0][1])
         for index, item in enumerate(coords):
             self.ctx.line_to(item[0], item[1])
         self.ctx.move_to(coords[0][0], coords[0][1])
 
-        #coords.reverse()
+        coords.reverse()
         for item in coords:
-            self.ctx.line_to(item[0], self.h - 30 - (item[1] - (self.h-30)))
+            self.ctx.line_to(item[0], posBase + (posBase - item[1]))
+            
+        self.ctx.line_to(coords[0][0], coords[0][1]) # Finish so fill works 
         #self.ctx.stroke()
         self.ctx.fill()
 
@@ -660,17 +681,17 @@ class gDraw:
         # Draw gene arrow
 
         if data["strand"] == "+": # top strand
-            loc = self.__realToLocal(data["loc"]["left"], 0)
+            loc = self.__realToLocal(data["loc"]["left"], track_slot_base)
             # arrow.
             self.ctx.move_to(loc[0], loc[1]-20)
             self.ctx.line_to(loc[0], loc[1]-20-opt.graphics.arrow_height_px)
-            self.ctx.line_to(loc[0]+opt.graphics.arrow_width_px, loc[1]-20)
+            self.ctx.line_to(loc[0] + opt.graphics.arrow_width_px, loc[1]-20)
             self.ctx.line_to(loc[0], loc[1]-20+opt.graphics.arrow_height_px)
             self.ctx.line_to(loc[0], loc[1]-20)
             self.ctx.fill()
-            self.__drawText(loc[0]+opt.graphics.arrow_width_px+3, loc[1]-20+opt.graphics.arrow_height_px, "Arial", data["name"], size=18)
+            self.__drawText(loc[0]+opt.graphics.arrow_width_px+3, loc[1]-20+opt.graphics.arrow_height_px, "Arial", data["name"], size=16, style="bold")
         elif data["strand"] == "-":
-            loc = self.__realToLocal(data["loc"]["right"], 0)
+            loc = self.__realToLocal(data["loc"]["right"], track_slot_base)
             # arrow.
             self.ctx.move_to(loc[0], loc[1]+20)
             self.ctx.line_to(loc[0], loc[1]+20-opt.graphics.arrow_height_px)
@@ -678,15 +699,14 @@ class gDraw:
             self.ctx.line_to(loc[0], loc[1]+20+opt.graphics.arrow_height_px)
             self.ctx.line_to(loc[0], loc[1]+20)
             self.ctx.fill()
-            self.__drawText(loc[0]+opt.graphics.arrow_width_px+3, loc[1]+20+opt.graphics.arrow_height_px, "Arial", data["name"], size=18)
+            self.__drawText(loc[0]+opt.graphics.arrow_width_px-13, loc[1]+22+opt.graphics.arrow_height_px, "Arial", data["name"], size=16, align="right", style="bold")
         else:
             raise ErrorInvalidGeneDefinition
 
-
         if opt.draw.single_midline_in_introns: # draw a single line through the gene
             # this looks best when the genome is not being drawn.
-            leftmost = self.__realToLocal(data["loc"]["left"], 0)
-            rightmost = self.__realToLocal(data["loc"]["right"], 0)
+            leftmost = self.__realToLocal(data["loc"]["left"], track_slot_base)
+            rightmost = self.__realToLocal(data["loc"]["right"], track_slot_base)
             self.__setPenColour(opt.graphics.gene_colour)
             self.ctx.set_line_width(1)
             self.ctx.move_to(leftmost[0], leftmost[1])
