@@ -189,6 +189,7 @@ class track:
         use self.__get_block() to get a block.
 
         new_block DOES NOT WRITE INTO THE DB!
+        You need to flush the cache for that to happen
         """
         if not data: # fill a blank entry
             data = array('i', [0 for x in xrange(self.block_size)])

@@ -85,6 +85,7 @@ class peaklist(glbase.peaklist):
                     if qcollide(loc["left"], loc["right"], item["loc"]["left"], item["loc"]["right"]):
                         ret.append(item["loc"])
             return(ret)
+        return(None)
 
     # gui stuff.
     # available for the gui on this class

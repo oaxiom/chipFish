@@ -1,6 +1,8 @@
 """
 A web interface for chipfish.
 
+Copyright 2011 oAxiom
+
 This is the abandonment of the GUI
 
 """
@@ -8,16 +10,19 @@ import time, os, sys
 from app import app
 from glbase_wrapper import location
 
-if len(sys.argv) < 2:
-    print "serve.py <genome> <track_list_file.txt>"
+if len(sys.argv) < 1:
+    print "serve.py <track_list_file.txt>"
     quit()
 
 cf = app()
-cf.startup(sys.argv[1], sys.argv[2])
+cf.startup(sys.argv[1])
 
 """
 
 Adapted from SimpleHTTPRequiestHandler
+
+(I don't claim copyright on this).
+It really needs to be cleaned out and a better server system put in.
 
 """
 __version__ = "0.1"
@@ -36,7 +41,7 @@ try:
 except ImportError:
     from StringIO import StringIO
 
-class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+class chipfishHTTPServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     """HTTP request handler with GET and HEAD commands.
 
     The GET and HEAD requests are identical except that the HEAD
@@ -44,7 +49,7 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     """
 
-    server_version = "SimpleHTTP/" + __version__
+    server_version = "chipfishHTTPServer/" + __version__
 
     def do_GET(self):
         """Serve a GET request."""
@@ -200,7 +205,7 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         })
 
 
-def serve(HandlerClass = HTTPRequestHandler, ServerClass = BaseHTTPServer.HTTPServer):
+def serve(HandlerClass = chipfishHTTPServerHandler, ServerClass = BaseHTTPServer.HTTPServer):
     # Hack the port.
     sys.argv[1] = 8080
     BaseHTTPServer.test(HandlerClass, ServerClass)
