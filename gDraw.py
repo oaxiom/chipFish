@@ -291,7 +291,7 @@ class gDraw:
 
         """
         x,y,w,h = self.__getTextExtents("Chromosome %s" % str(self.chromosome))
-        self.__drawText(5, opt.ruler.height_px + 22, opt.ruler.font, "Chromosome %s" % str(self.chromosome), size=14)
+        self.__drawText(5, opt.ruler.height_px + 22, opt.ruler.font, "Chromosome %s:%s-%s" % (str(self.chromosome), self.lbp, self.rbp), size=13)
 
         self.__setPenColour(opt.ruler.colour)
         # work out a good scale representation

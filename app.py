@@ -97,7 +97,7 @@ class app():
                         # process options
                         options = self.__do_options(line.split(":")[-1], mode)
                     elif mode:
-                        name = line.replace("\n", "").replace("\r", "").replace("\t", "")
+                        name = line.replace("\n", "").replace("\r", "").replace("\t", "").replace(" ", "")
                         if name:
                             if mode=="track":
                                 self.draw.bindTrack(track(filename=os.path.join(path, name)), options=options)
