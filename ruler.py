@@ -7,21 +7,28 @@ abstraction of a generic ruler class.
 """
 
 from __future__ import division
+from error import AssertionError
+
+import opt
 
 class ruler:
-    def __init__(self, min, max, display_pixel_size, useSI_label=True):
+    def __init__(self, min, max, pixel_span, units=None, useSI_label=True):
         """
         **Purpose**
             an abstract class to represent rulers.
 
-            (minimum values not implemented yet)
+            Only integer rulers are supported.
 
         **Arguments**
             min
+                the minimum value of the ruler
 
             max
+                the maximum value of the ruler.
 
-            display_pixel_size
+            pixel_span (tuple)
+                the size in pixels of the ruler.
+                Currently non-zero starting pixel_spans are ignored
 
             useSI_label (default = True)
                 append k for 1000, M for 1,000,000, G for 1,000,000,000 etc...
@@ -30,22 +37,11 @@ class ruler:
         **Results**
             A valid ruler object
         """
-        self.min = min
-        self.max = max
-        self.display_px = display_pixel_size
-        self.__recalculate_fractions()
+        self.set(int(min), int(max), pixel_span)
+        self.use_si = useSI_label
+        self.units = units
 
-    def __recalculate_fractions(self):
-        """
-        (Internal)
-        recalculate things like units per pixel and other
-        internally used values.
-        """
-        #self.__px_in_units = self.max * (self. # the number of pixels per unit
-        self.delta = self.max - self.min
-        self.__units_in_px = self.max / self.display_px # number of units per pixel
-
-    def set(self, min, max):
+    def set(self, min, max, pixel_span=None):
         """
         **Purpse**
 
@@ -55,12 +51,24 @@ class ruler:
 
             max
                 update the maximum value
+                
+            display_pixel_size (tuple)
+                change the size in pixels of the viewport.
+                leave as None to leave unchanged.
         """
+        print pixel_span
+        
+        assert min < max, "min must be less than max for ruler"
         self.min = min
-        self.__max = maximum_value
-        self.__recalculate_fractions()
+        self.max = max
+        self.wid = self.max - self.min
+        if pixel_span:
+            self.display_px_w = pixel_span[1] - pixel_span[0] # Implemented, but probably not correct
+            self.display_px_l = pixel_span[0] 
+            self.display_px_r = pixel_span[1] # Currently ignored
+        self.__units_in_px = ((self.min - self.max) / self.display_px_w) # number of units per pixel
 
-    def get_ruler_data(self, percent=20):
+    def get_ruler_data(self, percent=20, minor_percent=2):
         """
         **Purpose**
 
@@ -69,6 +77,9 @@ class ruler:
             percent (Optional)
                 the percent to use to break up the ruler.
                 (defaults to 20%)
+                
+            minor_percent (Optional)
+                the percentage for the mintor ticks.
 
         **Returns**
         sends back a list containing tuple pairs in the form:
@@ -76,13 +87,14 @@ class ruler:
         """
         fp = percent / 100.0
 
-        ppx = round(self.display_px * fp) # work out how many pixels 20% is.
-        p = round(self.max * fp) # work out how many pixels 20% is.
+        ppx = round(self.display_px_w * fp) # work out how many pixels 20% is.
+        p = round(self.wid * fp) # work out how many pixels 20% is.
 
-        print p, ppx
+        print self.min, self.max, self.display_px_w
+        print "20%:", p, ppx, fp
 
         best = 0
-        minim = 100000000000
+        minim = 1e13
 
         # find the closest unit to p:
         scales_and_labels = {
@@ -92,35 +104,39 @@ class ruler:
             1: "",
             10: "",
             100: "",
-            1000: "k",
-            10000: "k",
-            100000: "k",
-            1000000: "M",
-            10000000: "M",
-            100000000: "M",
-            1000000000: "G",
-            10000000000: "G",
-            100000000000: "G", # don't support more than this.
-            1000000000000: "?" # what's bigger than gig?
-            }
+            1e3: "k",
+            10e3: "k",
+            100e3: "k",
+            1e6: "M",
+            10e6: "M",
+            100e6: "M",
+            1e9: "G",
+            10e9: "G",
+            100e9: "G", 
+            1e12: "P" # As big as we go, should be okay for most purposes. a maxint is 1e16 anyway, if you are that big
+            }         # Then this is the wrong module for you!
             # a 64-bit maxint:
-            #9223372036854775807
+            #9223372036854775807 = 1e16?
 
         for i, v in enumerate(scales_and_labels):
             if minim > abs(p - v):
                 minim = abs(p - v)
                 best = v
 
-        #print best, scales_and_labels[best]
+        print "best:", best, scales_and_labels[best]
+        
+        major = []
+        for v in xrange(self.min, self.max, int(best)): 
+            px_location = (self.display_px_w * ((v - self.min) / self.wid))
+            if self.units:
+                lab = "%s %s%s" % (v, scales_and_labels[best], self.units)
+            else:
+                lab = "%s %s" % (v, scales_and_labels[best])
+            major.append( (int(px_location), lab.strip()) )
 
-        res = []
-        for v in xrange(0, self.max, best):# min vals not supported, floats will break this?
-            px_location = self.min + (self.display_px * (v / self.delta))
-            res.append( (px_location, "%s%s" % (v, scales_and_labels[best])) )
+        return({"major": major, "minor": None})
 
-        return(res)
-
-    def draw(self, cairo_context, draw_top_left_tuple):
+    def draw(self, cairo_context, draw_top_left_tuple, label=None):
         """
         **Purpose**
             draw the ruler on a valid cairo_context device
@@ -134,42 +150,39 @@ class ruler:
         **Returns**
             a fourple containing the collision box coordinates
         """
-        draw_stuff = self.get_ruler_data()
+        #x,y,w,h = self.__getTextExtents("Chromosome %s" % str(self.chromosome))
+        #self.__drawText(5, opt.ruler.height_px + 22, opt.ruler.font, "Chromosome %s:%s-%s" % (str(self.chromosome), self.lbp, self.rbp), size=13)
 
-        x,y,w,h = self.__getTextExtents("Chromosome %s" % str(self.chromosome))
-        self.__drawText(5, opt.ruler.height_px + 22, opt.ruler.font, "Chromosome %s" % str(self.chromosome), size=12)
-
-        self.__setPenColour(opt.ruler.colour)
+        #self.__setPenColour(opt.ruler.colour)
         # work out a good scale representation
         # wether to draw at 100, 1000, 10000, 100000, 1000000 ...
 
         # current view delta = self.delta
-
-        a = round(self.delta, 1) # get the nearest 1XXXXX .. XXX
-
-        # ten thousands
-        for index, window_size in enumerate([int(a/100), int(a/10), int(a)]):
-
-            nearest = int(math.ceil(float(self.lbp+1) / window_size) * window_size)
-            self.ctx.set_line_width(opt.ruler.line_width * index+0.5)
-
-            for real_offset in xrange(nearest, self.rbp, int(window_size)):
-                screen_offset = (self.w * (float(real_offset - self.lbp) / self.delta))
-                self.ctx.move_to(screen_offset, 0)
-                self.ctx.line_to(screen_offset, opt.ruler.height_px * index+0.5)
-                self.ctx.stroke()
-                #if index == 1: # write numbers at 1/10 scale.
-                #    self.__drawText(screen_offset +2, opt.ruler.text_height, opt.ruler.font, str(real_offset), opt.ruler.font_size)
-
-        return((0,0,self.w, opt.ruler.text_height)) # return the colbox
+        data = self.get_ruler_data()
+        for item in data["major"]:
+            print item
+            cairo_context.set_line_width(opt.ruler.line_width)
+            cairo_context.move_to(item[0], 0)
+            cairo_context.line_to(item[0], opt.ruler.height_px)
+            cairo_context.stroke()
+            # draw a label
+            #self.__drawText(screen_offset +2, opt.ruler.text_height, opt.ruler.font, str(real_offset), opt.ruler.font_size)
         return(None)
 
 if __name__ == "__main__":
-    r = ruler(5, 10, 100)
+    #min, max, display_pixel_size, useSI_label=True
+    r = ruler(5, 10, (0, 100), "bp", True)
+    print r.get_ruler_data()
+    """
+    r = ruler(0, 30, (0, 100))
     print r.get_ruler_data()
 
-    r = ruler(0, 30, 100)
+    r = ruler(100, 1000, (0, 100))
     print r.get_ruler_data()
 
-    r = ruler(100, 1000, 100)
+    r = ruler(10000000, 15000000, (0, 500))
     print r.get_ruler_data()
+    
+    r = ruler(10000000, 10200000, (0, 500))
+    print r.get_ruler_data()
+    """

@@ -1,7 +1,7 @@
 
 import sys, os 
 
-import gDraw
+import opt, gDraw
 
 from glbase_wrapper import glload, track, location, peaklist, format_bed, format_minimal_bed
 from error import *
@@ -118,4 +118,5 @@ class app():
                                 print "Bound genome:", name 
             oh.close()
 
+        self.draw.setViewPortSize(opt.draw.view_port_width)
         self.draw.setLocation(loc=location(loc="chr1:172724244-172859108")) # Load a dummy location, my favourite gene Stat3

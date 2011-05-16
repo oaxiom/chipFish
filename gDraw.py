@@ -51,6 +51,8 @@ class gDraw:
         self.h = 200
         self.ctx = None
         self.last_guess_height = -1
+        
+        self.ruler = ruler(self.lbp, self.rbp, (0, self.w), "bp", True)
 
     def OnPaint(self, event, cairo_context=None):
         """
@@ -118,7 +120,8 @@ class gDraw:
             if colbox:
                 self.__col_boxs.append(bbox(colbox, track, "track"))
 
-        self.__col_boxs.append(bbox(self.__drawRuler(), None, "ruler"))
+        #self.__col_boxs.append(bbox(self.__drawRuler(), None, "ruler"))
+        self.ruler.draw(self.ctx, (0,0), "Chromosome %s" % self.chromosome)
         if opt.draw.scale_bar:
             self.__drawScaleBar()
 
@@ -184,16 +187,19 @@ class gDraw:
                 self.trackBoxes[index] = track_type
                 return(-(index + (currentLoc))) 
 
-    def setViewPortSize(self, w, h):
+    def setViewPortSize(self, width):
         """
-        set the size of the viewport;
+        **Purpose**
+            set the size of the viewport
+        
+        **Arguments**
+            width
+                sets the width of the display
         """
-        self.fullw = w # for blanking screen
-        self.w = w - opt.graphics.right_border_width # a small right most border for editing trakcs
-        self.h = h
-        self.aspect = abs(float(self.w) / self.h)
-        self.halfw = w / 2
-        self.halfh = h / 2
+        self.fullw = width # for blanking screen
+        self.w = width - opt.graphics.right_border_width # a small right most border for editing trakcs
+        self.halfw = self.w / 2
+        self.ruler.set(0, 100, (0, self.w))
 
     def setLocation(self, chromosome=None, leftBasePair=None, rightBasePair=None, loc=None, **kargs):
         """
@@ -216,11 +222,16 @@ class gDraw:
             self.chromosome = str(chromosome)
             self.lbp = leftBasePair
             self.rbp = rightBasePair
+            self.loc = location(chr=chromosome, left=self.lbp, right=self.rbp)
         elif loc: # new-style <location> assignation.
             self.chromosome = loc["chr"]
             self.lbp = loc["left"]
             self.rbp = loc["right"]
-        # sanity checking? Neccesary?
+            self.loc = loc
+        
+        # sanity checking? Neccesary? yes
+        # There's a bug here is the d[lbp, rbp] is less than w
+        self.ruler.set(self.lbp, self.rbp, (0, self.w))
 
     def __drawChr(self, location_span):
         """
@@ -353,8 +364,6 @@ class gDraw:
             self.ctx = cairo.Context(self.surface)
             self.last_guess_height = guess_height
 
-        self.w = 1024
-        self.fullw = 1024 # no bar side buttons
         self.h = guess_height
 
         # forceRedraw onto my surface.
@@ -432,7 +441,7 @@ class gDraw:
 
         data = track_data["array"]
         if sliding_window_smoothing:
-            data = utils.sliding_window(data, len(data)/80)
+            data = utils.sliding_window(data, len(data)/80) # This would work better with tag-shifted rather than te whole data.
 
         data = numpy.array(data, dtype=numpy.float32)
 
