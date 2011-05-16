@@ -5,6 +5,12 @@ Copyright 2011 oAxiom
 
 This is the abandonment of the GUI
 
+BUGS:
+-----
+. If the local machine is not connected to the internet, it sometimes takes an age to begin serving
+. favicon.ico not found
+. root dir is not htdocs, chipfish .
+
 """
 import time, os, sys
 from app import app

@@ -45,7 +45,7 @@ class interface:
     """
     user interface options
     """
-    huge_move = 90
+    huge_move = 100
     big_move = 30 # in percent
     small_move = 10 # in percent
 
@@ -75,7 +75,7 @@ class graphics:
     font = "sans-serif"
     default_font_size = 12 # Generally refers here to the track Text sizes
 
-    right_border_width = 20 # in pixels, size of rightmost click border.
+    right_border_width = 0 # in pixels, size of rightmost click border.
 
     # gene arrow
     arrow_width_px = 4
@@ -90,6 +90,7 @@ class draw:
     chevrons_inside_introns = False # not implemented draws chevrons inside the gene indicating direction
     braces_between_exons = False # not implemented draws braces across the exons
     scale_bar = True
+    view_port_width = 1024 # The width of the genome view in pixels
 
 class ruler:
     """
@@ -106,14 +107,14 @@ class track:
     """
     options for the tracks
     """
-    height_px = {"graph": 100,
+    height_px = {"graph": 100, # These are the pixel heights of the tracks. Can be any reasonable value. These values are asthetically pleasing
         "graph_split_strand": 100, # same as graph
         "kde_graph": 100, # ditto
         "bar": 30,
         "spot": 30,
         "genome": 50} # height's of the tracks in pixels.
-    spot_pixel_radius = 4
-    spot_default_colour = (0.8, 0.1, 0.1)
-    spot_filled = True # fill the spot circle
+    spot_pixel_radius = 4 # Size of the spot circle
+    spot_default_colour = (0.8, 0.1, 0.1) # The colour of the spot for spot tracks
+    spot_filled = True # fill the spot circle?
     spot_shape = "circle" # supported = circle, triangle
-    font_scale_size = 8
+    font_scale_size = 8 # Size of the fint on the tracks
