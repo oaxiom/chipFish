@@ -54,13 +54,14 @@ class gDraw:
         
         self.ruler = ruler(self.lbp, self.rbp, (0, self.w), "bp", True)
 
-    def OnPaint(self, event, cairo_context=None):
+    def paint(self, cairo_context):
         """
-        **Event**
-            Call to get Cairo to paint, this is done automatically if bound
-            to a Panel. You do not need to call this explicitly.
-            If you pass a Cairo Context cairo will paint to that
-            rather than generate a context for the gui.
+        **Purpose**
+            paint the current display on a cairo context
+        
+        **Arguments**
+            cairo_context
+                I need a valid cairo_context to draw to
         """
         self.ctx = cairo_context
 
@@ -216,7 +217,7 @@ class gDraw:
         **Returns**
             Nothing
             Does not rebuild the Cairo Display! but it makes the next call to
-            OnPaint() or forceRedraw() correct.
+            paint() or forceRedraw() correct.
         """
         if chromosome: # old-style assignation
             self.chromosome = str(chromosome)
@@ -367,7 +368,7 @@ class gDraw:
         self.h = guess_height
 
         # forceRedraw onto my surface.
-        self.OnPaint(None, self.ctx)
+        self.paint(self.ctx)
 
         # save image
         actual_filename = filename

@@ -10,6 +10,7 @@ from __future__ import division
 from error import AssertionError
 
 import opt
+from constants import *
 
 class ruler:
     def __init__(self, min, max, pixel_span, units=None, useSI_label=True):
@@ -117,6 +118,9 @@ class ruler:
             }         # Then this is the wrong module for you!
             # a 64-bit maxint:
             #9223372036854775807 = 1e16?
+            
+        best_div_lookback = {"m": 0.001, "": 1, "k": 1e3, "M": 1e6, "G": 1e9, "P": 1e12}
+        # Look back for the number to divide by to maintain units.
 
         for i, v in enumerate(scales_and_labels):
             if minim > abs(p - v):
@@ -126,12 +130,14 @@ class ruler:
         print "best:", best, scales_and_labels[best]
         
         major = []
-        for v in xrange(self.min, self.max, int(best)): 
+        mi = int((self.min / int(best))) * int(best) # get the closest min
+        ma = int((self.max / int(best))) * int(best) # and max
+        for v in xrange(mi, ma, int(best)): 
             px_location = (self.display_px_w * ((v - self.min) / self.wid))
             if self.units:
-                lab = "%s %s%s" % (v, scales_and_labels[best], self.units)
+                lab = "%s %s%s" % (int(v/best_div_lookback[scales_and_labels[best]]), scales_and_labels[best], self.units)
             else:
-                lab = "%s %s" % (v, scales_and_labels[best])
+                lab = "%s %s" % (int(v/best), scales_and_labels[best])
             major.append( (int(px_location), lab.strip()) )
 
         return({"major": major, "minor": None})
@@ -166,14 +172,19 @@ class ruler:
             cairo_context.line_to(item[0], opt.ruler.height_px)
             cairo_context.stroke()
             # draw a label
-            #self.__drawText(screen_offset +2, opt.ruler.text_height, opt.ruler.font, str(real_offset), opt.ruler.font_size)
+            
+            cairo_context.set_source_rgb(0, 0, 0)
+            cairo_context.select_font_face("sans-serif", cairo.FONT_WEIGHT_NORMAL, cairo.FONT_SLANT_NORMAL)
+            cairo_context.set_font_size(8)
+            cairo_context.move_to(item[0]+2, opt.ruler.height_px)
+            cairo_context.show_text(str(item[1]))
         return(None)
 
 if __name__ == "__main__":
     #min, max, display_pixel_size, useSI_label=True
     r = ruler(5, 10, (0, 100), "bp", True)
     print r.get_ruler_data()
-    """
+    
     r = ruler(0, 30, (0, 100))
     print r.get_ruler_data()
 
@@ -185,4 +196,4 @@ if __name__ == "__main__":
     
     r = ruler(10000000, 10200000, (0, 500))
     print r.get_ruler_data()
-    """
+    
