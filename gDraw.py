@@ -122,7 +122,8 @@ class gDraw:
                 self.__col_boxs.append(bbox(colbox, track, "track"))
 
         #self.__col_boxs.append(bbox(self.__drawRuler(), None, "ruler"))
-        self.ruler.draw(self.ctx, (0,0), "Chromosome %s" % self.chromosome)
+        if opt.ruler.draw:
+            self.ruler.draw(self.ctx, (0,0), "Chromosome %s" % self.chromosome)
         if opt.draw.scale_bar:
             self.__drawScaleBar()
 
@@ -269,7 +270,8 @@ class gDraw:
             1000000: "1Mbp",
             10000000: "10Mbp",
             100000000: "100Mbp", # Human chr 1 is 250Mbp.
-            1000000000: "1000Mbp" # Just in case there are some wierd genomes.
+            1000000000: "1000Mbp", # Just in case there are some wierd genomes.
+            10000000000: "1Gbp" # And like, some aliens or something 
             }
 
         for i, v in enumerate(scales_and_labels):
@@ -361,7 +363,7 @@ class gDraw:
 
         if not self.ctx or guess_height != self.last_guess_height:
             # If the surface size changed between the last call and this, I need a newly sized surface.
-            self.surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, 1024, guess_height)
+            self.surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, self.w, guess_height)
             self.ctx = cairo.Context(self.surface)
             self.last_guess_height = guess_height
 
@@ -416,7 +418,7 @@ class gDraw:
         self.ctx.fill()
         return( (0, base_loc[1]-opt.track.height_px[track_type], self.w, opt.track.height_px[track_type]-2) )
 
-    def __drawTrackGraph(self, track_data, scaled=True, min_scaling=20, clamp=True, sliding_window_smoothing=False):
+    def __drawTrackGraph(self, track_data, scaled=True, min_scaling=opt.track.min_scale, clamp=True, sliding_window_smoothing=False):
         """
         **Arguments**
             track_data
@@ -442,7 +444,7 @@ class gDraw:
 
         data = track_data["array"]
         if sliding_window_smoothing:
-            data = utils.sliding_window(data, len(data)/80) # This would work better with tag-shifted rather than te whole data.
+            data = utils.sliding_window(data, len(data)/80) # This would work better with tag-shifted rather than the whole data.
 
         data = numpy.array(data, dtype=numpy.float32)
 
@@ -457,15 +459,15 @@ class gDraw:
         track_min = min(data)
 
         if scaled:
-            if min_scaling and track_max < min_scaling:
-                scaling_value = min_scaling / float(opt.track.height_px["graph"])
-            else:
-                scaling_value = track_max / float(opt.track.height_px["graph"])
-            # only works if numpy array? A: Yes
+            scaling_value = max(min_scaling, track_max) / float(opt.track.height_px["graph"])
             data = data / scaling_value
-        #print track_max, 100, scaling_value
+        #print track_max, scaling_value, max(min_scaling, track_max) 
 
-        colbox = self.__drawTrackBackground(track_data["track_location"], "graph")
+        if opt.track.background:
+            colbox = self.__drawTrackBackground(track_data["track_location"], "graph")
+        else:
+            colbox = []
+        
         self.__setPenColour( (0,0,0) )
         self.ctx.set_line_width(1.1)
         coords = []
@@ -475,15 +477,33 @@ class gDraw:
             coords.append( (index, loc[1] - value)) # +30 locks it to the base of the track
 
         self.ctx.move_to(0, coords[0][1]) # start x,y
+        
         for item in coords:
             self.ctx.line_to(item[0], item[1])
-        self.ctx.stroke()
-        
-        self.__drawText(0, loc[1] - opt.track.height_px["graph"] + 20, opt.graphics.font, track_data["name"])
-        self.__drawText(self.w - 10, loc[1] - 5, opt.graphics.font, 
-            int(track_min), align="right", colour=(0,0,0), style="bold")
-        self.__drawText(self.w - 10, loc[1] - opt.track.height_px["graph"] + opt.track.font_scale_size + 5, opt.graphics.font, 
-            int(track_max), align="right", colour=(0,0,0), style="bold")
+            
+        if opt.track.filled:
+            if clamp:
+                loc = self.__realToLocal(1, track_data["track_location"])
+            else:
+                loc = self.__realToLocal(0, track_data["track_location"])
+            if clamp:
+                self.ctx.line_to(item[0], loc[1] - min(data)) # move to the base line on the far right 
+                self.ctx.line_to(0, loc[1] - min(data)) # the nthe far left
+            self.ctx.fill()
+        else:
+            self.ctx.stroke()
+            
+        if opt.track.draw_names:
+            self.__drawText(0, loc[1] - opt.track.height_px["graph"] + 20, opt.graphics.font, track_data["name"])
+            
+        if opt.track.draw_scales:
+            self.__drawText(self.w - 10, loc[1] - 5, opt.graphics.font, 
+                int(track_min), 
+                size=opt.track.scale_bar_font_size, align="right", colour=(0,0,0), style="bold")
+            self.__drawText(self.w - 10, loc[1] - opt.track.height_px["graph"] + opt.track.scale_bar_font_size + 5, 
+                opt.graphics.font, 
+                int(max(min_scaling, track_max)), 
+                size=opt.track.scale_bar_font_size, align="right", colour=(0,0,0), style="bold")
 
         return(colbox)# collision box dimensions
 
@@ -699,7 +719,7 @@ class gDraw:
             self.ctx.line_to(loc[0], loc[1]-20+opt.graphics.arrow_height_px)
             self.ctx.line_to(loc[0], loc[1]-20)
             self.ctx.fill()
-            self.__drawText(loc[0]+opt.graphics.arrow_width_px+3, loc[1]-20+opt.graphics.arrow_height_px, "Arial", data["name"], size=16, style="bold")
+            self.__drawText(loc[0]+opt.graphics.arrow_width_px+3, loc[1]-20+opt.graphics.arrow_height_px, "Arial", data["name"], size=opt.gene.font_size, style=opt.gene.font_style)
         elif data["strand"] == "-":
             loc = self.__realToLocal(data["loc"]["right"], track_slot_base)
             # arrow.
@@ -709,7 +729,7 @@ class gDraw:
             self.ctx.line_to(loc[0], loc[1]+20+opt.graphics.arrow_height_px)
             self.ctx.line_to(loc[0], loc[1]+20)
             self.ctx.fill()
-            self.__drawText(loc[0]+opt.graphics.arrow_width_px-13, loc[1]+22+opt.graphics.arrow_height_px, "Arial", data["name"], size=16, align="right", style="bold")
+            self.__drawText(loc[0]+opt.graphics.arrow_width_px-13, loc[1]+22+opt.graphics.arrow_height_px, "Arial", data["name"], size=opt.gene.font_size, align="right", style=opt.gene.font_style)
         else:
             raise ErrorInvalidGeneDefinition
 

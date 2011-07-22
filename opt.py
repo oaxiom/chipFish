@@ -89,8 +89,12 @@ class draw:
     single_midline_in_introns = True # draws a line through the gene, enclosing the gene
     chevrons_inside_introns = False # not implemented draws chevrons inside the gene indicating direction
     braces_between_exons = False # not implemented draws braces across the exons
-    scale_bar = True
+    scale_bar = True # The scale bar at the top right of the image just below the ruler
     view_port_width = 1024 # The width of the genome view in pixels
+
+class gene:
+    font_size = 20
+    font_style = "normal"
 
 class ruler:
     """
@@ -102,6 +106,7 @@ class ruler:
     text_height = 10 # distance from top of screen of the ruler text.
     colour = (0,0,0)
     line_width = 1
+    draw = True
 
 class track:
     """
@@ -117,4 +122,10 @@ class track:
     spot_default_colour = (0.8, 0.1, 0.1) # The colour of the spot for spot tracks
     spot_filled = True # fill the spot circle?
     spot_shape = "circle" # supported = circle, triangle
-    font_scale_size = 8 # Size of the fint on the tracks
+    font_scale_size = 8 # Size of the font on the tracks
+    filled = True
+    background = False
+    draw_names = True
+    draw_scales = True
+    scale_bar_font_size = 8
+    min_scale = 50 # The minimum x axis value for tracks. 
