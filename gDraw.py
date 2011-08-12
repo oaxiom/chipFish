@@ -91,39 +91,58 @@ class gDraw:
         self.ctx.rectangle(0,0,self.fullw,self.h)
         self.ctx.fill()
 
+        draw_data = []
         # collect the data for the tracks and draw them on the screen.
         for track in self.tracks:
             # basic data:
-            draw_data = {"type": track["type"],
+            item = {"type": track["type"],
                 "track_location": track["track_location"],
-                "name": track["data"]["name"]}
+                "name": track["data"]["name"],
+                "kargs": {}}
 
             if track["type"] == "graph":
-                draw_data["array"] = track["data"].get_data("graph", location(loc=self.curr_loc),
+                item["array"] = track["data"].get_data("graph", location(loc=self.curr_loc),
                     resolution=self.bps_per_pixel, **track["options"])
             if track["type"] == "kde_graph":
-                draw_data["array"] = track["data"].get_data("graph", location(loc=self.curr_loc),
+                item["array"] = track["data"].get_data("graph", location(loc=self.curr_loc),
                     resolution=self.bps_per_pixel, kde_smooth=True, view_wid=self.w, **track["options"])
             elif track["type"] == "bar":
-                draw_data["array"] = track["data"].get_data("bar", location(loc=self.curr_loc),
+                item["array"] = track["data"].get_data("bar", location(loc=self.curr_loc),
                     resolution=self.bps_per_pixel, **track["options"])
             elif track["type"] == "spot":
-                draw_data["array"] = track["data"].get_data("spot", location(loc=self.curr_loc))
+                item["array"] = track["data"].get_data("spot", location(loc=self.curr_loc))
             elif track["type"] == "graph_split_strand":
-                draw_data["array"] = track["data"].get_data("graph", location(loc=self.curr_loc),
+                item["array"] = track["data"].get_data("graph", location(loc=self.curr_loc),
                     strand=True, resolution=self.bps_per_pixel, **track["options"])
             elif track["type"] == "genome":
-                draw_data["array"] = track["data"].get_data("genome", location(loc=self.curr_loc))
-            # and draw:
-            colbox = draw_modes_dict[draw_data["type"]](draw_data)
+                item["array"] = track["data"].get_data("genome", location(loc=self.curr_loc))
 
-            # add a collision item if
+            draw_data.append(item)
+
+        # If we need to lock the tracks:
+        if opt.track.lock_scales:
+            # Fid the max_values for all of the tracks and then load min_scaling 
+            scale = 0
+            for item in draw_data:
+                if item["type"] in ["graph", "kde_graph"]:
+                    if max(item["array"]) > scale:
+                        scale = max(item["array"])
+            item["kargs"]["min_scaling"] = scale
+            print scale
+            
+        # And finally draw:
+        for item in draw_data:
+            print item["kargs"]
+            colbox = draw_modes_dict[item["type"]](item, **item["kargs"])
+             
+            # the collision boxes are not used. But I suppose in future...
             if colbox:
                 self.__col_boxs.append(bbox(colbox, track, "track"))
 
         #self.__col_boxs.append(bbox(self.__drawRuler(), None, "ruler"))
         if opt.ruler.draw:
             self.ruler.draw(self.ctx, (0,0), "Chromosome %s" % self.chromosome)
+            
         if opt.draw.scale_bar:
             self.__drawScaleBar()
 

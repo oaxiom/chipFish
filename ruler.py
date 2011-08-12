@@ -91,8 +91,8 @@ class ruler:
         ppx = round(self.display_px_w * fp) # work out how many pixels 20% is.
         p = round(self.wid * fp) # work out how many pixels 20% is.
 
-        print self.min, self.max, self.display_px_w
-        print "20%:", p, ppx, fp
+        #print self.min, self.max, self.display_px_w
+        #print "20%:", p, ppx, fp
 
         best = 0
         minim = 1e13
