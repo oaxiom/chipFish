@@ -128,4 +128,5 @@ class track:
     draw_names = True
     draw_scales = True
     scale_bar_font_size = 8
-    min_scale = 50 # The minimum x axis value for tracks. 
+    min_scale = 20 # The minimum x axis value for tracks. 
+    lock_scales = True # Lock all scales on the Tracks together.
