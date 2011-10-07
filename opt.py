@@ -124,9 +124,9 @@ class track:
     spot_shape = "circle" # supported = circle, triangle
     font_scale_size = 8 # Size of the font on the tracks
     filled = True
-    background = False
+    background = True # Draw a grey background defining the span of the track
     draw_names = True
     draw_scales = True
     scale_bar_font_size = 8
-    min_scale = 20 # The minimum x axis value for tracks. 
+    min_scale = 100 # The minimum x axis value for tracks. 
     lock_scales = True # Lock all scales on the Tracks together.

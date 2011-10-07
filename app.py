@@ -45,13 +45,14 @@ class app():
         t = s.split(" ")
         res = {}
         for i in t:
-            try: # try to cooerce ints and floats
-                if "." in i.split("=")[1]:
-                    res[i.split("=")[0]] = float(i.split("=")[1])
-                else:
-                    res[i.split("=")[0]] = int(i.split("=")[1])
-            except ValueError:
-                res[i.split("=")[0]] = i.split("=")[1]
+            if "=" in i: # ignore mangled options
+                try: # try to cooerce ints and floats
+                    if "." in i.split("=")[1]:
+                        res[i.split("=")[0]] = float(i.split("=")[1])
+                    else:
+                        res[i.split("=")[0]] = int(i.split("=")[1])
+                except ValueError:
+                    res[i.split("=")[0]] = i.split("=")[1]
         
         return(res)
 

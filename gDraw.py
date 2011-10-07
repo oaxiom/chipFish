@@ -122,13 +122,15 @@ class gDraw:
         # If we need to lock the tracks:
         if opt.track.lock_scales:
             # Fid the max_values for all of the tracks and then load min_scaling 
-            scale = 0
+            scale = opt.track.min_scale
             for item in draw_data:
                 if item["type"] in ["graph", "kde_graph"]:
                     if max(item["array"]) > scale:
                         scale = max(item["array"])
-            item["kargs"]["min_scaling"] = scale
-            print scale
+            # Now set all tracks to the same scale.
+            for item in draw_data:
+                if item["type"] in ["graph", "kde_graph"]:
+                    item["kargs"]["min_scaling"] = scale
             
         # And finally draw:
         for item in draw_data:
@@ -139,7 +141,7 @@ class gDraw:
             if colbox:
                 self.__col_boxs.append(bbox(colbox, track, "track"))
 
-        #self.__col_boxs.append(bbox(self.__drawRuler(), None, "ruler"))
+        #self.__col_boxs.append(bbox(self.__drawRuler(), None, "ruler")) # Unused at the moment, but may be useful later.
         if opt.ruler.draw:
             self.ruler.draw(self.ctx, (0,0), "Chromosome %s" % self.chromosome)
             
@@ -480,7 +482,7 @@ class gDraw:
         if scaled:
             scaling_value = max(min_scaling, track_max) / float(opt.track.height_px["graph"])
             data = data / scaling_value
-        #print track_max, scaling_value, max(min_scaling, track_max) 
+        print ":", track_max, scaling_value, min_scaling,  max(min_scaling, track_max) 
 
         if opt.track.background:
             colbox = self.__drawTrackBackground(track_data["track_location"], "graph")
