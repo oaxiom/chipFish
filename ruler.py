@@ -127,7 +127,7 @@ class ruler:
                 minim = abs(p - v)
                 best = v
 
-        print "best:", best, scales_and_labels[best]
+        #print "best:", best, scales_and_labels[best]
         
         major = []
         mi = int((self.min / int(best))) * int(best) # get the closest min
@@ -166,7 +166,6 @@ class ruler:
         # current view delta = self.delta
         data = self.get_ruler_data()
         for item in data["major"]:
-            print item
             cairo_context.set_line_width(opt.ruler.line_width)
             cairo_context.move_to(item[0], 0)
             cairo_context.line_to(item[0], opt.ruler.height_px)
