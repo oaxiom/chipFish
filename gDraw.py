@@ -143,7 +143,7 @@ class gDraw:
 
         #self.__col_boxs.append(bbox(self.__drawRuler(), None, "ruler")) # Unused at the moment, but may be useful later.
         if opt.ruler.draw:
-            self.ruler.draw(self.ctx, (0,0), "Chromosome %s" % self.chromosome)
+            self.ruler.draw(self.ctx, (0,0), str(self.curr_loc))
             
         if opt.draw.scale_bar:
             self.__drawScaleBar()
