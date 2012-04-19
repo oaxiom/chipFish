@@ -134,7 +134,7 @@ class gDraw:
             
         # And finally draw:
         for item in draw_data:
-            print item["kargs"]
+            #print item["kargs"]
             colbox = draw_modes_dict[item["type"]](item, **item["kargs"])
              
             # the collision boxes are not used. But I suppose in future...
@@ -143,7 +143,10 @@ class gDraw:
 
         #self.__col_boxs.append(bbox(self.__drawRuler(), None, "ruler")) # Unused at the moment, but may be useful later.
         if opt.ruler.draw:
-            self.ruler.draw(self.ctx, (0,0), str(self.curr_loc))
+            self.ruler.draw(self.ctx, (0,0))
+            
+        if opt.draw.genomic_location:
+            self.__drawText(5, opt.ruler.height_px + 22, opt.graphics.font, str(self.curr_loc), size=opt.draw.genomic_location_font_size)
             
         if opt.draw.scale_bar:
             self.__drawScaleBar()
@@ -303,8 +306,8 @@ class gDraw:
         posLeft = self.__realToLocal(self.rbp - best, -40)
         posRight = self.__realToLocal(self.rbp, -40)
 
-        self.ctx.set_line_width(1.5)
-        self.__setPenColour((0.5,0.5,0.5))
+        self.ctx.set_line_width(2.0)
+        self.__setPenColour((0,0,0))
         
         self.ctx.move_to(posLeft[0]-20, opt.ruler.height_px + 8) # move 20px arbitrarily left
         self.ctx.line_to(posRight[0]-20, opt.ruler.height_px + 8)
@@ -318,39 +321,7 @@ class gDraw:
         self.ctx.line_to(posRight[0]-20, opt.ruler.height_px + 8 +4)
         self.ctx.stroke()
 
-        self.__drawText(posLeft[0], opt.ruler.height_px + 21, opt.graphics.font, scales_and_labels[best])
-
-    def __drawRuler(self):
-        """
-        draw the ruler.
-
-        """
-        x,y,w,h = self.__getTextExtents("Chromosome %s" % str(self.chromosome))
-        self.__drawText(5, opt.ruler.height_px + 22, opt.ruler.font, "Chromosome %s:%s-%s" % (str(self.chromosome), self.lbp, self.rbp), size=13)
-
-        self.__setPenColour(opt.ruler.colour)
-        # work out a good scale representation
-        # wether to draw at 100, 1000, 10000, 100000, 1000000 ...
-
-        # current view delta = self.delta
-
-        a = round(self.delta, 1) # get the nearest 1XXXXX .. XXX
-
-        # ten thousands
-        for index, window_size in enumerate([int(a/100), int(a/10), int(a)]):
-
-            nearest = int(math.ceil(float(self.lbp+1) / window_size) * window_size)
-            self.ctx.set_line_width(opt.ruler.line_width * index+0.5)
-
-            for real_offset in xrange(nearest, self.rbp, int(window_size)):
-                screen_offset = (self.w * (float(real_offset - self.lbp) / self.delta))
-                self.ctx.move_to(screen_offset, 0)
-                self.ctx.line_to(screen_offset, opt.ruler.height_px * index+0.5)
-                self.ctx.stroke()
-                if index == 1: # write numbers at 1/10 scale.
-                    self.__drawText(screen_offset +2, opt.ruler.text_height, opt.ruler.font, str(real_offset), opt.ruler.font_size)
-
-        return((0,0,self.w, opt.ruler.text_height)) # return the colbox
+        self.__drawText(posLeft[0], opt.ruler.height_px + 21, opt.graphics.font, scales_and_labels[best], size=opt.draw.scale_bar_fontsize)
 
     def exportImage(self, filename, type=None):
         """
@@ -482,7 +453,7 @@ class gDraw:
         if scaled:
             scaling_value = max(min_scaling, track_max) / float(opt.track.height_px["graph"])
             data = data / scaling_value
-        print ":", track_max, scaling_value, min_scaling,  max(min_scaling, track_max) 
+        #print ":", track_max, scaling_value, min_scaling,  max(min_scaling, track_max) 
 
         if opt.track.background:
             colbox = self.__drawTrackBackground(track_data["track_location"], "graph")
@@ -490,7 +461,7 @@ class gDraw:
             colbox = []
         
         self.__setPenColour( (0,0,0) )
-        self.ctx.set_line_width(1.1)
+        self.ctx.set_line_width(1.0)
         coords = []
         lastpx = -1
         for index, value in enumerate(data):
@@ -509,22 +480,23 @@ class gDraw:
                 loc = self.__realToLocal(0, track_data["track_location"])
             if clamp:
                 self.ctx.line_to(item[0], loc[1] - min(data)) # move to the base line on the far right 
-                self.ctx.line_to(0, loc[1] - min(data)) # the nthe far left
+                self.ctx.line_to(0, loc[1] - min(data)) # the nth far left
             self.ctx.fill()
         else:
             self.ctx.stroke()
             
         if opt.track.draw_names:
-            self.__drawText(0, loc[1] - opt.track.height_px["graph"] + 20, opt.graphics.font, track_data["name"])
+            self.__drawText(opt.track.label_fontsize, loc[1] - opt.track.height_px["graph"] + (opt.track.label_fontsize*2), 
+                opt.graphics.font, track_data["name"], size=opt.track.label_fontsize)
             
         if opt.track.draw_scales:
             self.__drawText(self.w - 10, loc[1] - 5, opt.graphics.font, 
                 int(track_min), 
-                size=opt.track.scale_bar_font_size, align="right", colour=(0,0,0), style="bold")
+                size=opt.track.scale_bar_font_size, align="right", colour=(0,0,0))
             self.__drawText(self.w - 10, loc[1] - opt.track.height_px["graph"] + opt.track.scale_bar_font_size + 5, 
                 opt.graphics.font, 
                 int(max(min_scaling, track_max)), 
-                size=opt.track.scale_bar_font_size, align="right", colour=(0,0,0), style="bold")
+                size=opt.track.scale_bar_font_size, align="right", colour=(0,0,0))
 
         return(colbox)# collision box dimensions
 

@@ -5,6 +5,10 @@ pwm.py
 Tools and utilities to use position-weight matrices and other matrix-like
 representations
 
+TODO:
+-----
+. Merge with logo.py
+
 """
 
 from __future__ import division
@@ -14,8 +18,12 @@ import config
 import sys, os, math
 from numpy import zeros, array
 
+from base_genelist import _base_genelist
+from genelist import genelist
 from draw import draw
-from utils import rc
+from utils import rc, convertFASTAtoDict
+from progress import progressbar
+from location import location
 
 # see if weblogo is available.
 try:
@@ -26,50 +34,106 @@ except:
 
 class pwm:
     """
-    Taken from PMF
+    **Purpose**
+        Store a definition of a pwm_matrix
 
-    A class for the representation of position-weight matrices
-    and a variety of useful scanning methods
+    **Arguments**
+        name (Required)
+            name of the matrix. It is required because many downstream
+            scanning efforts require a unique name.
+
+        pwm_matrix (Required, or fasta_file)
+            a matrix describing the pwm. For example:
+            [ [a, c, g, t],
+              [a, c, g, t],
+              ...
+              [a, c, g, t] ]
+            or you can use a numpy 2D array as well.
+
+            You can also send the matrix as a list of dictionaries.
+            [ {"a": 1, "c": 2, "g": g, "t": t} ... ]
+
+        fasta_file (Required, or pwm_matrix)
+            load a fasta file and turn int into a pwm_matrix
+            
+        txt_file (Required)
+            load a txt file which is a list of sequences and convert into a 
+            pwm/pfm.
+
+        isPFM (Optional, default=True)
+            the matrix is actually a frequency matrix that needs to be
+            converted into a weight matrix. Set to False if your pwm is already a log-odds 
+            position weight matrix.
     """
-    def __init__(self, name, pwm_matrix, isPFM=True):
-        """
-        **Purpose**
-            Store a definition of a pwm_matrix
+    def __init__(self, name, pwm_matrix=None, fasta_file=None, txt_file=None, isPFM=True):
 
-        **Arguments**
-            name (Required)
-                name of the matrix. It is required because many downstream
-                scanning efforts require a unique name.
-
-            pwm_matrix (Required)
-                a matrix describing the pwm. For example:
-                [ [a, c, g, t],
-                  [a, c, g, t],
-                  ...
-                  [a, c, g, t] ]
-                or you can use a numpy 2D array as well.
-
-                NOT IMPLEMENTED:
-                You can also send the matrix as a list of dictionaries.
-                [ {"a": 1, "c": 2, "g": g, "t": t} ... ]
-
-            isPFM (Optional, default=True)
-                the matrix is actually a frequency matrix that needs to be
-                converted into a weight matrix.
-        """
         self.name = name
-        if isinstance(pwm_matrix, list):
-            # convert to a numpy array
-            l = len(pwm_matrix[0])
-            pfm = array( pwm_matrix , dtype=float)
-            self.__matrix = pfm
+        
+        # get around numpy.array() __non_zero__ silliness:
+        try:
+            __load_matrix = False
+            if pwm_matrix:
+                __load_matrix = True
+        except ValueError: 
+            if pwm_matrix.any():
+                __load_matrix = True
+        
+        if __load_matrix:
+            if isinstance(pwm_matrix, list):
+                # convert to a numpy array
+                if isinstance(pwm_matrix[0], dict):
+                    self.__matrix = self.__convert_dict_matrix(self, pwm_matrix)
+                else:
+                    l = len(pwm_matrix[0])
+                    pfm = array( pwm_matrix , dtype=float)
+                    self.__matrix = pfm
+            else:
+                self.__matrix = pwm_matrix # Probably a numpy array?
+        elif fasta_file:
+            g = convertFASTAtoDict(fasta_file)
+            pwm_matrix = None
+            for e in g:
+                if not pwm_matrix: # matrix sizes not sampled yet
+                    s = len(e["seq"])
+                    pwm_matrix = [{"a": 0, "c": 0, "g": 0, "t": 0} for n in range(s)]
+                
+                for i, bp in enumerate(e["seq"]):
+                    pwm_matrix[i][bp] += 1
+            self.__matrix = self.__convert_dict_matrix(pwm_matrix)
+        elif txt_file:
+            oh = open(txt_file, "rU")
+            for line in oh:
+                if not ">" in line:
+                    e = line.lower().strip()
+                    if not pwm_matrix: # matrix sizes not sampled yet
+                        s = len(e)
+                        pwm_matrix = [{"a": 0, "c": 0, "g": 0, "t": 0} for n in range(s)]
+                    
+                    for i, bp in enumerate(e):
+                        pwm_matrix[i][bp] += 1
+            self.__matrix = self.__convert_dict_matrix(pwm_matrix)
         else:
-            self.__matrix = pwm_matrix
-
+            raise AssertionError, "no valid input found for pwm"
+            
         if isPFM:
             config.log.debug("Converting the frequency matrix '%s' to a log-odds weight matrix" % self.name)
-            self.convertPFMtoPWM() # because almost always matrices are in PFM format, not PWM format.
+            self.convertPFMtoPWM() 
         self.__do_minmax()
+
+    def __convert_dict_matrix(self, dict_pwm_matrix):
+        """ 
+        load in the matix when it comes in the form: [ {"a": 1, "c": 2, "g": g, "t": t} ... ]
+        
+        Convert to:                
+            [[a, c, g, t],
+            [a, c, g, t],
+            ...
+            [a, c, g, t] ]
+        """
+        new_matrix = []
+        for i in dict_pwm_matrix:
+            new_matrix.append([i["a"], i["c"], i["g"], i["t"]])
+        return(array(new_matrix , dtype=float))
 
     def convertPFMtoPWM(self):
         """
@@ -168,14 +232,14 @@ class pwm:
         seq = sequence.lower()
 
         if seq.count("n") > 0:
-            return(0.0) # reject if contains an N
+            return({"+": 0.0, "-": 0.0}) # reject if contains an N
 
         con_setpos = {"a" : 0, "c": 1, "g": 2, "t": 3} # convert dict location to matrix location
         result = {} # new list
 
-        iterables = {"+": seq, "-": rc(seq)}
-        for key in iterables: # new super small version:
-            score_list = [self.__matrix[i][con_setpos[letter]] for i, letter in enumerate(iterables[key])]
+        seq_data = {"+": seq, "-": rc(seq)}
+        for key in seq_data: # new super small version:
+            score_list = [self.__matrix[i][con_setpos[letter]] for i, letter in enumerate(seq_data[key])]
             unnormalised_score = sum(score_list)
             result[key] = (unnormalised_score - self.__minscore) / (self.__maxscore - self.__minscore)
 
@@ -210,6 +274,7 @@ class pwm:
 
         for p in xrange(len(sequence)-len(self)):
             scores = self.score(sequence[p:p+len(self)])
+
             if merge_strands:
                 result[p] = max([scores["+"], scores["-"]])
             else:
@@ -239,7 +304,7 @@ class pwm:
         """
         raise NotImplementedError
 
-    def scan_fasta_list(self, fasta_list):
+    def scan_genelist(self, fasta_list, threshold=0.75, keep_empty=True):
         """
         **Purpose**
             Scan a fasta list (i.e. a genelist with a 'seq' key and
@@ -248,13 +313,94 @@ class pwm:
         **Arguments**
             fasta_list
                 A fasta list.
+            
+            threshold
+                The threshold to pass the motif on
+             
+            keep_empty (Optional, default=False)
+                Keep fasta entries that do not have a motif
 
         **Returns**
-            A list of ??
+            A new genelist-like object, with these new key:
+                "pos", "strand", "seq", "score", "motifs" and the "name" from the original FASTA list
+            If the original list also has a "loc" key containing a valid genomic location then
+            it will contain the genomic location of the motif stored in the new key "motif_loc"
         """
-        raise NotImplementedError
+        newl = genelist()
+        newl.name = fasta_list.name
+                
+        p = progressbar(len(fasta_list))
+        for n, item in enumerate(fasta_list):
+            res = self.scan_sequence(item["seq"], False)
+           
+            if res:
+                seq_data = {"+": item["seq"], "-": rc(item["seq"])}
+                for strand in ("+", "-"):
+                    for i, score in enumerate(res[strand]):
+                        if score > threshold:
+                            newi = {}
+                            newi["name"] = item["name"]
+                            newi["local_pos"] = i
+                            if "loc" in item:
+                                if strand == "+":
+                                    newi["motif_loc"] = location(chr=item["loc"]["chr"], left=item["loc"]["left"]+i, right=item["loc"]["left"]+i+len(self))
+                                else:
+                                    newi["motif_loc"] = location(chr=item["loc"]["chr"], left=item["loc"]["right"]-i-len(self), right=item["loc"]["right"]-i)
+                                
+                            newi["strand"] = strand
+                            if strand == "+":
+                                newi["seq"] = seq_data[strand][i:i+len(self)]
+                            else:
+                                newi["seq"] = rc(seq_data[strand][i:i+len(self)])
+                            newi["score"] = score
+                            newi["motifs"] = "Yes"
+                            newl.linearData.append(newi)
+            else:
+                newl["motifs"] = None
+            p.update(n)
+        
+        newl._optimiseData()
+        return(newl)
+
+    def save(self, filename=None, mode="homer"):
+        """
+        **Purpsose**
+            save the pwm into another file.
+            
+        **Arguments**
+            filename (Required)
+                The filename to save the motif to.
+        
+            mode (Optional, default="homer")
+                the type or mode of saving the file. 
+                At the moment these formats are supported:
+                
+                homer - save as a pwm
+        
+        **Returns**
+            None
+        """
+        assert filename, "no filename specified"
+        
+        if mode == "homer":
+            oh = open(filename, "w")
+            
+            oh.write(">%s\t%s\t%s\t%s\t%s\t%s\n" % (self.name, self.name, 0, 0, 0, "T:0(0),B:0(0),P(0)"))
+            for i in self.__matrix:
+                nl = i/sum(i)
+                oh.write("%s\n" % "\t".join([str(b) for b in nl]))          
+        elif mode == "counts":
+            oh = open(filename, "w")
+            
+            oh.write(">%s\t%s\t%s\t%s\t%s\t%s\n" % (self.name, self.name, 0, 0, 0, "T:0(0),B:0(0),P(0)"))
+            for i in self.__matrix:
+                oh.write("%s\n" % "\t".join([str(b) for b in nl])) 
+        
+        return(None)
 
 if __name__ == "__main__":
+    # These need to be moved into tests:
+
     m = pwm("soxoct",
             [[4,    43, 0,  8],         # c -sox2 start
             [37,    0,  0,  25],        # a/t
@@ -279,3 +425,7 @@ if __name__ == "__main__":
 
     print
     print m.get_matrix()
+
+    m = pwm("meh", txt_file="tests/txt_motif_file.txt", isPFM=False)
+
+    m.save("meh.matrix")

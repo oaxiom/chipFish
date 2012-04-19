@@ -11,7 +11,7 @@ import config, utils
 
 from numpy import zeros, array, mean, std
 from draw import draw
-from genelist import genelist
+from base_genelist import _base_genelist
 from errors import AssertionError, NotImplementedError
 from progress import progressbar
 from location import location
@@ -19,30 +19,30 @@ from history import historyContainer
 
 import pwm
 
-class pwms(genelist):
+class pwms(_base_genelist):
+    """
+    **Purpose**
+        A collection of pwm items with a few specialised
+        methods for the analysis of multiple motifs.
+
+    **Arguments**
+        filename (Required)
+            some sort of file or path that I can make sense of as a pwm.
+
+        name (Optional)
+            The name of the collection of pwms.
+
+        format (Required)
+            The format of the pwm file.
+            Valid formats currently supported are:
+            "uniprobe"
+            "transfac"
+            "jaspar_matrix_only"
+
+            to add, but currently unsupported formats:
+            "jaspar"
+    """
     def __init__(self, filename=None, name="None", format=None, **kargs):
-        """
-        **Purpose**
-            A collection of pwm items with a few specialised
-            methods for the analysis of multiple motifs.
-
-        **Arguments**
-            filename (Required)
-                some sort of file or path that I can make sense of as a pwm.
-
-            name (Optional)
-                The name of the collection of pwms.
-
-            format (Required)
-                The format of the pwm file.
-                Valid formats currently supported are:
-                "uniprobe"
-                "transfac"
-                "jaspar_matrix_only"
-
-                to add, but currently unsupported formats:
-                "jaspar"
-        """
         assert filename, "filename argument not specified"
         assert format, "no format specifier provided"
         assert os.path.exists(filename), "file '%s' not found" % filename
@@ -52,6 +52,8 @@ class pwms(genelist):
         self.draw = draw(self)
         self._history = historyContainer(self) # a list of historyItem's
 
+        self.format = format # this is used if saving
+
         if format == "uniprobe":
             self.__load_uniprobe(filename)
         elif format == "jaspar":
@@ -60,6 +62,8 @@ class pwms(genelist):
             self.__load_jaspar_matrix_only(filename)
         elif format == "transfac":
             self.__load_transfac(filename)
+        
+        config.log.info("loaded '%s' with %s pwms" % (filename, len(self)))
 
         self._optimiseData()
 
@@ -207,7 +211,7 @@ class pwms(genelist):
 
     def scan_sequence(self, loc, sequence, features, filename=None,
         merge_strands=True, summary_file=None,
-        z_score=4.5, **kargs):
+        z_score=4.0, **kargs):
         """
         **Purpose**
 
@@ -256,7 +260,7 @@ class pwms(genelist):
                 if v > z_reqd:
                     result.append({"loc": location(chr=loc["chr"], left=loc["left"]+i, right=loc["left"]+i+len(pwm["pwm"])),
                         "score": v, "strand": "?", "seq": sequence[i:i+len(pwm["pwm"])], "Z-score": abs(m-v)/s,
-                        "name": pwm["name"], "__local_location": i})
+                        "name": pwm["name"], "local_location": i})
 
             real_filename = "%s_%s.png" % (self.name, pwm["name"])
             self.draw._plot_and_histogram(filename=real_filename, data=data,
@@ -281,9 +285,11 @@ class pwms(genelist):
         sum = []
         for item in result:
             sum.append({"pos": (item["__local_location"], item["Z-score"]), "label": item["name"]})
+            
         real_filename = self.draw._labeled_figure(data=sum, axissize=(len(sequence), 0), ylim=(4,5.5),
             figsize=(20,5), genomic_features=features, filename=summary_file,
             loc=loc)
+            
         config.log.info("Saved a summary image file to '%s'" % real_filename)
 
         return(real_filename)
@@ -306,3 +312,47 @@ class pwms(genelist):
         key_order.append("pwm")
 
         genelist.saveCSV(self, filename=filename, key_order=key_order, **kargs) # inherit
+
+    def save(self, filename=None, mode="binary"):
+        """
+        **Purpose**
+            Save the matrix motifs in a set format.
+            
+        **Arguments**
+            filename (Required)
+                the filename to save the data to.
+                
+            mode (Optional, default="binary")
+                the mode to save the file as. Defualts to the glbase binary.
+                modes:
+                    binary - glb binary file
+                    cisfinder - a mode compatible with cisfinder
+        **Returns**
+            none
+        """
+        assert filename, "filename not specified"
+        
+        if mode == "binary":    
+            base_genelist.save(self, filename)
+        elif mode == "cisfinder":
+            self.__save_cisfinder(filename)
+        config.log.info("Saved '%s'" % filename)
+        return(None)
+        
+    def __save_cisfinder(self, filename):
+        oh = open(filename, "w")
+        
+        for p in self:
+            m = p["pwm"].get_matrix()
+            
+            oh.write(">%s\tNNNNNNN\tNNNNNNNN\t0\t0\t0\t0\n" % p["name"])
+            
+            for i, row in enumerate(m):
+                if self.format == "uniprobe":
+                    oh.write("%s\t%s\n" % (i, "\t".join([str(int(x*1000)) for x in row])))
+                else:
+                    oh.write("%s\t%s\n" % (i, "\t".join([str(int(x)) for x in row])))
+                
+            oh.write("\n")
+        
+        oh.close()

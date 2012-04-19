@@ -98,15 +98,3 @@ class genome(glbase.genome):
         "optional": {"resolution": "filename"}} # bind gui descriptor
 
     # next method:
-
-    # available for the gui on this class
-    __gui__avail__ = {"load a list": glbase.genome.load,
-        "append entry": glbase.genome.append,
-        "collide lists": glbase.genome.collide,
-        "overlap lists": glbase.genome.overlap,
-        "map lists": glbase.genome.map,
-        "remove duplicates": glbase.genome.removeDuplicates,
-        "reverse": glbase.genome.reverse,
-        "save list": glbase.genome.save,
-        "sort list by key": glbase.genome.sort
-        }

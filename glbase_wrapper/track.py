@@ -50,13 +50,13 @@ class track(glbase.track):
         """
         if type in self._available_draw_types:
             if type == "kde_graph":
-                return(self.get_array(loc, resolution=resolution, kde_smooth=True, **kargs))
+                return(self.get(loc, resolution=resolution, kde_smooth=True, **kargs))
             else:
                 if not strand:
-                    return(self.get_array(loc, resolution=resolution, **kargs))
+                    return(self.get(loc, resolution=resolution, **kargs))
                 else:
-                    return({"+": self.get_array(loc, resolution=resolution, strand="+"),
-                        "-": self.get_array(loc, resolution=resolution, strand="-")})
+                    return({"+": self.get(loc, resolution=resolution, strand="+"),
+                        "-": self.get(loc, resolution=resolution, strand="-")})
         raise AssertionError, "draw mode not available"
 
     # gui stuff.

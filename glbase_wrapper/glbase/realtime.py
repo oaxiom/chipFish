@@ -143,6 +143,8 @@ class realtime:
 
         if format == "ABI_SDS":
             self.importSDSCopyPaste(filename)
+        elif format == "ABI_SDS2.4":
+            self.importSDSCopyPaste24(filename)
 
     def importSDSCopyPaste(self, filename):
         """
@@ -163,6 +165,46 @@ class realtime:
                 probe_name = line[2]
                 ct = float(line[4]) # catch undetermined's
             except:
+                ct = None
+
+            if sample_name and probe_name and ct: # only keep ones with value
+                n = self.contains(probe_name, sample_name)
+                if n:
+                    n.addCt(ct, True)
+                else: # make a new assay
+                    a = assay(sample_name, probe_name) # not present so make a new element
+                    a.addCt(ct, True)
+                    self.assayList.append(a)
+
+                # is this a new sample type?
+                if sample_name not in self.sampleList:
+                    self.sampleList.append(sample_name)
+                # is this a new primer type?
+                if probe_name not in self.primerList:
+                    self.primerList.append(probe_name)
+        oh.close()
+        return(True)
+
+    def importSDSCopyPaste24(self, filename):
+        """
+        **Purpose**
+            import a SDS/ABI file that was copy and pasted from version 2.4
+            from the view in the bottom left corner of the SDS software
+
+        **Arguments**
+            filename (Required)
+                the filename to load
+        """
+        oh = open(filename, "rU")
+        reader = csv.reader(oh, dialect=csv.excel_tab)
+
+        for line in oh:
+            line = line.split("\t") # csv borks on the unicode.
+            try:
+                sample_name = line[4] # catch other column missing wierdness
+                probe_name = line[5]
+                ct = float(line[7]) # catch undetermined's
+            except Exception:
                 ct = None
 
             if sample_name and probe_name and ct: # only keep ones with value

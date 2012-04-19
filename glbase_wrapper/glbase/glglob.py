@@ -2,8 +2,6 @@
 
 glglobs are almagamated lists, useful for drawing comparisons between lists.
 
-glglobs also inherit from genelist, but many of the methods are broken.
-
 renamed to glglob as it clashes with a matplotlib and python module name
 
 """
@@ -13,12 +11,11 @@ from __future__ import division
 import sys, os, csv, string, math
 
 from numpy import array, zeros, object_, arange
-from array import array as qarray
 from copy import deepcopy
 
 import config, utils
 from flags import *
-from genelist import genelist
+from base_genelist import _base_genelist
 from draw import draw
 from errors import AssertionError, NotImplementedError, GlglobDuplicateNameError
 
@@ -26,9 +23,20 @@ import matplotlib.pyplot as plot
 import matplotlib.cm as cm
 from scipy.stats import spearmanr, pearsonr
 
-class glglob(genelist): # cannot be a genelist, as it has no keys...
+class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
+    """
+    **Purpose**
+        An bunch of genelists to enable across-genelist meta comparisons
+        
+    **Arguments**
+        list of genelists 
+            The first argument must be a list of genelists.
+            
+        Optional arguments:
+            None specified.
+    """
     def __init__(self, *args, **kargs):
-        genelist.__init__(self)
+        _base_genelist.__init__(self)
 
         # args should be a list of lists.
         # we then store them in the linearData set
@@ -37,6 +45,7 @@ class glglob(genelist): # cannot be a genelist, as it has no keys...
         #        assert a == b, "Lists must be equivalent"
         self.linearData = args
         self._optimiseData()
+        self.draw = draw(self)
 
     def __repr__(self):
         return("glbase.glglob")
@@ -86,7 +95,8 @@ class glglob(genelist): # cannot be a genelist, as it has no keys...
         """
         config.log.error("glglobs cannot be written to")
 
-    def compare(self, key=None, filename="", method=None, **kargs):
+    def compare(self, key=None, filename=None, method=None, delta=200, matrix_tsv=None, 
+        row_cluster=True, col_cluster=True, **kargs):
         """
         **Purpose**
             perform a square comparison between the genelists according
@@ -94,12 +104,19 @@ class glglob(genelist): # cannot be a genelist, as it has no keys...
 
         **Arguments**
             key (string, required)
-
+                key to use when performing the comparison.
+            
             filename (string, required)
                 filename to save heatmap image as.
 
             method (string, "overlap|collide|map", required)
                 method to use to compare the genelists
+
+            delta (integer, optional, default=200)
+                an optional command for delta expansion of the reads. This feeds into
+                "overlap" and "collide" methods. And is ignored by "map"
+                See the documentation for overlap and collide in genelist for
+                exactly what these mean
 
             distance_score (string, "euclidean", optional defaults to "euclidean")
                 Scoring method for distance caluclations.
@@ -111,7 +128,16 @@ class glglob(genelist): # cannot be a genelist, as it has no keys...
                 actual correlation matrices of the pair-wise correlations.
                 Probably best only to do this if you
                 know what you are doing!
-
+            
+            matrix_tsv (filename)
+                If true save a tsv containing the overlap scores
+                
+            row_cluster (optional, True|False, default=True)
+                cluster the rows of the heatmap
+             
+            col_cluster (optional, True|False, default=True)
+                cluster the columns of the heatmap                
+            
         **Result**
             returns the distance matrix if succesful or False|None if not.
             Saves an image to 'filename' containing a grid heatmap
@@ -136,9 +162,9 @@ class glglob(genelist): # cannot be a genelist, as it has no keys...
                     pass
                 else:
                     if method == "collide":
-                        matrix[ia, ib] = len(la.collide(genelist=lb, loc_key=key, delta=200))
+                        matrix[ia, ib] = len(la.collide(genelist=lb, loc_key=key, delta=delta))
                     elif method == "overlap":
-                        matrix[ia, ib] = len(la.overlap(genelist=lb, loc_key=key, delta=200))
+                        matrix[ia, ib] = len(la.overlap(genelist=lb, loc_key=key, delta=delta))
                     elif method == "map":
                         matrix[ia, ib] = la.map(genelist=lb, key=key)
 
@@ -148,13 +174,22 @@ class glglob(genelist): # cannot be a genelist, as it has no keys...
                 if ia < ib:
                     matrix[ia,ib] = matrix[ib,ia]
 
+        if matrix_tsv:
+            names = [i.name for i in self.linearData]
+            oh = open(matrix_tsv, "w")
+            oh.write("%s\n" % "\t".join([] + names))
+            
+            for ia, la in enumerate(names):
+                oh.write("%s" % la)
+                for ib, lb in enumerate(names):
+                    oh.write("\t%s" % matrix[ia,ib])
+                oh.write("\n")
+            oh.close()
+
         # data must be normalised to the maximum possible overlap.
         for ia, la in enumerate(self.linearData):
             for ib, lb in enumerate(self.linearData):
                 matrix[ia,ib] = (matrix[ia,ib] / min([len(la), len(lb)]))
-
-        #print matrix
-        #print spear_result_table
 
         spear_result_table = zeros( (len(self), len(self)) ) # square matrix to store the data.
         # convert the data to a spearmanr score.
@@ -208,14 +243,19 @@ class glglob(genelist): # cannot be a genelist, as it has no keys...
                         self.draw._scatter(x, y, xlabel=row_names[ia], ylabel=row_names[ib],
                             filename="dpwc_plot_%s_%s.png" % (row_names[ia], row_names[ib]))
 
+        if "aspect" in kargs:
+            aspect = kargs["aspect"]
+        else:
+            aspect = "normal"
+            
         # draw the heatmap and save:
-        realfilename = self.draw._heatmap(data=dict_of_lists, filename=filename,
+        realfilename = self.draw.heatmap(data=dict_of_lists, filename=filename,
             colbar_label="correlation", bracket=[-0.2, 1],
-            square=True, cmap=cm.hot, cluster_mode="euclidean",
-            row_names=row_names, col_names=row_names)
+            square=True, cmap=cm.hot, cluster_mode="euclidean", row_cluster=row_cluster, col_cluster=col_cluster,
+            row_names=row_names, col_names=row_names, aspect=aspect)
 
         config.log.info("Saved Figure to '%s'" % realfilename)
-        return(result_table)
+        return(dict_of_lists)
 
     def venn_diagrams(self, key=None, filename=None, **kargs):
         """
@@ -453,5 +493,5 @@ class glglob(genelist): # cannot be a genelist, as it has no keys...
 
             real_filename = self.draw._heatmap(data=res, filename=filename, col_names=colnames, row_names=compare_array["name"],
                 row_cluster=False, col_cluster=True, colour_map=cm.Blues, #vmax=1,
-                colbar_label=scalebar_name)
+                colbar_label=scalebar_name, aspect="square")
         config.log.info("Saved image to '%s'" % real_filename)

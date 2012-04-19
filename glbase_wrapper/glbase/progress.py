@@ -16,7 +16,6 @@ import config
 class progressbar:
     def __init__(self, maximum_value, output=sys.stderr):
         """
-        (Override)
         Initialise the progress bar
 
         **Arguments**
@@ -48,14 +47,14 @@ class progressbar:
         if self.maximum == -1:
             return(False) # disable progress bar in wierd situations
 
-        percent_done = int(((new_value+1) / self.maximum) *100)
+        t_percent_done = int(((new_value+1) / self.maximum) * self.__barwidth)
 
-        if self.__last_percent < percent_done:
-            t_percent_done = int(((new_value+1) / self.maximum) * self.__barwidth)
+        if t_percent_done > self.__last_percent:
+            percent_done = int(((new_value+1) / self.maximum) *100)
 
             bar = "".join(["=" for x in xrange(t_percent_done)] + ["-" for x in xrange(self.__barwidth-t_percent_done)])
             if not config.SILENT: self.__writer.write("\r[%s] %s%% (%s/%s)" % (bar, percent_done, new_value+1, self.maximum))
-            self.__last_percent = percent_done
+            self.__last_percent = t_percent_done
 
         if new_value+1 >= self.maximum: # if the last line, reset the console so the result overprints the progress bar.
             if not config.SILENT: self.__writer.write("\r") # pad out to overwrite the previous bar.

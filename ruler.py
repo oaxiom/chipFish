@@ -140,7 +140,7 @@ class ruler:
 
         return({"major": major, "minor": None})
 
-    def draw(self, cairo_context, draw_top_left_tuple, label=None):
+    def draw(self, cairo_context, draw_top_left_tuple):
         """
         **Purpose**
             draw the ruler on a valid cairo_context device
@@ -154,15 +154,6 @@ class ruler:
         **Returns**
             a fourple containing the collision box coordinates
         """
-        if opt.ruler.draw_chromosome:
-            x,y,w,h = cairo_context.text_extents(label)[:4]
-            cairo_context.set_source_rgb(0, 0, 0)
-            cairo_context.select_font_face(opt.ruler.font, cairo.FONT_WEIGHT_NORMAL, cairo.FONT_SLANT_NORMAL)
-            cairo_context.set_font_size(13)
-            cairo_context.move_to(5, opt.ruler.height_px + 22)
-            cairo_context.show_text(label)
-            #self.__drawText(5, opt.ruler.height_px + 22, opt.ruler.font, label, size=13)
-
         cairo_context.set_source_rgb(0, 0, 0)
         # work out a good scale representation
         # wether to draw at 100, 1000, 10000, 100000, 1000000 ...
@@ -170,7 +161,7 @@ class ruler:
         # draw a 1 px line at the very top of the ruler.
         cairo_context.set_source_rgb(0, 0, 0)
         cairo_context.move_to(0, 0)
-        cairo_context.line_to(display_px_r, 0)
+        cairo_context.line_to(self.display_px_w, 0)
         cairo_context.set_line_width(1.0)
         cairo_context.stroke()
         

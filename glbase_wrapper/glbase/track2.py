@@ -19,28 +19,29 @@ import scipy.stats as stats
 from base_track import base_track
 
 import numpy
-from numpy import array, zeros, set_printoptions, int32, append, linspace, argmax, amax, delete, integer
+from numpy import array, zeros, set_printoptions, int32, append, linspace, argmax, amax, delete
 
 TRACK_CACHE_SIZE = 10 # number of track segments to cache.
 
 class track(base_track):
     """
     track definition, used for things like sequence reads across the genome
-    
-    **Arguments**
-        name (string)
-            name for the track (defaults to filename)
-
-        filename (string)
-            directory location of the track file.
-            only respected if dir_name is set.
-        
-        new (Optional, default=False)
-            Use seqToTrk() in preference of this. But if you know what you are 
-            doing then this will generate a new (empty) db.
-
     """
     def __init__(self, name=None, new=False, filename=None, **kargs):
+        """
+        **Arguments**
+            name (string)
+                name for the track (defaults to filename)
+
+            filename (string)
+                directory location of the track file.
+                only respected if dir_name is set.
+            
+            new (Optional, default=False)
+                Use seqToTrk() in preference of this. But if you know what you are 
+                doing then this will generate a new (empty) db.
+
+        """
         base_track.__init__(self, name, new, filename)
         
         if new:
@@ -61,6 +62,19 @@ class track(base_track):
         self._connection.commit()
         c.close()
 
+    '''
+    # No plans to implement this atm.
+    def __get_bucket_id(self, chromosome, left, right):
+        """
+        return a list of table names (or bucketids) required for left and right
+        """
+        # work out which of the buckets is required:
+        left_buck = int((loc["left"]-1-delta)/config.bucket_size)*config.bucket_size
+        right_buck = int((loc["right"]+delta)/config.bucket_size)*config.bucket_size
+        buckets_reqd = range(left_buck, right_buck+config.bucket_size, config.bucket_size) # make sure to get the right spanning and left spanning sites
+        return(["%s_%s" % (chromsome, bid) for bid in buckets_reqd])
+    '''
+
     def __add_chromosome(self, chromosome):
         """
         add a chromosome to the main table.
@@ -78,9 +92,9 @@ class track(base_track):
         # make the new chromsome table:
         table_name = "chr_%s" % str(chromosome)
         c.execute("CREATE TABLE %s (left INT, right INT, strand TEXT)" % (table_name, ))
-        c.execute("CREATE INDEX %s_com_idx ON %s(left, right)" % (table_name, table_name))
-        c.execute("CREATE INDEX %s_lef_idx ON %s(left)" % (table_name, table_name))
-        c.execute("CREATE INDEX %s_rig_idx ON %s(right)" % (table_name, table_name))
+
+        # link new table to old table.
+        # how do I do that?!?!?
 
         c.close()
         return(True)
@@ -169,38 +183,40 @@ class track(base_track):
         """
            
         extended_loc = location(loc=str(loc)).expand(read_extend)
+        locs_required = [extended_loc] # make sure to include the read_extend, but don't modify the location to get.
 
-        result = self.get_reads(extended_loc)
-        
+        # get the reads only in the ranges required.
+        # at the moment this is not implemented.
+        reads = []
+        for l in locs_required:
+            reads += self.get_reads(l)
+
         if kde_smooth:
             return(self.__kde_smooth(loc, reads, resolution, 0, view_wid, read_extend))
 
         # make a single array
-        a = zeros(int( (loc["right"]-loc["left"]+resolution)/resolution ), dtype=integer)
+        a = zeros(int( (loc["right"]-loc["left"]+resolution)/resolution ), dtype=int32)
 
         # Bound the resolution to 1bp if int(resolution) reports <1
         min_res = int(resolution)
         if min_res == 0:
             min_res = 1
-        
-        for r in result:
+
+        for r in self.c:
             if r[2] in positive_strand_labels:
                 read_left = r[0]
                 read_right = r[1] + read_extend + 1 # coords are open
             elif r[2] in negative_strand_labels:
                 read_left = r[0] - read_extend
                 read_right = r[1] + 1 # coords are open 
-            
-            rel_array_left = (read_left - loc["left"]) // resolution
-            rel_array_right = (read_right - loc["left"]) // resolution            
-            
-            #a[rel_array_left:rel_array_right] += 1
-            # The below is a very tiny amount faster
-            
+
+            rel_array_left = int((read_left - loc["left"]) / resolution)
+            rel_array_right = int((read_right - loc["left"]) / resolution)
+
             for array_relative_location in xrange(rel_array_left, rel_array_right, 1):
                 if array_relative_location >= 0 and array_relative_location < len(a): # within array
                     a[array_relative_location] += 1
-            
+
         return(a)
 
     def __kde_smooth(self, loc, reads, resolution, bandwidth, view_wid, read_shift=100):
@@ -228,7 +244,7 @@ class track(base_track):
         kde._compute_covariance()
 
         kk = kde.evaluate(a) * 1000000 # resacle to get in integer range.
-        res = array(kk, dtype=integer)
+        res = array(kk, dtype=int32)
         
         return(res)
                 
@@ -257,7 +273,7 @@ class track(base_track):
                 size of the DNA shear.
 
         **Returns**
-            an 'numpy.array([0, 1, 2 ... n], dtype=integer)' contiginous array of integers
+            an 'numpy.array([0, 1, 2 ... n], dtype=int32)' contiginous array of integers
             or a tuple containing two arrays, one for each strand.
         """
         if strand: 
@@ -277,7 +293,7 @@ class track(base_track):
                 right_most = i[1]+read_extend
 
         # make an array.
-        a = zeros(int(right_most+int(resolution), int(resolution)), dtype=integer)
+        a = zeros(int(right_most+int(resolution), int(resolution)), dtype=int32)
 
         for r in reads:
             # read_extend
@@ -318,43 +334,23 @@ class track(base_track):
         if not isinstance(loc, location):
             loc = location(loc=loc)
             
-        #if not self._c:
-        #    self._c = self._connection.cursor()
+        if not self._c:
+            self._c = self._connection.cursor()
 
-        if len(loc["chr"]) < 30: # small security measure.
+        if len(loc["chr"]) < 30:
             table_name = "chr_%s" % loc["chr"]
 
-        
-        result = self._connection.execute("SELECT * FROM %s WHERE (?>=left AND ?<=right) OR (?>=left AND ?<=right) OR (left<=? AND right>=?) OR (?<=left AND ?>=right)" % table_name,
-            (loc["left"], loc["left"], loc["right"], loc["right"], loc["left"], loc["right"], loc["left"], loc["right"]))
-        
-        # This one is a disaster and probably doens't work:
-        #result = self._connection.execute("SELECT * FROM %s WHERE ? IN (left, right) OR ? IN (left, right) OR left IN (?,?) OR right IN(?,?)"  % table_name,
-        #    (loc["left"], loc["right"], loc["left"], loc["right"], loc["left"], loc["right"]))
-        
-        # Order of query is most efficient as is.
-        # This is slightly slower
-        #result = self._connection.execute("SELECT * FROM %s WHERE ? BETWEEN left AND right OR ? BETWEEN left and right OR left BETWEEN ? AND ? OR right BETWEEN ? and ?" % table_name,
-        #    (loc["left"], loc["right"], loc["left"], loc["right"], loc["left"], loc["right"]))
-        
-        #self._c.execute("SELECT * FROM %s WHERE ?>=left OR ?<=right OR left<=? OR right>=?" % table_name,
-        #    (loc["left"],loc["right"], loc["left"],loc["right"]))
-        
-        # Is it faster to just get all the nearby reads and sort them out in Python?
+        # ~4.11 s 946 reads
+        #self._c.execute("SELECT * FROM %s WHERE (?>=left AND ?<=right) OR (?>=left AND ?<=right) OR (left<=? AND right>=?) OR (?<=left AND ?>=right)" % table_name,
+        #    (loc["left"], loc["left"], loc["right"], loc["right"], loc["left"], loc["right"], loc["left"], loc["right"]))
             
-        #self._c.execute("SELECT left, right, strand FROM %s WHERE (left<=? AND right>=?) OR (?<=left AND ?>=right) OR (?>=left AND ?<=right) OR (?>=left AND ?<=right)" % table_name,
-        #    (loc["left"], loc["right"], loc["left"], loc["right"], loc["left"], loc["left"],loc["right"], loc["right"]))
-        # pseudo code:
+        # Is it faster to just get all the nearby reads and sort them out in Python?
+        self._c.execute("SELECT * FROM %s WHERE (?>=left AND ?<=right) OR (?>=left AND ?<=right)" % table_name,
+            (loc["left"], loc["left"], loc["right"], loc["right"]))
         
-        # if left - dbright < 0 and :
-        #span = loc["right"] - loc["left"]
-        #self._c.execute("SELECT left, right, strand FROM %s WHERE (?-left > -1 AND ?-left<?) OR (?-right>-1 AND ?-right<?)" % table_name,
-        #    (loc["right"], loc["right"], span, loc["left"], loc["left"], span))
-    
-        #result = None
-        result = result.fetchall() # safer for empty lists and reusing the cursor
+        #result = self._c.fetchall()
 
-        return(result)
+        #return(result)
 
     def get_read_count(self, loc):
         """
@@ -642,34 +638,42 @@ class track(base_track):
 
         return(pileup)
 
-if __name__ == "__main__":
-    """
-    No index (normal): 4.2 s
-    2 indeces: 4 s 
+    def finalise(self):
+        """
+        finalise the database (shrink unused edit space)
+        dump useless bits etc.
+        You must call this! to finalise the db.
+        Or get() will not work!
+        This copies the cache onto disk and closes the db.
+        """
+        # do a commit
+        self._save_meta_data()
+        self._connection.commit()
+        self._connection.execute("VACUUM")
+        self._connection.commit()
 
-    """
-    
+if __name__ == "__main__":
     import random
     from location import location
     from genelist import genelist
     
     t = track(filename="test.trk2", name="test", new=True)
     for n in xrange(0, 100000):
-        l = random.randint(0, 100000000)
+        l = random.randint(0, 10000000)
         t.add_location(location(chr="1", left=l, right=l+35), "+")
     t.finalise()
     
     # fake a bed
     newb = []
     for n in xrange(0, 100):
-        l = random.randint(0, 100000000)
-        newb.append({"loc": location(chr="1", left=l, right=l+200), "strand": "+"})
+        l = random.randint(0, 10000000)
+        newb.append({"loc": location(chr="1", left=l, right=l+35), "strand": "+"})
     bed = genelist()
     bed.load_list(newb)
     
     t = track(filename="test.trk2")
                 
     import cProfile, pstats
-    cProfile.run("t.pileup(genelist=bed, filename='test.png', bin_size=10, window_size=1000)", "profile.pro")
+    cProfile.run("t.pileup(genelist=bed, filename='test.png', bin_size=10, window_size=1000, raw_tag_filename='Sox2Oct4_P300.tsv')", "profile.pro")
     p = pstats.Stats("profile.pro")
     p.strip_dirs().sort_stats("time").print_stats()

@@ -248,7 +248,7 @@ class NoMatchingKeysError(Exception):
 class BadOperationError(Exception):
     """
     Error
-        Nact() recieved a bad operation value.
+        act() recieved a bad operation value.
     """
     def __init__(self, function, argument):
         """
@@ -272,5 +272,33 @@ class GlglobDuplicateNameError(Exception):
         config.log.critical("glglob has two lists with the same name")
         config.log.critical("for glglob to work you must provide lists")
         config.log.critical("with unique names")
+        if not config.DEBUG: # this only works in Py3k right?
+            self.__traceback__ = None
+
+class FailedToMakeNewDBError(Exception):
+    """
+    Error
+        Failed to make a new track database
+    """
+    def __init__(self, filename):
+        """
+        Output the error message and tidy up the traceback, and perform other stuff.
+        """
+        config.log.critical("Failed to make the new database")
+        config.log.critical("This path is not valid or is inaccesible?")
+        config.log.critical("Tried: '%s'" % message)
+        if not config.DEBUG: # this only works in Py3k right?
+            self.__traceback__ = None
+            
+class BadBinaryFileFormatError(Exception):
+    """
+    Error
+        The binary file is not a cPickle
+    """
+    def __init__(self, filename):
+        """
+        Output the error message and tidy up the traceback, and perform other stuff.
+        """
+        config.log.critical("File '%s' is not a glbase binary file" % filename)
         if not config.DEBUG: # this only works in Py3k right?
             self.__traceback__ = None

@@ -1,7 +1,7 @@
 """
 opt, part of chipFish
 
-(c) 2008-2011 oAxiom
+(c) 2008-2012 oAxiom
 
 Not for distribution.
 
@@ -66,14 +66,13 @@ class graphics:
     microRNA_height = 6
 
     screen_colour = (1,1,1,1)
-    gene_colour = (0.89,0.654,0.165) #E6A729
     gene_colour = (0,0,0) #Black
     lncrna_colour = (0.1, 0.8, 0.1)
     microRNA_colour = (0.6, 0.1, 0)
 
     # Font related defaults
-    font = "sans-serif"
-    default_font_size = 12 # Generally refers here to the track Text sizes
+    font = "Arial"
+    default_font_size = 11 # Fall back font size
 
     right_border_width = 0 # in pixels, size of rightmost click border.
 
@@ -90,32 +89,33 @@ class draw:
     chevrons_inside_introns = False # not implemented draws chevrons inside the gene indicating direction
     braces_between_exons = False # not implemented draws braces across the exons
     scale_bar = True # The scale bar at the top right of the image just below the ruler
-    view_port_width = 1024 # The width of the genome view in pixels
+    scale_bar_fontsize = 16 # scale bars font size. 
+    view_port_width = 1000 # The width of the genome view in pixels
+    genomic_location = True # draw the chrX:nnnnnn-nnnnnn label just above the first track
+    genomic_location_font_size = 22 # font size for hte genomic location label
 
 class gene:
-    font_size = 20
+    font_size = 24
     font_style = "normal"
 
 class ruler:
     """
     options specific to the genome ruler.
     """
-    font = "sans-serif"
-    font_size = 10
+    font_size = 18
     height_px = 10 # height of ruler in pixels.
     text_height = 10 # distance from top of screen of the ruler text.
     colour = (0,0,0)
     line_width = 1
-    draw = True
-    draw_chromosome = True
+    draw = False
 
 class track:
     """
     options for the tracks
     """
-    height_px = {"graph": 100, # These are the pixel heights of the tracks. Can be any reasonable value. These values are asthetically pleasing
-        "graph_split_strand": 100, # same as graph
-        "kde_graph": 100, # ditto
+    height_px = {"graph": 200, # These are the pixel heights of the tracks. Can be any reasonable value. These values are asthetically pleasing
+        "graph_split_strand": 200, # same as graph
+        "kde_graph": 200, # ditto
         "bar": 30,
         "spot": 30,
         "genome": 50} # height's of the tracks in pixels.
@@ -123,11 +123,12 @@ class track:
     spot_default_colour = (0.8, 0.1, 0.1) # The colour of the spot for spot tracks
     spot_filled = True # fill the spot circle?
     spot_shape = "circle" # supported = circle, triangle
-    font_scale_size = 8 # Size of the font on the tracks
+    font_scale_size = 24 # Size of the font on the tracks
     filled = True
     background = True # Draw a grey background defining the span of the track
     draw_names = True
-    draw_scales = True
-    scale_bar_font_size = 8
-    min_scale = 50 # The minimum x axis value for tracks. 
-    lock_scales = True # Lock all scales on the Tracks together.
+    draw_scales = False
+    scale_bar_font_size = 14
+    label_fontsize = 22
+    min_scale = 10 # The minimum x axis value for tracks. 
+    lock_scales = False # Lock all scales on the Tracks together.

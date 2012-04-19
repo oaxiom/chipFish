@@ -28,14 +28,14 @@ from glbase.location import location
 from glbase.helpers import * # pass through
 from glbase.delayedlist import delayedlist
 from glbase.tools.seqToTrk import seqToTrk 
+import glbase.format as format
 
 # get the wrapped versions.
 from genelist import genelist
 from genome import genome
-from peaklist import peaklist
 from track import track
 
 # make these functions available in the package
 __all__ = ["genelist", "location", "genome", "delayedlist", "VERSION",
-    "track", "peaklist"
+    "track", "format",
     ] + dir(glbase.flags) + dir(glbase.helpers) 

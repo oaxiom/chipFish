@@ -11,7 +11,7 @@ import sys, os, csv, time, cProfile, pstats
 from .. import track
 from .. import delayedlist # get delayedlist from glbase
 from .. import genelist
-from ..flags import exporttxt_loc_only_format
+from .. import format
 from .. import config
 
 def seqToTrk(infilename, outfilename, name, stranded=True, **kargs):
@@ -50,7 +50,7 @@ def seqToTrk(infilename, outfilename, name, stranded=True, **kargs):
     if "format" in kargs and kargs["format"]:
         default_format = kargs["format"]
     else:
-        default_format = exporttxt_loc_only_format
+        default_format = format.exporttxt_loc_only
 
     if "force_cache" in kargs and kargs["force_cache"]: # This is undocumented and generally a really bad idea
         seqfile = genelist(filename=os.path.realpath(infilename), format=default_format)
@@ -59,6 +59,7 @@ def seqToTrk(infilename, outfilename, name, stranded=True, **kargs):
 
     n = 0
     m = 0
+    total = 0
 
     t = track(filename=outfilename, stranded=stranded, new=True, name=name, **kargs)
 
@@ -72,6 +73,7 @@ def seqToTrk(infilename, outfilename, name, stranded=True, **kargs):
             t.add_location(item["loc"])
 
         n += 1
+        total += 1
         if n > 1000000:
             m += 1
             n = 0
@@ -88,9 +90,9 @@ def seqToTrk(infilename, outfilename, name, stranded=True, **kargs):
     # track_new
     # 2.5 s # overhead is almost all delayedlist now...
 
-    config.log.info("Finalise...")
+    config.log.info("Finalise library. Contains '%s' tags" % total)
     t.finalise()
-    config.log.info("Took: %s s" % (e-s))
+    config.log.info("Took: %s seconds" % (e-s))
     return(True)
 
 if __name__ == "__main__":
