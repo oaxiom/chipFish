@@ -14,24 +14,22 @@ TODO:
 
 """
 
-import copy
+import copy, cPickle
 
 class location:
     def __init__(self, loc=None, chr=None, left=None, right=None):
         if isinstance(loc, location):
             # It's actually already a loc.
             # I want to copy it and leave.
-            self._loc_string = "chr%s:%s-%s" % (loc["chr"].strip("chr").lower(), loc["left"], loc["right"])
             self.loc = copy.copy(loc.loc)
         else:
             if loc:
-                self._loc_string = loc.lower().replace(",", "") # ucsc includes commas, remove them so you can cut and paste
-                t = self._loc_string.split(":")
-                self.loc = {"chr": t[0].strip("chr").upper(), "left":int(t[1].split("-")[0]), "right":int(t[1].split("-")[1])}
+                s = loc.lower().replace(",", "") # ucsc includes commas, remove them so you can cut and paste
+                t = s.split(":")
+                self.loc = {"chr": t[0].strip("chr").rstrip().upper(), "left":int(t[1].split("-")[0]), "right":int(t[1].split("-")[1])}
             else:
-                #self._loc_string = "chr%s:%s-%s" % (chr.lower().strip("chr"), left, right)
-                #t = self._loc_string.split(":")
-                self.loc = {"chr": str(chr).strip("chr").upper(), "left": int(left), "right": int(right)}
+                self.loc = {"chr": str(chr).strip("chr").rstrip().upper(), "left": int(left), "right": int(right)}
+        self.__update() # make sure the locstring is valid:
 
     def __eq__(self, other):
         if other:
@@ -45,15 +43,22 @@ class location:
                         return(True)
         return(False)
 
+    def __hash__(self):
+        return(hash(self._loc_string))
+    
+    def __deepcopy__(self, memo):
+        try:
+            return(cPickle.loads(cPickle.dumps(self, -1))) # This is 2-3x faster and presumably uses less memory
+        except PicklingError:
+            return(copy.deepcopy(self, memo)) # Use the generic version
+    
     def __nonzero__(self):
         return(True)
 
     def __repr__(self):
-        self._loc_string = self._merge(self.loc) # only update when accessed.
         return("<location %s>" % (self._loc_string))
 
     def __len__(self):
-        self._loc_string = self._merge(self.loc) # only update when accessed.
         # work out the span.
         return(self.loc["right"] - self.loc["left"])
 
@@ -61,26 +66,29 @@ class location:
         # ignores the 'value' argument completely and returns a three-ple
         return( (self.loc["chr"], self.loc["left"], self.loc["right"]) )
 
-    def _merge(self, loc_dict):
+    def __update(self):
+        self._loc_string = None
         try:
-            return("chr%s:%s-%s" % (loc_dict["chr"].strip("chr"), loc_dict["left"], loc_dict["right"]))
-        except: # chr possibly sets of strings ... etc.
-            return("chr%s:%s-%s" % (loc_dict["chr"], loc_dict["left"], loc_dict["right"]))
-        return(False) # bugged out;
+            self._loc_string = "chr%s:%s-%s" % (self.loc["chr"].strip("chr"), self.loc["left"], self.loc["right"])
+        except Exception: # chr possibly sets of strings ... etc.
+            self._loc_string = "chr%s:%s-%s" % (self.loc["chr"], self.loc["left"], self.loc["right"])
+            # I can't import my bunch of errors, as location is used in that module. So I spoof an assert
+            if not self._loc_string: # failed to make a valid string...
+                raise "Bad location formatting"
 
     def __getitem__(self, key):
         if key == "string":
-            self._loc_string = self._merge(self.loc) # only update when accessed.
+            self.__update() # only update when accessed.
             return(self._loc_string)
-        if key == "dict":
+        elif key == "dict":
             return(self.loc)
         return(self.loc[key])
 
     def __setitem__(self, key, value):
         self.loc[key] = value
+        self.__update()
 
     def __str__(self):
-        self._loc_string = self._merge(self.loc) # only update when accessed.
         return(self._loc_string)
 
     """
@@ -90,50 +98,79 @@ class location:
         new = copy.deepcopy(self)
         new.loc["left"] -= base_pairs
         new.loc["right"] += base_pairs
+        new.__update()
         return(new)
 
     def expandLeft(self, base_pairs):
         new = copy.deepcopy(self)
         new.loc["left"] -= base_pairs
+        new.__update()
         return(new)
 
     def expandRight(self, base_pairs):
         new = copy.deepcopy(self)
         new.loc["right"] += base_pairs
+        new.__update()
         return(new)
 
     def shrink(self, base_pairs):
         new = copy.deepcopy(self)
         new.loc["left"] += base_pairs
         new.loc["right"] -= base_pairs
+        new.__update()
         return(new)
 
     def shrinkLeft(self, base_pairs):
         new = copy.deepcopy(self)
         new.loc["left"] += base_pairs
+        new.__update()
         return(new)
 
     def shrinkRight(self, base_pairs):
         new = copy.deepcopy(self)
         new.loc["right"] -= base_pairs
+        new.__update()
+        return(new)
+
+    def pointLeft(self):
+        """
+        get a new location at the exact left of the coordinate
+        """
+        new = copy.deepcopy(self)
+        new.loc["right"] = new.loc["left"]
+        new.__update()
+        return(new)
+        
+    def pointRight(self):
+        """
+        get a new location at the exact right of the coordinate
+        """
+        new = copy.deepcopy(self)
+        new.loc["left"] = new.loc["right"]
+        new.__update()
         return(new)
 
     def pointify(self):
         new = copy.deepcopy(self)
         centre = (self.loc["left"] + self.loc["right"]) / 2
         new.loc = {"chr": self.loc["chr"], "left": centre, "right": centre}
+        new.__update()
         return(new)
+
+    def collide(self, loc):
+        if loc["chr"] != self["chr"]:
+            return(False)
+        return(self.qcollide(loc))
 
     def qcollide(self, loc):
         """
         **Purpose**
             perform a collision with another location object.
+            This assumes you have already checked the locations are on the same chromosome.
 
         **Returns**
             True or False
         """
-        if loc["chr"] != self["chr"]:
-            return(False)
 
         # quickest rejections first;
         if self["right"] < loc["left"]:
@@ -163,7 +200,8 @@ class location:
         **Returns**
             an integer indicating the distance, note that
             the chromosomes should be the same or it will raise an
-            exception
+            exception. distance() should not be used as a test for
+            overlap. use collide() for that.
         """
         assert self["chr"] == loc["chr"], "chromosomes are not the same, %s vs %s" % (self, loc)
         return(self.qdistance(loc))
@@ -185,4 +223,12 @@ class location:
         new = copy.deepcopy(self)
         new.loc["left"] += base_pairs
         new.loc["right"] = new.loc["left"]
+        new.__update()
         return(new)
+
+if __name__ == "__main__":
+    import timeit
+    
+    s = "a = location(loc='chr1:1000-2000').pointify()"
+    t = timeit.Timer(s, "from location import location")
+    print "%.2f usec/pass" % (1000000 * t.timeit(number=100000)/100000)

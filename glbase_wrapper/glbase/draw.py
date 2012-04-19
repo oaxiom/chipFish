@@ -3,26 +3,59 @@ draw class for glbase
 
 this is a static class containing various generic methods for drawing etc.
 
-It should be overridable with other draw classes and should be
-drawing platform agnostic - at the moment it uses just matplotlib,
-but in the future that may change.
-
 **TODO**
 
-* move all of the drawing stuff into here. [Note done, see microarray]
-* unify _heatmap_and_plot with _heatmap (Can it be done at all?)
+There's a change in direction here. Instead of draw containing lots of generic draw functions
+instead its more like a set of wrappers around common ways to do matplotlib stuff.
+Drawing inside genelists is fine, as long as it follows this paradigm:
+
+fig = self.draw.getfigure(**kargs)
+
+ax = ...
+
+etc ...
+
+self.draw.do_common_args(fig, **kargs)
+filename = fig.savefigure(fig, filename)
+
+It would probably be an improvement if the class part was removed.
+
+Instead a series of methods, exposed by draw.method() at the module level would be better.
+
+This makes them more like helpers for matplotlib than a full fledged object.
+
+This could be easily refactored by changing lines like::
+
+class genelist:
+    ... init
+        self.draw = draw()
+        
+        to 
+        
+        self.draw = draw
+        
+For now, until I refactor the code to remove lines like that.
+Also I want to rename this file gldraw to remove name clashes.
+
+Then it can go::
+
+    gldraw.heatmap()
+    gldraw.scatter()
 
 """
 
 import sys, os, copy
 
-from numpy import array, arange, mean, max, min, std
+from numpy import array, arange, mean, max, min, std, float32
 from scipy.cluster.hierarchy import distance, linkage, dendrogram
 from scipy.spatial.distance import pdist # not in scipy.cluster.hierarchy.distance as you might expect :(
+from scipy import polyfit, polyval
+from scipy.stats import linregress
 import numpy as np
 from array import array as qarray # this is now replaced by numpy?
 import matplotlib.pyplot as plot
 import matplotlib.cm as cm
+from matplotlib.colors import ColorConverter, rgb2hex
 import matplotlib.mlab as mlab
 from matplotlib.patches import Ellipse, Circle
 
@@ -41,18 +74,11 @@ sys.setrecursionlimit(5000) # 5x larger recursion.
 
 # define static class here.
 class draw:
-    def __init__(self, parent):
-        """
-        draw class
-        contains generic-ish drawing procedures.
-        please wrap your own around the _prefixed versions.
+    def __init__(self, bad_arg=None, **kargs):
+        """please deprecate me"""
+        pass
 
-        There are no public methods here.
-        """
-        self.parent = parent
-        self.output_mode = config.DEFAULT_DRAWER
-
-    def _bracket_data(self, data, min, max):
+    def bracket_data(self, data, min, max):
         """
         brackets the data between min and max (ie. bounds the data with no scaling)
 
@@ -71,6 +97,15 @@ class draw:
     def _heatmap(self, cluster_mode = "euclidean", row_cluster = True, col_cluster = True, dpi = config.DEFAULT_DPI,
         vmin = 0, vmax = None, colour_map = cm.RdBu_r, **kargs):
         """
+        Scheduled for deprecation
+        """
+        return(self.heatmap(cluster_mode, row_cluster, col_cluster, dpi,
+        vmin, vmax, cm.RdBu_r, **kargs))
+
+    def heatmap(self, filename=None, cluster_mode="euclidean", row_cluster=True, col_cluster=True, 
+        vmin=0, vmax=None, colour_map=cm.RdBu_r, col_norm=False, row_norm=False,
+        **kargs):
+        """
         my own version of heatmap.
 
         This will draw a dendrogram ... etc...
@@ -79,36 +114,97 @@ class draw:
 
         row_names is very important as it describes the order of the data.
         cluster_mode = pdist method. = ["euclidean"] ??????!
+        
+        **Arguments**
+            data (Required)
+                the data to use. Should be a 2D array for the heatmap.
+                
+            filename (Required)
+                The filename to save the heatmap to.
+                
+            col_norm (Optional, default=False)
+                normalise each column of data between 0 .. max => 0.0 .. 1.0
+                
+            row_norm (Optional, default=False)
+                similar to the defauly output of heatmap.2 in R, rows are normalised 0 .. 1
+                
+            row_tree (Optional, default=False)
+                provide your own tree for drawing. Should be a Scipy tree. row_labels and the data
+                will be rearranged based on the tree, so don't rearrnge the data yourself
+                
+            row_font_size (Optional, default=guess suitable size)
+                the size of the row labels (in points). If set this will also override the hiding of
+                labels if there are too many elements. 
+                
+            col_font_size (Optional, default=8)
+                the size of the column labels (in points)
+                
+        **Returns**
+            The actual filename used to save the image.
         """
-        assert kargs["filename"], "_heatmap() missing filename"
+        assert filename, "heatmap() - no specified filename"
 
         # preprocess data
         if isinstance(kargs["data"], dict):
             # The data key should be a serialised Dict, I need to make an array.
-            data = array([kargs["data"][key] for key in kargs["col_names"]]).T
+            data = array([kargs["data"][key] for key in kargs["col_names"]]).T 
+            # If the lists are not square then this makes a numpy array of lists. 
+            # Then it will fail below with a strange error.
+            # Let's check to make sure its square:
+            ls = [len(kargs["data"][key]) for key in kargs["col_names"]]
+
+            if not all(x == ls[0] for x in ls):  
+                raise Exception, "Heatmap data not Square"
         else:
             # the default is a numpy like array object which can be passed right through.
-            data = kargs["data"]
-        #print data
+            data = array(kargs["data"], dtype=float32)
+        
+        if col_norm:
+            for col in xrange(data.shape[1]):   
+                data[:,col] /= float(data[:,col].max())
+        
+        if row_norm:
+            for row in xrange(data.shape[0]):
+                mi = min(data[row,:])
+                ma = max(data[row,:])
+                data[row,:] = (data[row,:]-mi) / (ma-mi)
 
         # positions of the items in the plot:
-        left_side_tree =    [0.05,  0.15,   0.248,  0.75]
-        top_side_tree =     [0.3,   0.902,  0.55,   0.09]
-        heatmap_location =  [0.3,   0.15,   0.55,   0.75]
+        left_side_tree =    [0.05,  0.1,   0.248,  0.85]
+        top_side_tree =     [0.3,   0.952,  0.25,   0.044]
+        heatmap_location =  [0.3,   0.1,   0.25,   0.85]
         scalebar_location = [0.01,  0.96,   0.24,   0.03]
-        row_font_size = 6
-        col_font_size = 6
+        
+        # set size of the row text depending upon the number of items:
+        if "row_font_size" in kargs:
+            row_font_size = kargs["row_font_size"]         
+        else:
+            if "row_names" in kargs and kargs["row_names"]:
+                if len(kargs["row_names"]) <= 100:
+                    row_font_size = 8
+                elif len(kargs["row_names"]) <= 200:
+                    row_font_size = 3
+                elif len(kargs["row_names"]) <= 300:
+                    row_font_size = 2
+                else:
+                    config.log.warning("heatmap has too many row labels to be visible. Suppressing row_labels")
+                    kargs["row_names"] = None
+                    row_font_size = 1
+                
+        col_font_size = 8
+        if "col_font_size" in kargs:
+            col_font_size = kargs["col_font_size"]
 
         if "square" in kargs and kargs["square"]:
             # make the heatmap square, for e.g. comparison plots
-            left_side_tree =    [0.198,  0.10,   0.10,   0.75]
-            top_side_tree =     [0.3,    0.852,  0.55,   0.10]
-            heatmap_location =  [0.3,    0.10,   0.55,   0.75]
+            left_side_tree =    [0.15,    0.15,   0.10,   0.75]
+            top_side_tree =     [0.25,    0.90,  0.55,   0.08]
+            heatmap_location =  [0.25,    0.15,   0.55,   0.75]
             row_font_size = 10
             col_font_size = 10
 
-        if "bracket" in kargs:
-            data = self._bracket_data(data, kargs["bracket"][0], kargs["bracket"][1])
+        if "bracket" in kargs: # done here so clustering is performed on bracketed data
+            data = self.bracket_data(data, kargs["bracket"][0], kargs["bracket"][1])
             vmin = kargs["bracket"][0]
             vmax = kargs["bracket"][1]
 
@@ -128,16 +224,18 @@ class draw:
                 vmax = me + mi
 
         if "row_cluster" in kargs: row_cluster = kargs["row_cluster"]
-        if "dpi" in kargs: dpi = kargs["dpi"]
         if "col_cluster" in kargs: col_cluster = kargs["col_cluster"]
-        if not "colbar_label" in kargs: kargs["colbar_label"] = "expression"
+        if not "colbar_label" in kargs: 
+            kargs["colbar_label"] = "expression"
         if "cmap" in kargs: colour_map = kargs["cmap"]
 
         # a few grace and sanity checks here;
         if len(data) <= 1: row_cluster = False # clustering with a single point?
         if len(data[0]) <= 1: col_cluster = False # ditto.
 
-        fig = plot.figure(dpi=dpi)
+        if not "aspect" in kargs:
+            kargs["aspect"] = "long"
+        fig = self.getfigure(**kargs)
 
         if row_cluster:
             # ---------------- Left side plot (tree) -------------------
@@ -145,8 +243,11 @@ class draw:
 
             # from scipy;
             # generate the dendrogram
-            Y = pdist(data, metric=cluster_mode)
-            Z = linkage(Y, 'single')
+            if "row_tree" in kargs:
+                Z = kargs["row_tree"]
+            else:
+                Y = pdist(data, metric=cluster_mode)
+                Z = linkage(Y, 'single')
             a = dendrogram(Z, orientation='right')
 
             ax1.set_position(left_side_tree)
@@ -158,11 +259,11 @@ class draw:
             [item.set_markeredgewidth(0.0) for item in ax1.xaxis.get_ticklines()]
             [item.set_markeredgewidth(0.0) for item in ax1.yaxis.get_ticklines()]
 
-            # USe the tree to reorder the data.
+            # Use the tree to reorder the data.
             order = a["ivl"]
 
             # resort the data by order;
-            if kargs["row_names"]: # make it possible to cluster without names
+            if "row_names" in kargs and kargs["row_names"]: # make it possible to cluster without names
                 newd = []
                 new_row_names = []
                 for index in order:
@@ -170,6 +271,11 @@ class draw:
                     new_row_names.append(kargs["row_names"][int(index)])
                 data = array(newd)
                 kargs["row_names"] = new_row_names
+            else: # no row_names, I still want to cluster
+                newd = []
+                for index in order:
+                    newd.append(data[int(index)])
+                data = array(newd)
 
         if col_cluster:
             # ---------------- top side plot (tree) --------------------
@@ -200,7 +306,7 @@ class draw:
 
         # ---------------- Second plot (heatmap) -----------------------
         ax3 = fig.add_subplot(143)
-        hm = ax3.pcolor(data, cmap=colour_map, vmin=vmin, vmax=vmax)
+        hm = ax3.pcolor(data, cmap=colour_map, vmin=vmin, vmax=vmax, antialiased=False)
 
         ax3.set_frame_on(False)
         ax3.set_position(heatmap_location)
@@ -215,7 +321,7 @@ class draw:
             ax3.set_xticklabels(kargs["col_names"], rotation="vertical")
         ax3.set_xticklabels(kargs["col_names"], rotation="vertical")
 
-        if "row_names" in kargs and kargs["row_names"] and len(kargs["row_names"]) <= 200: # you can't meaningfully see >200 labels. So suppress them:
+        if "row_names" in kargs and kargs["row_names"]: # you can't meaningfully see >200 labels. So suppress them:
             ax3.set_yticks(arange(len(kargs["row_names"]))+0.5)
             ax3.set_ylim([0, len(kargs["row_names"])])
             ax3.set_yticklabels(kargs["row_names"])
@@ -237,9 +343,10 @@ class draw:
         cb.set_label(kargs["colbar_label"])
         [label.set_fontsize(5) for label in ax0.get_xticklabels()]
 
-        return(self._saveFigure(fig, kargs["filename"]))
+        return(self.savefigure(fig, filename))
 
-    def _heatmap_and_plot(self, **kargs):
+    def _heatmap_and_plot(self, peak_data=None, match_key=None, 
+        arraydata=None, peakdata=None, bin=None, **kargs):
         """
         a two panel dendrogram - heatmap and plot.
 
@@ -283,68 +390,42 @@ class draw:
             the peakdata. By default if the array and the peaklist
             match then it simply uses the
         """
-
         # ----------------------defaults:
-        moving_window = None
-        dpi = config.DEFAULT_DPI
         vmin = 0.0
         vmax = 1.0
-        match_key = kargs["match_key"]
 
         # ----------------------modify defaults:
         if "window" in kargs: moving_window = kargs["window"]
         if "match_key" in kargs: match_key = kargs["match_key"]
-        if "dpi" in kargs: dpi = kargs["dpi"]
         if "bracket" in kargs:
             vmin = kargs["bracket"][0]
             vmax = kargs["bracket"][1]
-        # bracketing is done below.
 
-        # get arrange and sort the data.
-        array_dict_data = kargs["array_data"].serialisedArrayDataDict
-        arraydata = array([array_dict_data[key] for key in array_dict_data]) # needs to be sorted already.
-        # There is a potential bug here, with the column names if multiple data is sent.
-
-        if not moving_window:
-            moving_window = int(len(arraydata) * 0.1)
-
-        if "bracket" in kargs:
-            arraydata = self._bracket_data(arraydata, kargs["bracket"][0], kargs["bracket"][1])
-
-        bin = [0 for x in arraydata.T]
-
-        for index, item in enumerate(kargs["array_data"]):
-            item = kargs["peak_data"]._findByLabel(match_key, item[match_key])
-            if item:
-                if "use_tag_score" in kargs and kargs["use_tag_score"]:
-                    bin[index] += item[kargs["use_tag_score"]]
-                else:
-                    bin[index] = 1
-
-        if not moving_window:
-            moving_window = int(len(bin) * 0.1) # bin is the same length as the data
-
-        x, peakdata = utils.movingAverage(bin, moving_window)
+        # Positions of the items in the figure:
+        left_heatmap = [0.10,  0.05,  0.20,  0.85]
+        scale_bar =    [0.10,  0.97,  0.30,  0.02]
+        binding_map =  [0.32,  0.05,  0.08,  0.85]
+        freq_plot =    [0.42,   0.05,  0.4,   0.85]
 
         # Now do the plots:
         plot.subplot(111)
         plot.cla()
 
-        fig = plot.figure(dpi=dpi)
+        fig = self.getfigure(**kargs)
 
         # heatmap ------------------------------------------------------
 
         ax0 = fig.add_subplot(141) # colour bar goes in here.
         ax0.set_frame_on(False)
-        ax0.set_position([0.10, 0.97, 0.30, 0.02])
+        ax0.set_position(scale_bar)
         [item.set_markeredgewidth(0.0) for item in ax0.yaxis.get_ticklines()]
 
         ax1 = fig.add_subplot(142)
         plot_data = arraydata.T
-        hm = ax1.pcolor(plot_data, cmap=cm.RdBu_r, vmin=vmin, vmax=vmax)
+        hm = ax1.pcolor(plot_data, cmap=cm.RdBu_r, vmin=vmin, vmax=vmax, antialiased=False)
 
         ax1.set_frame_on(False)
-        ax1.set_position([0.10,0.05,0.40,0.85])
+        ax1.set_position(left_heatmap)
         if "col_names" in kargs and kargs["col_names"]:
             ax1.set_xticks(arange(len(kargs["col_names"]))+0.5)
             ax1.set_xticklabels(kargs["col_names"])
@@ -377,10 +458,10 @@ class draw:
 
         a = array(bin) # reshape the bin array
         a.shape = 1,len(bin)
-        ax2.pcolor(a.T, cmap=cm.gray_r)
+        ax2.pcolor(a.T, cmap=cm.gray_r, antialiased=False)
 
         ax2.set_frame_on(False)
-        ax2.set_position([0.52,0.05,0.04,0.85])
+        ax2.set_position(binding_map)
         ax2.set_yticks(arange(len(kargs["row_names"]))+0.5)
         ax2.set_yticklabels("")
         ax2.set_xticklabels("")
@@ -390,57 +471,51 @@ class draw:
         [item.set_markeredgewidth(0.0) for item in ax2.yaxis.get_ticklines()]
         [item.set_markeredgewidth(0.0) for item in ax2.xaxis.get_ticklines()]
 
-        # bargraph -----------------------------------------------------
+        # linegraph -----------------------------------------------------
 
         ax3 = fig.add_subplot(144)
         ax3.plot(peakdata, arange(len(peakdata))) # doesn't use the movingAverage generated x, scale it across the entire graph.
-        #print len(peakdata), len(x)
-        #ax3.plot(peakdata, x) # Use the movingAverage generated x, don't scale it across the entire graph.
         ax3.set_frame_on(False)
-        ax3.set_position([0.6,0.05,0.3,0.85])
+        ax3.set_position(freq_plot)
         ax3.set_yticklabels("")
-        ax3.set_xticklabels("")
-        #ax3.set_xlim([0, len(kargs["col_names"])])
         ax3.set_ylim([0, len(peakdata)])
+        ax3.set_xlim([0, max(peakdata)])
         [item.set_markeredgewidth(0.0) for item in ax3.yaxis.get_ticklines()]
-        [item.set_markeredgewidth(0.0) for item in ax3.xaxis.get_ticklines()]
+        [item.set_markeredgewidth(0.2) for item in ax3.xaxis.get_ticklines()]
+        [t.set_fontsize(6) for t in ax3.get_xticklabels()]
 
         m = utils.mean(peakdata)
         s = utils.std(peakdata)
 
-        ax3.axvline(x=m, color='black', linestyle=":", linewidth=0.5)
+        ax3.axvline(x=m, color='black', linestyle=":", linewidth=1)
         ax3.axvline(x=(m+s), color='r', linestyle=":", linewidth=0.5)
         ax3.axvline(x=(m-s), color='r', linestyle=":", linewidth=0.5)
 
-        return(self._saveFigure(fig, kargs["filename"]))
+        return(self.savefigure(fig, kargs["filename"]))
 
-    def _boxplot(self, data=None, filename=None, **kargs):
+    def boxplot(self, data=None, filename=None, labels=None, **kargs):
         """
-        super thin wrapper around matplotlib's boxplot
+        wrapper around matplotlib's boxplot
         """
         assert data, "data not found"
         assert filename, "no filename specified"
+        assert labels, "boxplots must have labels"
 
-        dpi = config.DEFAULT_DPI
-        if "dpi" in kargs: dpi = kargs["dpi"]
+        fig = self.getfigure(**kargs)
 
-        plot.cla()
-        fig = plot.figure(dpi=dpi)
-        fig.clear()
-        axis = fig.add_subplot(111)
-        axis.boxplot(data)
+        ax = fig.add_subplot(111)
+        r = ax.boxplot(data)
 
-        # handlers to modify common matplotlib options:
-        if "xticklabels" in kargs:
-            axis.set_xticklabels(kargs["xticklabels"])
+        plot.setp(r['medians'], color='red')
+        plot.setp(r['whiskers'], color='black', lw=2)
+        plot.setp(r['boxes'], color='black', lw=2)
+        plot.setp(r['fliers'], color="grey")
 
-        if "title" in kargs: axis.set_title(kargs["title"])
-        if "xlabel" in kargs: axis.set_xlabel(kargs["xlabel"])
-        if "ylable" in kargs: axis.set_ylabel(kargs["ylabel"])
-        if "xaxis" in kargs: axis.set_xticks(kargs["xaxis"])
-        if "yaxis" in kargs: axis.set_yticks(kargs["yaxis"])
+        ax.set_xticklabels(labels)
 
-        return(self._saveFigure(fig, filename))
+        self.do_common_args(ax, **kargs)
+
+        return(self.savefigure(fig, filename))
 
     def _scatter(self, x=None, y=None, filename=None, **kargs):
         """
@@ -450,13 +525,7 @@ class draw:
         assert len(y), "y data missing"
         assert filename, "filename missing"
 
-        dpi = config.DEFAULT_DPI
-        if "dpi" in kargs:
-            dpi = kargs["dpi"]
-
-        plot.cla()
-        fig = plot.figure(dpi=dpi)
-        fig.clear()
+        fig = self.getfigure(**kargs)
         axis = fig.add_subplot(111)
         axis.scatter(x,y)
 
@@ -469,7 +538,7 @@ class draw:
         if "xaxis" in kargs: axis.set_xticks(kargs["xaxis"])
         if "yaxis" in kargs: axis.set_yticks(kargs["yaxis"])
 
-        return(self._saveFigure(fig, filename))
+        return(self.savefigure(fig, filename))
 
     def _qhist(self, filename=None, data=None, bins=60, **kargs):
         """
@@ -478,38 +547,35 @@ class draw:
         assert filename, "Internal Error: _qhist no filename"
         assert data, "Internal Error: _qhist missing data"
 
-        dpi = config.DEFAULT_DPI
-        if "dpi" in kargs:
-            dpi = kargs["dpi"]
-
         log = False
         if "log" in kargs:
             log = kargs["log"]
 
-        plot.cla()
-        fig = plot.figure(dpi=dpi)
+        fig = self.getfigure(**kargs)
         axis = fig.add_subplot(111)
-        axis.hist(data, bins=bins, rwidth=0.8, facecolor='orange', alpha=0.7, log=log)
+        axis.hist(data, bins=bins, facecolor='orange', ec="none", alpha=0.7, log=log)
 
-        if "title" in kargs: axis.set_title(kargs["title"])
-        if "xlabel" in kargs: axis.set_xlabel(kargs["xlabel"])
-        if "ylabel" in kargs: axis.set_ylabel(kargs["ylabel"])
-        if "xaxis" in kargs: axis.set_xticks(kargs["xaxis"])
-        if "yaxis" in kargs: axis.set_yticks(kargs["yaxis"])
+        if "title" in kargs: 
+            axis.set_title(kargs["title"])
+        if "xlabel" in kargs: 
+            axis.set_xlabel(kargs["xlabel"])
+        if "ylabel" in kargs: 
+            axis.set_ylabel(kargs["ylabel"])
+        if "xaxis" in kargs: 
+            axis.set_xticks(kargs["xaxis"])
+        if "yaxis" in kargs: 
+            axis.set_yticks(kargs["yaxis"])
 
-        return(self._saveFigure(fig, filename))
+        return(self.savefigure(fig, filename))
 
-    def _plot(self, filename=None, data=None, figsize=(5,5), **kargs):
+    def _plot(self, filename=None, data=None, **kargs):
         """
         Internal very very thin wrapper around matplotlib's plot
         """
-        dpi = config.DEFAULT_DPI
-        if "dpi" in kargs:
-            dpi = kargs["dpi"]
 
-        plot.cla()
-        fig = plot.figure(dpi=dpi, figsize=figsize)
+        fig = self.getfigure(**kargs)
         axis = fig.add_subplot(111)
+
         if "x" in kargs:
             axis.plot(kargs["x"], data)
         else:
@@ -517,13 +583,13 @@ class draw:
 
         if "title" in kargs: axis.set_title(kargs["title"])
         if "xlabel" in kargs: axis.set_xlabel(kargs["xlabel"])
-        if "ylable" in kargs: axis.set_ylabel(kargs["ylabel"])
+        if "ylabel" in kargs: axis.set_ylabel(kargs["ylabel"])
         if "xaxis" in kargs: axis.set_xticks(kargs["xaxis"])
         if "yaxis" in kargs: axis.set_yticks(kargs["yaxis"])
         if "xlims" in kargs: axis.set_xlim(kargs["xlims"])
         if "ylims" in kargs: axis.set_ylim(kargs["ylims"])
 
-        return(self._saveFigure(fig, filename))
+        return(self.savefigure(fig, filename))
 
     def _genome_segment(self, figure_axis, loc, feature_list):
         """
@@ -564,7 +630,7 @@ class draw:
         ax.text(100, 8, str(loc), size=10, ha="left", va="center")
 
     def _labeled_figure(self, data=None, axissize=None, filename=None,
-        figsize=(5,5), horizontal_line=True, **kargs):
+        horizontal_line=True, **kargs):
         """
         **Purpose**
             Draw a figure with a set of labels.
@@ -587,15 +653,10 @@ class draw:
                 figsize - tuple specifying the figure aspect
                 dpi - the dpi (only supported for ps outputs)
         """
-        dpi = config.DEFAULT_DPI
-        if "dpi" in kargs:
-            dpi = kargs["dpi"]
-
         position_plot = [0.02, 0.05, 0.96, 0.9]
 
-        plot.cla() # paranoia
+        fig = self.getfigure(**kargs)
 
-        fig = plot.figure(dpi=dpi, figsize=figsize)
         ax1 = fig.add_subplot(131)
         ax1.set_position(position_plot)
         ax1.set_xlim([0, axissize[0]])
@@ -617,23 +678,19 @@ class draw:
             ax3.set_position(position_genomic)
             self._genome_segment(ax3, kargs["loc"], kargs["genomic_features"])
 
-        return(self._saveFigure(fig, filename))
+        return(self.savefigure(fig, filename))
 
     def _plot_and_histogram(self, filename=None, data=None, figsize=(5,5), **kargs):
         """
         Draw a graph plot and a histogram on the right hand side.
         """
-        dpi = config.DEFAULT_DPI
-        if "dpi" in kargs:
-            dpi = kargs["dpi"]
-
         position_plot = [0.02, 0.05, 0.83, 0.9]
         position_histogram = [0.87, 0.05, 0.12, 0.9]
 
-        plot.cla() # paranoia
 
-        fig = plot.figure(dpi=dpi, figsize=figsize)
+        fig = self.getfigure(**kargs)
         ax1 = fig.add_subplot(131)
+        
         ax1.set_position(position_plot)
         if "x" in kargs: # fake some x data.
             ax1.plot(kargs["x"], data)
@@ -659,11 +716,7 @@ class draw:
             ax1.axhline(y=(m+zz), color='gray', linestyle=":", linewidth=1.5)
             ax1.axhline(y=(m-zz), color='gray', linestyle=":", linewidth=1)
 
-        if "title" in kargs: ax1.set_title(kargs["title"])
-        if "xlabel" in kargs: ax1.set_xlabel(kargs["xlabel"])
-        if "ylable" in kargs: ax1.set_ylabel(kargs["ylabel"])
-        if "xaxis" in kargs: ax1.set_xticks(kargs["xaxis"])
-        if "yaxis" in kargs: ax1.set_yticks(kargs["yaxis"])
+        self.do_common_args(ax1, **kargs)
         if "xlims" in kargs: ax1.set_xlim(kargs["xlims"])
         if "ylims" in kargs: ax1.set_ylim(kargs["ylims"])
 
@@ -678,9 +731,13 @@ class draw:
             ax3.set_position(position_genomic)
             self._genome_segment(ax3, kargs["loc"], kargs["genomic_features"])
 
-        return(self._saveFigure(fig, filename))
+        return(self.savefigure(fig, filename))
 
+    # Salted for deprecation
     def _qplotxy(self, list_of_tuples_data, filename=None, labels=None, **kargs):
+        self.qplotxy(list_of_tuples_data, filename=filename, labels=labels, **kargs)
+
+    def qplotxy(self, list_of_tuples_data, filename=None, labels=None, **kargs):
         """
         thin wrapper around plot.
         expects list_of_tuples_data to be a list of tuples containing X and Y data:
@@ -693,28 +750,27 @@ class draw:
         assert filename, "Internal Error: _qplot no filename"
         assert labels, "Internal Error: _qplot, labels must be a list"
 
-        dpi = config.DEFAULT_DPI
-        if "dpi" in kargs:
-            dpi = kargs["dpi"]
-
         # set up figure
-        plot.cla() # paranoia!
-        fig = plot.figure(dpi=dpi)
+        fig = self.getfigure(**kargs)
         axis = fig.add_subplot(111)
 
         if "title" in kargs: axis.set_title(kargs["title"])
         if "xlabel" in kargs: axis.set_xlabel(kargs["xlabel"])
-        if "ylable" in kargs: axis.set_ylabel(kargs["ylabel"])
+        if "ylabel" in kargs: axis.set_ylabel(kargs["ylabel"])
         if "xaxis" in kargs: axis.set_xticks(kargs["xaxis"])
         if "yaxis" in kargs: axis.set_yticks(kargs["yaxis"])
+        if "xlim" in kargs: axis.set_xlim(kargs["xlim"])
+        if "ylim" in kargs: axis.set_ylim(kargs["ylim"])
 
         for index, item in enumerate(list_of_tuples_data):
-            if index > 0:
-                label = "random"
             axis.plot(item[0], item[1], label=labels[index])
+            
         #self.draw.py.yaxis([0,max(item[1])])
-        if labels: axis.legend()
-        return(self._saveFigure(fig, filename))
+        if labels: 
+            leg = axis.legend()#bbox_to_anchor=(0., 1.02, 1., .102), loc=3)
+            [t.set_fontsize(6) for t in leg.get_texts()]
+            
+        return(self.savefigure(fig, filename))
 
     def _vennDiagram2(self, left, right, overlap, filename=None,
         proportional=False, plot_sig=False, labels=None,
@@ -776,12 +832,7 @@ class draw:
         assert filename, "No filename specified!"
         assert labels, "No labels!"
 
-        dpi = config.DEFAULT_DPI
-        if "dpi" in kargs:
-            dpi = kargs["dpi"]
-
-        plot.cla()
-        fig = plot.figure(dpi=dpi)
+        fig = self.getfigure(**kargs)
         axis = fig.add_subplot(111)
         axis.set_position([0.02, 0.02, 0.96, 0.96])
 
@@ -840,7 +891,7 @@ class draw:
         axis.text(15, 17, labels["right"], size=15, ha="center", va="center")
         axis.text(10, 19, labels["title"], size=28, ha="center", va="center")
 
-        return(self._saveFigure(fig, filename))
+        return(self.savefigure(fig, filename))
 
     def _venn3():
         """
@@ -902,15 +953,11 @@ class draw:
         # no valid_args specified here. You should know what you are doing...
         assert filename, "No filename specified!"
 
-        dpi = config.DEFAULT_DPI
-        if "dpi" in kargs:
-            dpi = kargs["dpi"]
 
         m = lists
         s = scores
 
-        plot.cla()
-        fig = plot.figure(dpi=dpi)
+        fig = self.getfigure(**kargs)
         axis = fig.add_subplot(111)
         axis.set_position([0.02, 0.02, 0.96, 0.96])
 
@@ -979,15 +1026,122 @@ class draw:
         #axis.text(15, 17, labels["right"], size=15, ha="center", va="center")
         #axis.text(10, 19, labels["title"], size=28, ha="center", va="center")
 
-        return(self._saveFigure(fig, filename))
+        return(self.savefigure(fig, filename))
 
-    def _saveFigure(self, fig, filename):
-        valid_output_modes = ["png", "ps", "eps", "svg"]
-        assert config.DEFAULT_DRAWER in valid_output_modes, "'%s' is not a supported drawing mode" % config.DEFAULT_DRAWER
-        save_name = "%s.%s" % ("".join(filename.split(".")[:-1]), config.DEFAULT_DRAWER)
+    def getfigure(self, size=None, aspect=None, **kargs):
+        """
+        **Purpose**
+            setup a valid figure instance based on size.
+        
+        **Arguments**
+            size (Optional, default="medium")
+                if size is a tuple then that tuple is the specified size in inches (don't ask)
+                You can also specify "small", "medium", "large" and "huge". Corrsponding to approximate pixel
+                sizes of (with the "normal" aspect)
+                small  : 
+                medium : 
+                large  :
+                huge   :
+                
+                If size is specified then it takes preference over aspect and aspect will be ignored.
+                
+            aspect (Optional, default="normal")
+                the aspect of the image.
+                currently only "normal", "long" and "square" are respected).
+        
+        **Returns**
+            A valid matplotlib figure object
+        """
+        # options in the args seem to be set at compile time. 
+        # So I have to interpret them here
+        if not size:
+            size = config.draw_size
+        elif len(size) == 2: # A tuple or list?
+            size_in_in = (size[0], size[1])
 
-        fig.savefig(save_name)
-        return(save_name)
+        if not aspect:
+            aspect = config.draw_aspect
+        
+        if len(size) == 2:
+            size_in_in = (size[0], size[1])
+            return(plot.figure(figsize=size_in_in))
+        else:
+            data = {"normal": {"small": (5,4), "medium": (8,6), "large": (12,9), "huge": (16,12)},
+                    "square": {"small": (4,4), "medium": (7,7), "large": (9,9), "huge": (12,12)},
+                    "long": {"small": (4,5), "medium": (6,8), "large": (9,12), "huge": (12,16)},
+                    "wide": {"small": (7,4), "medium": (12,6), "large": (18,9), "huge": (24,12)}
+                    }
+            dpi = {"small": 75, "medium": 150, "large": 300, "huge": 600} # This dpi doesn't actually work here...
+            # See savefigure() for the actual specification
+            return(plot.figure(figsize=data[aspect][size]))
+
+    def savefigure(self, fig, filename, size=config.draw_size):
+        """
+        **Purpose**
+            Save the figure
+            to filename, modifying the filename based on the current drawing mode
+            (if required)
+        **Arguments**
+            fig
+                the figure handle
+                
+            filename
+                the filename to save the file to
+                
+        **Returns**
+            the actual filename used to save the image
+        """
+        assert config.draw_mode in config.valid_draw_modes, "'%s' is not a supported drawing mode" % config.draw_mode
+        
+        # So that saving supports relative paths.
+        path, head = os.path.split(filename)
+        save_name = "%s.%s" % (".".join(head.split(".")[:-1]), config.draw_mode) # this will delete .. in filename, e.g. file.meh.png
+        
+        dpi = {"small": 75, "medium": 150, "large": 200, "huge": 300}
+        fig.savefig(os.path.join(path, save_name), dpi=dpi[size])
+        plot.close(fig) # Saves a huge amount of memory.
+        return(save_name)            
+
+    def do_common_args(self, ax, **kargs):
+        """
+        **Purpose**
+            deal with common arguments to matplotlib (may not always work, depending upon the figure type.
+        
+        **Arguments**
+            ax
+                an matplotlib axes object
+        
+            These are based loosly on the matplotlib versions
+                xlabel - x-axis label
+                ylabel - y-axis label
+                title  - title
+                xlims - x axis limits
+                ylims - y-axis limits
+                logx - set the x scale to a log scale argument should equal the base
+                logy - set the y scale to a log scale
+                legend_size - size of the legend, small, normal, medium
+            
+        **Returns**
+            None
+        """
+        if "xlabel" in kargs:
+            ax.set_xlabel(kargs["xlabel"])
+        if "ylabel" in kargs:
+            ax.set_ylabel(kargs["ylabel"])
+        if "title" in kargs:
+            ax.set_title(kargs["title"])
+        if "xlims" in kargs:
+            ax.set_xlim(kargs["xlims"])
+        if "ylims" in kargs:
+            ax.set_ylim(kargs["ylims"])      
+        if "logx" in kargs:
+            ax.set_xscale("log", basex=kargs["logx"])
+        if "logy" in kargs:
+            ax.set_yscale("log", basey=kargs["logy"])
+        if "legend_size" in kargs:
+            legend = ax.get_legend()
+            [t.set_fontsize(kargs["legend_size"]) for t in legend.get_texts()]
+            
 
     def _stacked_plots(self, filename, loc, features, graphs, merged=False, **kargs):
         """
@@ -1006,8 +1160,7 @@ class draw:
         if "dpi" in kargs:
             dpi = kargs["dpi"]
 
-        plot.cla()
-        fig = plot.figure(dpi=dpi, figsize=(6, 20))
+        fig = self.getfigure(**kargs)
 
         spacer = 0.9 / len(graphs)
 
@@ -1026,4 +1179,329 @@ class draw:
             ax2.set_ylim([0, 1])
             ax2.set_xlim([0, len(graphs[key])])
 
-        return(self._saveFigure(fig, filename))
+        return(self.savefigure(fig, filename))
+        
+    def _simple_heatmap(self, filename=None, colour_map = cm.Reds, vmin=0, vmax=None, symmetric=False, **kargs):
+        """
+        A simplified version of heatmap, with no clustering, and a simpler representation
+        Also, you can change the size and aspect of the display.
+        
+        **Arguments**
+            data
+                an array of arrays or equivalent.
+        
+            colour_map
+                Default is YlOrRd
+                
+            bracket
+                specify a tuple for the min max values for the heatmap.
+                
+            symmetric (Optional, default=False)
+                If set to true, find the mean, the max and the min n the data
+                and then set the range of colours to span min .. mean .. max, so that
+                the gap between mean and max and min and max are identical.
+                If set to False (default behaviour) then simply range the colours from min(data) to
+                max(data).
+                
+            fig_size (Optional, default=(6,6))
+                change the figure size aspect.
+        """
+        # This should be a wrapper around draw.heatmap() to take advantage of heatmaps 
+        # better code.
+        
+        assert filename, "_heatmap() missing filename"
+
+        data = kargs["data"]
+
+        # positions of the items in the plot:
+        heatmap_location =  [0.12,   0.01,   0.75,   0.98]
+        scalebar_location = [0.01,  0.96,   0.10,   0.03]
+
+        if "bracket" in kargs:
+            data = self.bracket_data(data, kargs["bracket"][0], kargs["bracket"][1])
+            vmin = kargs["bracket"][0]
+            vmax = kargs["bracket"][1]
+
+        if not vmax:
+            """
+            I must guess the vmax value. I will do this by working out the
+            mean then determining a symmetric colour distribution
+            """
+            if symmetric:
+                me = mean(data)
+                ma = abs(me - max(data))
+                mi = abs(min(data) + me)
+                if ma > mi:
+                    vmin = me - ma
+                    vmax = me + ma
+                else:
+                    vmin = me - mi
+                    vmax = me + mi
+            else:
+                vmax = max(data)
+                vmin = min(data)
+                
+        if not "aspect" in kargs:
+            kargs["aspect"] = "long"
+        fig = self.getfigure(**kargs)
+
+        # ---------------- Second plot (heatmap) -----------------------
+        ax3 = fig.add_subplot(121)
+        hm = ax3.pcolor(data, cmap=colour_map, vmin=vmin, vmax=vmax, antialiased=False)
+
+        ax3.set_frame_on(True)
+        ax3.set_position(heatmap_location)
+        ax3.set_xlim([0,data.shape[1]])
+        ax3.set_ylim([0,data.shape[0]])
+        ax3.set_yticklabels("")
+        ax3.set_xticklabels("")
+        ax3.yaxis.tick_right()
+        [item.set_markeredgewidth(0.0) for item in ax3.xaxis.get_ticklines()]
+        [item.set_markeredgewidth(0.0) for item in ax3.yaxis.get_ticklines()]
+        #[t.set_fontsize(6) for t in ax3.get_yticklabels()] # generally has to go last.
+        #[t.set_fontsize(6) for t in ax3.get_xticklabels()]
+
+        ax0 = fig.add_subplot(122)
+        ax0.set_position(scalebar_location)
+        ax0.set_frame_on(False)
+
+        cb = fig.colorbar(hm, orientation="horizontal", cax=ax0, cmap=colour_map)
+        cb.set_label("")
+        [label.set_fontsize(5) for label in ax0.get_xticklabels()]
+
+        return(self.savefigure(fig, filename))
+    
+    def nice_scatter(self, x=None, y=None, filename=None, do_best_fit_line=False, 
+        print_correlation=False, **kargs):
+        """
+        **Purpose**
+            Draw a nice simple scatter plot
+            
+        **Arguments**
+            x, y (Required)
+                x and y values
+                
+            filename (Required)
+                the filename to save as.
+                
+            spots (Optional, must be a 2-length tuple containing (x, y) data)
+                These spots will be empahsised with whatever spots_cols is or an 
+                "Orange" colour by default
+                
+            do_best_fit_line (Optional, default=False)
+                Draw a line of best fit and the
+                
+            print_correlation (Optional, default=None)
+                You have to spectify the type of correlation to print on the graph.
+                valid are:
+                    pearson = pearson correlation.
+                    pearsonr2 = R^2.
+                
+                NOTE: do_best_fit_line must be True for this to work.
+            
+            Supported keyword arguments:
+                xlabel, ylabel, title, logx, logy
+        
+        **Returns**
+            the real filename, which may get modified depending upon the current drawing mode
+            (usually results in a png)
+        """
+        fig = self.getfigure(aspect="square")
+        ax = fig.add_subplot(111)
+        
+        ax.scatter(x, y, s=2, c="black", alpha=0.2, edgecolors="none")
+        
+        if "spots" in kargs and kargs["spots"]:
+            if "spots_cols" in kargs and kargs["spots_cols"]:
+                # Will recognise a string or sequence autmagivally.
+                ax.scatter(kargs["spots"][0], kargs["spots"][1], s=5, c=kargs["spots_cols"], alpha=0.8, edgecolor="none")
+            else:
+                ax.scatter(kargs["spots"][0], kargs["spots"][1], s=5, c="orange", alpha=0.8, edgecolor="none")
+        
+        if do_best_fit_line:
+            # linear regression
+            (ar, br) = polyfit(x, y, 1)
+            xr = polyval([ar,br], x)
+            slope, intercept, r_value, p_value, std_err = linregress(x,y)
+    
+            mx = [min(x), max(x)]
+            my = [slope * min(x) + intercept, slope * max(x) + intercept]
+    
+            ax.plot(mx, my, "r.-")
+            
+            if print_correlation:
+                if print_correlation == "pearson":
+                    ax.text(mx[0], my[0], "R=%.2f" % r_value)
+                elif print_correlation == "pearsonr2":
+                    ax.text(mx[0], my[0], "R2=%.2f" % (r_value*r_value))
+        
+        if "logx" in kargs and kargs["logx"]:
+            ax.set_xscale("log", basex=kargs["logx"])
+        if "logy" in kargs and kargs["logy"]:
+            ax.set_yscale("log", basey=kargs["logy"])
+        
+        self.do_common_args(ax, **kargs)
+        
+        return(self.savefigure(fig, filename))
+    
+    def bar_chart(self, filename=None, genelist=None, data=None, cols=None, **kargs):
+        """
+        **Purpose**
+            draw a bar chart with error bars and interpret and package the data coming from a genelist-like object
+            
+        **Args**
+            filename
+            
+            genelist
+                a genelist-like object
+                
+            data
+                the key to look for in the genelist for the data
+                
+            labels
+                the key to look for in the genelist for labels
+                
+            title (Optional)
+                the title
+                
+            err (Optional)
+                the key to look for in the genelist for error bar values.
+                This one assumes symmetric values +- around the data
+            
+            err_up (Optional)
+                the key to look for errorbars going up
+                
+            err_dn (Optional)
+                the key to look for error bars going down
+                
+            errs_are_absolute (Optional, default=False)
+                error bars are not +- from the data, but are values that specify where the error
+                bars extend to. This needs to be set to True commonly for confidence intervals
+                and left as False for standard errors.
+            
+            cols (Optional, default=Use a default set from matplotlib)
+                the colours to use for the bar charts, there shoudl be one for each bar.
+                
+            Other kargs respected by bar_chart:
+                aspect
+                size
+                xlabel - x-axis label
+                ylabel - y-axis label
+                title  - title
+                xlims - x axis limits
+                ylims - y-axis limits
+                logx - set the x scale to a log scale argument should equal the base
+                logy - set the y scale to a log scale
+            
+        **Returns**
+            The actual_filename used to save the image
+        """
+        
+        da = []
+        err = []
+        err_up = []
+        err_dn = []
+        for i in genelist:
+            da.append(i[data])
+            if "err" in kargs:
+                err.append(i[kargs["errs"]])
+            if "err_up" in kargs:
+                err_up.append(i[kargs["err_up"]])
+            if "err_dn" in kargs:
+                err_dn.append(i[kargs["err_dn"]])
+          
+        if "errs_are_absolute" in kargs and kargs["errs_are_absolute"]:
+            for i, n in enumerate(da): # normalise the values so matplotlib can underastand them
+                if err_up:
+                    err_up[i] = [a - b for a, b in zip(err_up[i], n)]
+                if err_dn:
+                    err_dn[i] = [b - a for a, b in zip(err_dn[i], n)]
+                   
+        if not cols:
+            # I need to generate a series of colours.
+            cmap = cm.get_cmap(cm.Paired, len(kargs["cond_names"]))
+            cols = []
+            step = 256 // len(kargs["cond_names"]) 
+            for t in xrange(1, 256, step):
+                cols.append(cmap(t))
+            #print cols
+        
+        fig = self.getfigure(**kargs)
+        ax = fig.add_subplot(111)
+        ax.set_position([0.3, 0.1, 0.68, 0.8]) # plenty of space for labels
+        
+        # Convert to Numpy arrays for type laziness
+        da = array(da).T
+        err = array(err).T
+        err_up = array(err_up).T
+        err_dn = array(err_dn).T
+        wid = (1.0 / len(da))-0.05
+        x = arange(len(da[0]))
+               
+        if "cond_names" in kargs:
+            labs = kargs["cond_names"]
+        else: # fake one
+            labs = ["" for t in da]
+    
+        general_args = {"ec": "black", "ecolor": "black"} 
+        
+        for i, r in enumerate(da):
+            if err:
+                ax.barh(x+(wid*i), r, wid, xerr=err, label=labs[i], fc=cols[i], **general_args)
+            elif "err_up" in kargs and "err_dn" in kargs:
+                ax.barh(x+(wid*i), r, wid, xerr=(err_dn[i], err_up[i]), label=labs[i], fc=cols[i], **general_args)
+            elif "err_up" in kargs:
+                ax.barh(x+(wid*i), r, wid, xerr=err_up[i], label=labs[i], fc=cols[i], **general_args)
+            else:
+                ax.barh(x+(wid*i), r, wid, label=labs[i], fc=cols[i], **general_args)  
+            # I'm sure you don't mean just err_dn
+        ax.set_ylim([0, x[-1]+(wid*2)])
+        
+        if "cond_names" in kargs:
+            ax.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3, ncol=2, mode="expand", borderaxespad=0.)
+            
+        if "labels" in kargs and kargs["labels"]:
+            ax.set_yticklabels(genelist[kargs["labels"]], rotation="horizontal")
+            ax.set_yticks(x+0.5)
+        
+        self.do_common_args(ax, **kargs)
+        
+        [item.set_markeredgewidth(0.0) for item in ax.xaxis.get_ticklines()]
+        [item.set_markeredgewidth(0.0) for item in ax.yaxis.get_ticklines()]
+        #[t.set_fontsize(6) for t in ax3.get_yticklabels()] # generally has to go last.
+        [t.set_fontsize(6) for t in ax.get_yticklabels()]
+        
+        return(self.savefigure(fig, filename))
+
+    def pie(self, data, labels, filename, aspect="square", title=None, colours=None, 
+        draw_percents=False, cmap=None, **kargs):
+        """
+        Draw a PIE!
+        """
+        
+        fig = self.getfigure(aspect=aspect, **kargs)
+        ax = fig.add_subplot(111)
+        
+        extra_args = {}
+        if draw_percents:
+            extra_args["autopct"] = "%1.1f%%"
+        
+        if colours:
+            ax.pie(data, labels=labels, shadow=False, colors=colours, **extra_args)
+            
+        elif cmap:
+            ld = len(data)
+            cmap = cm.get_cmap(cmap, ld)
+            ran = np.linspace(0.0, 1.0, num=ld)#/float(ld)
+            colours = cmap(ran)[:,:-1]
+            colours = [rgb2hex(col) for col in colours] # rgb2hex from matplotlib not needed, but easier to print
+            
+            ax.pie(data, labels=labels, shadow=False, colors=colours, **extra_args)           
+        else:
+            ax.pie(data, labels=labels, shadow=False, **extra_args)
+        
+        if title:
+            ax.set_title(title)
+        
+        real_filename = self.savefigure(fig, filename)
+        return(real_filename)

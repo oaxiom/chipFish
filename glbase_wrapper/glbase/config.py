@@ -7,15 +7,31 @@ config must be imported before any other glbase library.
 
 # config cannot import any other glbase module
 
-import os, logging
+import os, logging, subprocess
 
-# container for global environment variables.
+# -------------- Versioning data
 
-# The current version of GLbase
-VERSION = "0.169.hg"
-DATE = "27th Jan 2011"
+RELEASE = True
 
-SILENT = False # set this to True to silence all glbase output.
+if RELEASE:
+    # These will be finalised when (if?) I ever get around to releasing glbase
+    VERSION = "1.411 - chipFish"
+    DATE = ""
+else:
+    try:
+        oh = open(os.path.join(os.path.split(__file__)[0], ".hg/cache/branchheads"), "rU")
+        VERSION = "0.%s" % oh.readline().split()[1] #?!?!
+        oh.close()
+    except Exception:
+        VERSION = "version data not found"
+    DATE = ""
+    
+__version__ = VERSION # There's a lot of needless redundancy here...
+version = VERSION # this is the valid one I want to use in future.
+
+# -------------- General options
+
+SILENT = False # set this to True to silence all glbase output. Only works at startup
 DEBUG = True
 
 # flags for the availability of three core libraries. [Deprecated now?]
@@ -27,10 +43,36 @@ SCIPY_AVAIL = False
 NUM_ITEMS_TO_PRINT = 3 # number of items to print by default.
 PRINT_LAST_ITEM = True
 
-DEFAULT_DPI = 150
-DEFAULT_DRAWER = "png" # slated for deprecation.
+# size of buckets for collide() and overlap()
+# If this is changed then glload will not work correctly.
+bucket_size = 10000 # in bp - tested, seems a reasonable choice.
 
-# set up the logger here.
+DEFAULT_DPI = 150 # not working?
+draw_mode = "png"
+draw_size = "medium"
+draw_aspect = "normal"
+valid_draw_modes = frozenset(["png", "ps", "eps", "svg"])
+
+# -------------- Start of the new-style options:
+
+class flat:
+    block_size = 2000
+    cache = 100000 # maximum number of blocks to keep in memory.
+    # these are equivalent to about 800 Mb's of memory on a Fedora box
+    # And 650 Mbs on Mac OSX. Never tested on Windows
+
+def change_draw_size(size):
+    # These would be better as attached to the variable? __call__() ?
+    # This is usually correctly respected.
+    assert size in ["small", "medium", "large", "huge"], "drawing size '%s' not found" % size
+    draw_size = size
+    
+def change_draw_aspect(aspect):
+    # This is often ignored though by the drawing methods themselves...
+    assert size in ["normal", "square", "long"], "drawing aspect '%s' not found" % size
+    draw_size = aspect
+
+# -------------- set up the logger here.
 # this needs to be moved to log.py
 # You can access it using config.log()
 logging.basicConfig(level=logging.DEBUG,
@@ -46,7 +88,7 @@ logging.getLogger('').addHandler(console)
 # use config.log. ... () to get to the logger
 log = logging.getLogger('glbase')
 
-# helpers [Should be deprecated. Call config.log.<level>() to call info
+# helpers [Should be deprecated. Call config.log.<level>() to call info]
 info = log.info
 warning = log.warning
 debug = log.debug

@@ -10,6 +10,7 @@ degenerate character N=[ATCG]
 """
 
 import sys, os, numpy, string, csv, random, math
+import scipy.stats as stats
 
 #from errors import AssertionError
 
@@ -87,12 +88,14 @@ def iti(_fm, _fmcpos, _cl, _list): # my iterator
     return(True)
 
 def movingAverage(listIn, window=20, normalise=False, bAbsiscaCorrect=True):
+    """
+    actually a sliding window
+    """
     assert window < len(listIn), "the window size for the moving average is too large"
     assert window >= 1, "the window size is too small (%s < 1)" % window
 
     if window == 1: # just return the original array
         return(numpy.arange(0, len(listIn)), listIn)
-
 
     if bAbsiscaCorrect:
         half_window_left = int(math.ceil(window / 2.0)) # correct for floating error division.
@@ -114,6 +117,36 @@ def movingAverage(listIn, window=20, normalise=False, bAbsiscaCorrect=True):
             y.append(score)
 
     return(x, y)
+
+def cumulative_line(listIn, percent=True):
+    """
+    convert the array to a cumulative array
+    
+    The array is expected to be some sort of list of numbers.
+    This will return the array added in a cumulative manner from 0 .. 100 %
+    The returned list will always be floats.
+    
+    (If percent is left as True - the default)
+    """
+    s = sum(listIn)
+    m = max(listIn)
+    
+    c = 0
+    rc = 0
+    n = []
+    for i in listIn:
+        c += i
+        if c >= 50:
+            rc -= i
+        else:
+            rc += i
+        n.append(rc)
+    
+    if percent:
+        a = (numpy.array(n) / float(s)) * 100
+    else:
+        a = n
+    return(a)
 
 def osc(last, type):
     """
@@ -380,11 +413,10 @@ def convertFASTAtoDict(filename):
     openfile = open(filename, "rU")
 
     result = []
-    record = ""
     #entry = {"seq": "", "name": "empty"}
     for line in openfile:
         if line[:1] != ">": # not a FASTA block, so add this line to the sequence
-            entry["seq"] += line.replace('\r', '').replace("\n", "") # strip out the new line WINDOWS specific!
+            entry["seq"] += line.replace('\r', '').replace("\n", "") 
 
         if line[:1] == ">": # fasta start block
             entry = {"seq": "", "name": "empty"} # make a new node
@@ -719,6 +751,44 @@ def renameDuplicatesFromCSV(path, csvfile, outfile, column_no = 3, bKeepEmptyCol
     inf.close()
     outf.close()
 
+# This code comes from http://www.johndcook.com/standard_deviation.html
+# the point of all this complexity is to allow incremental computation of mean and std in
+# a numerically stable way. 
+# Taken from ACT
+class accumulate_mean:
+    def __init__(self):
+        self.m_n = self.m_oldM = self.m_newM = 0
+        
+    def fields(self):
+        return ["mean", "stdev"]
+        
+    def add(self, x, binWidth):
+        x = float(x)/binWidth
+        self.m_n += 1
+        if self.m_n == 1:
+            self.m_oldM = self.m_newM = x
+            self.m_oldS = 0.0
+        else:
+            self.m_newM = self.m_oldM + (x - self.m_oldM) / self.m_n
+            self.m_newS = self.m_oldS + (x - self.m_oldM) * (x - self.m_newM)
+            # set up for next iteration
+            self.m_oldM = self.m_newM
+            self.m_oldS = self.m_newS
+  
+    def finishPosition(self):
+        pass # nothing to do for mean
+  
+    def finalize(self, count):
+        mean = float(self.m_newM) * self.m_n / count
+        if self.m_n > 1:
+            stdev = math.sqrt(self.m_newS/ (self.m_n - 1))
+        else:
+            stdev = 0.0
+        self.val = {"mean":mean, "stdev":stdev}
+
+    def value(self):
+        return self.val
+
 """
     It's hard to believe, but these custom routines below are 10x as
     fast as their numpy equivalents...
@@ -761,3 +831,55 @@ def isPalindromic(seq):
     if rc_expanded(seq.lower()) == seq.lower():
         return(True)
     return(False)
+
+def isPalindrome(seq):
+    """
+    is a sequence a palindrome?
+    """
+    if rc_expanded(seq.lower()) == seq.lower():
+        return(True)
+    return(False)
+
+def bin_data(array_like, bin_size):
+    """
+    Surprisingly not in Numpy...
+    """
+    newa = []
+    for i in xrange(0, len(array_like), bin_size):
+        newa.append(sum(array_like[i:i+bin_size]))
+    return(newa)
+
+def scale_data(array_like, range=(0, 100)):
+    """
+    rescale the data within range 
+    """
+    assert range[0] == 0, "sorry, only ranges 0..n are supported at present"
+    
+    scaled = numpy.zeros(range[1])
+    s = len(array_like)/ float(range[1])
+    
+    for fi, f in enumerate(numpy.arange(range[0], len(array_like)-1, s)):
+        val = array_like[int(math.floor(f)):int(math.floor(f+s))]
+        if len(val) >= 1: # when s < 1.0 sometimes the recovered array will be empty
+            scaled[fi] += numpy.average(val)
+    return(scaled)
+
+def kde(val_list, range=(0,1), covariance=0.02, bins=50):
+    """
+    kernal denstity estimation of an array
+    
+    covariance not working?
+    """
+    a = numpy.linspace(range[0], range[1], bins)
+    
+    # Hack gaussian_kde()
+    def covariance_factor(self):
+        return covariance
+    
+    kde = stats.gaussian_kde(val_list)
+    setattr(kde, 'covariance_factor', covariance_factor.__get__(kde, type(kde)))
+    kde._compute_covariance()
+
+    kk = kde.evaluate(a) # resacle to get in integer range.
+    
+    return(numpy.array(kk, dtype=numpy.float64))

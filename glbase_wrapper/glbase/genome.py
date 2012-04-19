@@ -4,7 +4,7 @@ Genome
 
 TODO:
 -----
-* sequence should be bindable from the __init__()
+
 
 """
 
@@ -15,15 +15,15 @@ from genelist import genelist
 from flags import *
 from errors import AssertionError
 from location import location
+from progress import progressbar
 
 class genome(genelist):
-    def __init__(self, name="None", filename=None, **kargs):
-        """
-        **Purpose**
+    """
+    **Purpose**
 
         genome container.
 
-        **Arguments**
+    **Arguments**
 
         filename
             absolute filename (including path) to the actual file.
@@ -39,13 +39,14 @@ class genome(genelist):
             correct genome assembly then you can extract genomic
             sequence using getSequence() and getSequences()
 
-        **Result**
+    **Result**
 
         fills the genelist with the data from the file as specified by
         the format specifier.
         If no filename is specified it returns an empty genome.
-        """
-        valig_args = ["filename", "format", "sequence_path"]
+    """
+    def __init__(self, name="None", filename=None, **kargs):
+        valig_args = ["filename", "format", "sequence_path", "force_tsv"]
         for k in kargs:
             if k not in valig_args:
                 raise ArgumentError, (self.__init__, k)
@@ -59,6 +60,9 @@ class genome(genelist):
                 format = kargs["format"]
             else:
                 format = default # sniffer
+            
+            if "force_tsv" in kargs and kargs["force_tsv"]:
+                format["force_tsv"] = True
 
             # sniff the file to see if it's a tsv or a csv.
             if "sniffer" in format:
@@ -75,6 +79,7 @@ class genome(genelist):
             if not "tss_loc" in self.linearData[0]:
                 # the list does not have a tss_loc key,
                 # I need to build it myself from the loc and strand tags
+                config.log.warning("No 'tss_loc' key found, I'll attempt to build one...")
                 assert "loc" in self.linearData[0], "I can't find a location in the genome data! you must specify a 'tss_loc' or 'loc' key"
 
                 for item in self.linearData:
@@ -83,6 +88,10 @@ class genome(genelist):
                         item["tss_loc"] = location(chr=cloc["chr"], left=cloc["left"], right=cloc["left"])
                     elif item["strand"] in negative_strand_labels:
                         item["tss_loc"] = location(chr=cloc["chr"], left=cloc["right"], right=cloc["right"])
+                    else: # Strand is unknown (this came up when analysing RNA-seq data)
+                        # The actual tss could be any end. But as a compromise
+                        # I take the middle instead.
+                        item["tss_loc"] = location(chr=cloc["chr"], left=cloc["left"], right=cloc["right"]).pointify()
 
             self._optimiseData()
         if "sequence_path" in kargs:
@@ -91,6 +100,7 @@ class genome(genelist):
             self.bHasBoundSequence = False
 
         self._optimiseData()
+        config.log.info("Loaded genome '%s', found %s items" % (name, len(self)))
 
     def __str__(self):
         """
@@ -236,6 +246,30 @@ class genome(genelist):
             path specifying the locations of the FASTA files that make
             up the sequence data. They usually come in the form "chr1.fa"
             for human and mouse genomes.
+            
+            bindSequence will only work with multi-fasta files, i.e. the fasta genome should 
+            be in the form:
+            
+            FILE: chr1.fa::
+            
+                >chr1 
+                NNNNNNNNNNNNNNNNNNNNNNNN
+            
+            FILE: chr2.fa::
+            
+                >chr2 
+                NNNNNNNNNNNNNNNNNNNNNNNN
+
+            etc.
+            
+            The names of the chromosomes will come from the names of the fasta files before the 
+            period and with 'chr' removed (if present), so for example:
+            
+            chr1.fa 
+
+            will result in '1' entries in the db.
+            
+            And similarly '1.fa' will result in chr names of '1'. 
 
         **Result**
 
@@ -268,6 +302,7 @@ class genome(genelist):
                 self.seq_data[chr_key]["linelength"] = len(second_line) -1 # each line.
         config.log.info("Bound Genome sequence: %s" % path)
         self.bHasBoundSequence = True
+
         return(True)
 
     def getSequence(self, **kargs):
@@ -301,17 +336,24 @@ class genome(genelist):
         assert "loc" in kargs or "coords" in kargs, "No valid coords or loc specified"
         assert self.bHasBoundSequence, "No Available genome FASTA files"
 
-        if "loc" in kargs: loc = kargs["loc"]
-        elif "coords" in kargs: loc = kargs["coords"]
+        if "loc" in kargs: 
+            loc = kargs["loc"]
+        elif "coords" in kargs: 
+            loc = kargs["coords"]
         try:
             loc = location(loc=loc)
         except:
             pass
+            
         assert isinstance(loc, location), "'loc' must be a proper genome location"
 
         left = loc["left"]
         right = loc["right"]
         chrom = loc["chr"]
+
+        if chrom not in self.seq:
+            config.log.warning("'%s' not found" % chrom)
+            return(None)
 
         seekloc = (left + (left / self.seq_data[chrom]["linelength"]))-1 # the division by 50 is due to the presence of newlines every 50 characters.
         self.seq[chrom].seek(seekloc+self.seq_data[chrom]["offset"]) # move to the start location.
@@ -338,7 +380,7 @@ class genome(genelist):
 
         return(ret)
 
-    def getSequences(self, **kargs):
+    def getSequences(self, genelist=None, loc_key=None, replace_loc_key=True, **kargs):
         """
         **Purpose**
 
@@ -358,6 +400,12 @@ class genome(genelist):
             the name of the location key (e.g. "loc", "tss_loc", "coords", etc..)
 
         Optional Arguments
+
+        replace_loc_key (Optional, default=True)
+            If you specify a delta then the sequence will cover a different region than that
+            specified in the loc key. hence getSequences() replaces the "loc" key with
+            the new loc for which the sequence was taken from. If you set this to False
+            then the old loc key is NOT overwritten.
 
         strand_key
             If you want the list to respect the strand you must tell it the name of
@@ -398,19 +446,15 @@ class genome(genelist):
         Will add a new key "seq_loc" that contains the new location that
         the seq spans across.
         """
-        valid_args = ["genelist", "loc_key", "strand_key", "deltaleft", "deltaright", "delta",
-            "pointify", "mask"]
-        for key in kargs:
-            assert key in valid_args, "getSequences - Argument '%s' is not recognised" % key
 
         assert self.bHasBoundSequence, "No Available genome FASTA files"
-        assert "genelist" in kargs, "Required argument: 'list' is missing or malformed"
-        assert "loc_key" in kargs, "Required argument: 'loc_key' is missing or malformed"
+        assert genelist, "Required argument: 'list' is missing or malformed"
+        assert loc_key, "Required argument: 'loc_key' is missing or malformed"
+        assert self.__repr__() != "<glbase.delayedlist>", "Sorry, delayedlists cannot have sequence added"
         #assert "deltaleft" in kargs and "strand_key" in kargs, "You must specify a strand_key if you want to assymetrically expand the coordinates"
         #assert "deltaright" in kargs and "strand_key" in kargs, "You must specify a strand_key if you want to assymetrically expand the coordinates"
 
-        newl = kargs["genelist"].__copy__()
-        loc_key = kargs["loc_key"]
+        newl = genelist.__copy__()
 
         strand_key = False
         if "strand_key" in kargs:
@@ -420,7 +464,8 @@ class genome(genelist):
         if "mask" in kargs and kargs["mask"]:
             mask = True
 
-        for item in newl.linearData: # this will break delayedlists...
+        p = progressbar(len(newl.linearData))
+        for index, item in enumerate(newl.linearData): # this will break delayedlists...
             newloc = item[loc_key]
 
             if "pointify" in kargs and kargs["pointify"]:
@@ -441,6 +486,9 @@ class genome(genelist):
                 elif kargs["strand_key"] in negative_strand_labels:
                     newloc = newloc.expandRight(kargs["deltaright"])
 
+            if replace_loc_key:
+                item["loc"] = newloc
+
             if strand_key:
                 seq = self.getSequence(loc=newloc, strand=item[strand_key], mask=mask)
                 item["strand"] = item[strand_key]
@@ -450,6 +498,7 @@ class genome(genelist):
 
             item["seq"] = seq
             item["seq_loc"] = newloc
+            p.update(index)
 
         newl._optimiseData()
         config.log.info("Got sequences for '%s'" % self.name)

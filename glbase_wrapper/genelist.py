@@ -23,19 +23,6 @@ class genelist(glbase.genelist):
     __doc__ = "Overriden: Not Present"
     __tooltype__ = "Vanilla genelist"
 
-    # gui stuff.
-    # available for the gui on this class
-    __gui__avail__ = {"load a list": glbase.genelist.load,
-        "append entry": glbase.genelist.append,
-        "collide lists": glbase.genelist.collide,
-        "overlap lists": glbase.genelist.overlap,
-        "map lists": glbase.genelist.map,
-        "remove duplicates": glbase.genelist.removeDuplicates,
-        "reverse": glbase.genelist.reverse,
-        "save list": glbase.genelist.save,
-        "sort list by key": glbase.genelist.sort
-        }
-
     # I have to redefine the methods chipFish respects here:
     def annotate(self, **kargs):
         glbase.genelist.annotate(self, **kargs)
@@ -46,3 +33,54 @@ class genelist(glbase.genelist):
         "optional": {"resolution": "filename"}} # bind gui descriptor
 
     # next method:
+    def __getitem__(self, key):
+        """
+        Emulate a dict
+        """
+        if key == "info": # catch this special key
+            for k in self.meta_data:
+                print "%s\t:\t%s" % (k, self.meta_data[k])
+        else:
+            assert key in self.meta_data, "'%s' not found in this track" % key
+            return(self.meta_data[key])
+
+    # new methods:
+    def get_data(self, type, loc, strand=None, resolution=1, **kargs):
+        """
+        **Purpose**
+            mimic the entry to track.
+
+        **Arguments**
+            loc
+                location span to get the array for.
+
+            strand (Not supported)
+
+            resolution
+                the bp resolution to use for the array.
+
+        **Results**
+            returns a Numpy array.
+        """
+        if type == "bar":
+            # make a single array
+            ret = zeros(int( (loc["right"]-loc["left"]+resolution)/resolution ))
+
+            if loc["chr"] in self.dataByChr:
+                for item in self.dataByChr[loc["chr"]]:
+                    if qcollide(loc["left"], loc["right"], item["loc"]["left"], item["loc"]["right"]):
+                        # make a suitable draw object
+                        for rloc in xrange(item["loc"]["left"], item["loc"]["right"], int(resolution)):
+                            array_relative_location = int((rloc - loc["left"]) / resolution) # convert relative to the array
+
+                            if array_relative_location >= 0 and array_relative_location < len(ret): # within array
+                                ret[array_relative_location] += 1
+            return(ret)
+        elif type == "spot":
+            ret = []
+            if loc["chr"] in self.dataByChr:
+                for item in self.dataByChr[loc["chr"]]:
+                    if qcollide(loc["left"], loc["right"], item["loc"]["left"], item["loc"]["right"]):
+                        ret.append(item["loc"])
+            return(ret)
+        return(None)

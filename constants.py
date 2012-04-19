@@ -1,7 +1,7 @@
 """
 constants, part of chipFish
 
-(c) 2008-2011 oAxiom
+(c) 2008-2012 oAxiom
 
 Not for distribution.
 

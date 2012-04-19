@@ -13,38 +13,56 @@ import utils, config
 
 from data import *
 from location import location
+from errors import BadBinaryFileFormatError
 
 # ----------------------------------------------------------------------
 # Some helper functions
 
 def glload(filename):
     """
-    load a pickle.
+    **Purpose**
+        Load a glbase binary file
+        (Actually a Python pickle)
+        
+    **Arguments**
+        filename (Required)
+            the filename of the glbase binary file to load.
+            
+    **Returns**
+        The glbase object previously saved as a binary file
     """
     assert os.path.exists(os.path.realpath(filename)), "File '%s' not found" % filename
 
-    oh = open(os.path.realpath(filename), "rb")
-    newl = cPickle.load(oh)
-    oh.close()
+    try:
+        oh = open(os.path.realpath(filename), "rb")
+        newl = cPickle.load(oh)
+        oh.close()
+    except cPickle.UnpicklingError:
+        raise BadBinaryFileFormatError, filename
+        
     config.log.info("Loaded '%s' binary file with '%s' items" % (filename, len(newl)))
+    # Recalculate the _optimiseData for old lists, and new features
+    try:
+        if newl.qkeyfind:
+            pass
+        if newl.buckets: # added in 0.381
+            pass
+    except Exception:
+        newl._optimiseData()
+        
     return(newl)
 
-def change_drawing_mode(self, mode):
+def change_drawing_mode(mode):
     """
     Change the output driver
 
     send me "png", "eps"|"ps" for your output needs
+    
+    This is a duplication of config.change_draw_mode() ...
     """
-    recognised_modes = ["png", "ps", "eps"]
-    self.output_mode = "png"
+    assert mode in config.valid_draw_modes, "Draw output mode '%s' is not recognised" % mode
 
-    assert mode in recognised_modes, "Draw output mode '%s' is not recognised" % mode
-
-    if mode == "png":
-        config.DEFAULT_DRAWER = "png"
-    elif mode == "eps" or mode == "ps":
-        config.DEFAULT_DRAWER = "eps"
-    return(True)
+    config.draw_mode = mode
 
 # ----------------------------------------------------------------------
 # Criteria functions.

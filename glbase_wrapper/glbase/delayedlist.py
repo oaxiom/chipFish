@@ -26,23 +26,52 @@ except:
 
 class delayedlist(genelist):
     """
-    delayedlist is a descendent of genelist - except the data never
-    makes it into memory.
+    **Purpose**
+    
+        delayedlist is very similar to a genelist - except the data never
+        makes it into memory. This allows you to iterate over huge files from disk.
+    
+    **Arguments**
+        name (Optional)
+            Will default to the name of the file if a file is loaded,
+            otherwise name will be set to "Generic List" by default.
+            us the name argument to give it a custom nam,e
+
+        filename (Optional)
+            the name of a file to attempt to load.
+
+        force_tsv (Optional)
+            if you specify a filename to load then
+            setting this argument to True will force the file to be treated
+            as a tsv (tab-separated) rather than the default csv (comma
+            separated).
+
+        format
+            format specifier. (see docs... complex)
+
     """
-    def __init__(self, filename=None, **kargs):
-        genelist.__init__(self) # no kargs though.
+    
+    def __init__(self, filename=None, format=None, force_tsv=False, **kargs):
+        genelist.__init__(self) # no kargs though. I want the mpty version.
 
         assert filename, "No Filename"
         assert os.path.exists(filename), "%s not found" % (filename)
-        assert "format" in kargs, "You must provide a format for delayedlist. I cannot guess its format."
+        assert format, "You must provide a format for delayedlist. I cannot guess its format."
 
         self.path = os.path.split(os.path.realpath(filename))[0]
         self.filename = os.path.split(os.path.realpath(filename))[1]
         self.fullpath = filename
         self.filehandle = None
+        self.format = format # override default
 
-        self.format = kargs["format"] # override default
+        if force_tsv: 
+            self.format["force_tsv"] = True
+
+        config.log.info("Bound '%s' as a delayedlist" % filename)
         self._optimiseData()
+
+    def __repr__(self):
+        return("glbase.delayedlist")
 
     def collide(self, **kargs):
         """
@@ -54,9 +83,14 @@ class delayedlist(genelist):
 
         assert "peaklist" in kargs or "genelist" in kargs or "microarray" in kargs, "You must provide a genelist-like object"
         assert "loc_key" in kargs, "You must provide a 'loc_key' name"
-        if "peaklist" in kargs: gene_list = kargs["peaklist"]
-        elif "genelist" in kargs: gene_list = kargs["genelist"]
-        elif "microarray" in kargs: gene_list = kargs["microarray"]
+        
+        if "peaklist" in kargs: 
+            gene_list = kargs["peaklist"]
+        elif "genelist" in kargs: 
+            gene_list = kargs["genelist"]
+        elif "microarray" in kargs:
+            gene_list = kargs["microarray"]
+        
         assert kargs["loc_key"] in gene_list[0]
         assert self.__iter__().next().has_key(kargs["loc_key"]) # get an item and test it
         self._optimiseData()
@@ -66,7 +100,7 @@ class delayedlist(genelist):
 
         return(genelist.collide(self, genelist=gene_list, loc_key=kargs["loc_key"], delta=delta, merge=True))
 
-    def overlap(self, **kargs):
+    def overlap(self, delta=200, **kargs):
         """
         Note: the 'logic' command is not supported for delayedlists
         only "and" can be performed.
@@ -74,7 +108,7 @@ class delayedlist(genelist):
         self._optimiseData()
 
         assert kargs.has_key("peaklist") or kargs.has_key("genelist") or kargs.has_key("microarray"), "You must provide a genelist-like object"
-        assert kargs.has_key("loc_key"), "You must provide a 'loc_key' name"
+        assert "loc_key" in kargs, "You must provide a 'loc_key' name"
 
         # get the genelist object:
         if kargs.has_key("peaklist"): gene_list = kargs["peaklist"]
@@ -86,10 +120,7 @@ class delayedlist(genelist):
 
         self._optimiseData() # reset the __iter__
 
-        delta = 200
-        if kargs.has_key("delta"): delta = kargs["delta"]
-
-        return(genelist.overlap(self, genelist=gene_list, loc_key=kargs["loc_key"], delta=delta, merge=True))
+        return(genelist.overlap(self, genelist=gene_list, loc_key=kargs["loc_key"], delta=kargs["delta"], merge=True))
 
     def __len__(self):
         return(0) # send back a dummy length, even though it's meaningless.
@@ -124,16 +155,8 @@ class delayedlist(genelist):
                 d = {}
                 if column: # list is empty, so omit.
                     if (not (column[0] in typical_headers)):
-                        for key in self.format:
-                            if not (key in ignorekeys): # ignore these tags
-                                if not d.has_key(key):
-                                    d[key] = {}
-                                if isinstance(self.format[key], dict) and (self.format[key].has_key("code")):
-                                    # a code block insertion goes here - any valid lib and one line python code fragment
-                                    # store it as a dict with the key "code"
-                                    d[key] = eval(self.format[key]["code"])
-                                else:
-                                    d[key] = self._guessDataType(column[self.format[key]])
+                        d = self._processKey(self.format, column)
+                # endwith should be implemented here somewhere...
                 yield d
         except StopIteration:
             self._optimiseData()
@@ -147,18 +170,32 @@ class delayedlist(genelist):
         This makes the iterator work like you would expect:
         a new iterator will go back to the beginning of the list.
         """
-        if self.filehandle: self.filehandle.close()
+        if self.filehandle: 
+            self.filehandle.close()
 
         self.filehandle = open(self.fullpath, "rU")
-        if self.format.has_key("dialect"):
+        
+        if "force_tsv" in self.format and self.format["force_tsv"]:
+            self.__reader = csv.reader(self.filehandle, dialect=csv.excel_tab)
+        elif "dialect" in self.format:
             self.__reader = csv.reader(self.filehandle, dialect=self.format["dialect"])
         else:
             self.__reader = csv.reader(self.filehandle)
 
-        if self.format.has_key("skiplines"):
+        if "skiplines" in self.format:
             if self.format["skiplines"] != -1: # no skipped lines, good to go.
                 for i, x in enumerate(self.__reader):
                     if i == self.format["skiplines"]:
+                        break
+        else: # default behaviour of genelist is to always skip the first line
+            self.__reader.next()
+
+        if "skiptill" in self.format:
+            done = False
+            while not done:
+                for line in self.__reader:
+                    if self.format["skiptill"] in line:
+                        done = True
                         break
 
         self.linearData = self.__iter__()
@@ -348,3 +385,61 @@ class delayedlist(genelist):
             resets the list to the zeroth entry.
         """
         self._optimiseData()
+
+    def getSequences(self, FASTAfilename, genome, loc_key="loc", delta=False):
+        """
+        **Purpose**
+            write out a FASTA file on the fly. 
+            This is so that delayed lists can cope with 
+            sequence retrieval.
+            
+            The current arrangement genome.getSequences() will
+            copy the delayedlist into memory as it adds sequence to
+            each key. That kind of defeats the object of the 
+            delayedlists. 
+            
+            This function will write out a FASTA file without loading
+            the delayedlist into memory.
+            
+            However, this function will always return 'None'
+            
+        **Arguments**
+            FASTAfilename
+                name of the FASTA file to save the sequence to.
+                
+            genome
+                a genome object with a bound sequence attached.
+                
+            loc_key (Optional, default="loc")
+                the location key to use for the genome spans
+            
+            name_key (Optional, default=None)
+                a key to use as the name of the fasta entry.
+                default is None. This will use an index number for
+                each fasta entry, of the form: "<genome.name>_<index>"
+            
+            delta (Optional, default=False)
+                an integer describing the symmetric span around the centre
+                of the region to take
+                set to False to use only the coords specified in the loc_key
+                
+        **Returns**
+            None
+        """
+        assert loc_key in self[0], "no '%' loc_key found in this list" % loc_key
+        
+        oh = open(FASTAfilename, "w")
+        
+        for index, item in enumerate(self):
+            loc = item[loc_key]
+
+            if delta:
+                loc = loc.pointify()
+                loc = loc.expand(delta)
+            if loc["left"] > 0:
+                seq = genome.getSequence(loc=loc)
+            
+            if seq:
+                oh.write(">%s_%s\n" % (genome.name, index))
+                oh.write("%s\n" % seq)
+        oh.close()

@@ -3,7 +3,7 @@ import sys, os
 
 import opt, gDraw
 
-from glbase_wrapper import glload, track, location, peaklist, format_bed, format_minimal_bed
+from glbase_wrapper import glload, track, location, peaklist, format
 from error import *
 
 class app():
