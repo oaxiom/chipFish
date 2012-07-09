@@ -92,10 +92,10 @@ class draw:
     scale_bar_fontsize = 16 # scale bars font size. 
     view_port_width = 1000 # The width of the genome view in pixels
     genomic_location = True # draw the chrX:nnnnnn-nnnnnn label just above the first track
-    genomic_location_font_size = 22 # font size for hte genomic location label
+    genomic_location_font_size = 28 # font size for hte genomic location label
 
 class gene:
-    font_size = 24
+    font_size = 26
     font_style = "normal"
 
 class ruler:
@@ -127,8 +127,8 @@ class track:
     filled = True
     background = True # Draw a grey background defining the span of the track
     draw_names = True
-    draw_scales = False
+    draw_scales = True
     scale_bar_font_size = 14
     label_fontsize = 22
-    min_scale = 10 # The minimum x axis value for tracks. 
+    min_scale = 20 # The minimum x axis value for tracks. 
     lock_scales = False # Lock all scales on the Tracks together.

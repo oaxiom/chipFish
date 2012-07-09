@@ -34,6 +34,7 @@ import glbase.format as format
 from genelist import genelist
 from genome import genome
 from track import track
+from flat_track import flat_track
 
 # make these functions available in the package
 __all__ = ["genelist", "location", "genome", "delayedlist", "VERSION",

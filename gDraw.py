@@ -19,7 +19,7 @@ from error import *
 from constants import *
 from boundbox import bbox
 from operator import itemgetter
-from glbase_wrapper import location, track, peaklist, utils
+from glbase_wrapper import location, track, utils
 from data import *
 from ruler import ruler
 
@@ -97,8 +97,8 @@ class gDraw:
             # basic data:
             item = {"type": track["type"],
                 "track_location": track["track_location"],
-                "name": track["data"]["name"],
-                "kargs": {}}
+                "name": track["data"]["name"], # This is problematic for genome()
+                "options": track["options"]}
 
             if track["type"] == "graph":
                 item["array"] = track["data"].get_data("graph", location(loc=self.curr_loc),
@@ -130,12 +130,14 @@ class gDraw:
             # Now set all tracks to the same scale.
             for item in draw_data:
                 if item["type"] in ["graph", "kde_graph"]:
-                    item["kargs"]["min_scaling"] = scale
-            
+                    if "min_scaling" not in item["options"]: # Don't overwrite if already present
+                        item["options"]["min_scaling"] = scale
+                                
         # And finally draw:
         for item in draw_data:
             #print item["kargs"]
-            colbox = draw_modes_dict[item["type"]](item, **item["kargs"])
+            colbox = draw_modes_dict[item["type"]](item, **item["options"])
+            #print item
              
             # the collision boxes are not used. But I suppose in future...
             if colbox:
@@ -196,6 +198,9 @@ class gDraw:
 
         if track_type not in valid_track_draw_types:
             raise ErrorTrackDrawTypeNotFound, track_type
+
+        if not options:
+            options = {} # solves a lot of problems if it is an empty dict
 
         self.tracks.append({"data": track, "track_location": 
             self.__getNextTrackBox(track_type), "type": track_type,
@@ -353,9 +358,14 @@ class gDraw:
         # guess the maximum height required:
         guess_height = abs(self.tracks[-1]["track_location"]) + opt.track.height_px[self.tracks[-1]["type"]] + opt.ruler.height_px + 30 + 32 # 32 is the 'chromosome %s' padding, 30 is some other padding I'm not really certain where it comes from...
 
-        if not self.ctx or guess_height != self.last_guess_height:
+        if not self.ctx or guess_height != self.last_guess_height or type in ("svg", "pdf"):
             # If the surface size changed between the last call and this, I need a newly sized surface.
-            self.surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, self.w, guess_height)
+            if type == "svg":
+                self.surface = cairo.SVGSurface(filename, self.w, guess_height)
+            elif type == "pdf": # not tested
+                self.surface = cairo.PDFSurface(filename, self.w, guess_height)
+            else: # get a png
+                self.surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, self.w, guess_height)
             self.ctx = cairo.Context(self.surface)
             self.last_guess_height = guess_height
 
@@ -364,11 +374,15 @@ class gDraw:
         # forceRedraw onto my surface.
         self.paint(self.ctx)
 
-        # save image
-        actual_filename = filename
-        filehandle = open(actual_filename, "wb")
-        self.surface.write_to_png(filehandle)
-        filehandle.close()
+        if type in ("svg", "pdf", "ps", "eps"):
+            actual_filename = filename # suppose to mod, based on type
+            self.surface.finish()
+        else: # png
+            # save image
+            actual_filename = filename
+            filehandle = open(actual_filename, "wb")
+            self.surface.write_to_png(filehandle)
+            filehandle.close()
 
         return(actual_filename)
 
@@ -410,7 +424,8 @@ class gDraw:
         self.ctx.fill()
         return( (0, base_loc[1]-opt.track.height_px[track_type], self.w, opt.track.height_px[track_type]-2) )
 
-    def __drawTrackGraph(self, track_data, scaled=True, min_scaling=opt.track.min_scale, clamp=True, sliding_window_smoothing=False):
+    def __drawTrackGraph(self, track_data, scaled=True, min_scaling=opt.track.min_scale, clamp=True, sliding_window_smoothing=False, 
+        no_scaling=False, colour=None, name=None, **kargs):
         """
         **Arguments**
             track_data
@@ -432,6 +447,10 @@ class gDraw:
                 
             sliding_window_smoothing (default=False)
                 use a sliding window to 'smooth the data'
+                
+            name (Optional, default=None)
+                By default I will use the name of the genelist.
+                If you want to rename the track then set options name="Name of track" 
         """
 
         data = track_data["array"]
@@ -460,7 +479,14 @@ class gDraw:
         else:
             colbox = []
         
-        self.__setPenColour( (0,0,0) )
+        if not colour:
+            self.__setPenColour( (0,0,0) )
+        else:
+            if isinstance(colour, str):
+                self.__setPenColour(colour_lookup_name[colour])
+            else:
+                self.__setPenColour(colour) # this will probably not work.
+        
         self.ctx.set_line_width(1.0)
         coords = []
         lastpx = -1
@@ -478,16 +504,18 @@ class gDraw:
                 loc = self.__realToLocal(1, track_data["track_location"])
             else:
                 loc = self.__realToLocal(0, track_data["track_location"])
-            if clamp:
-                self.ctx.line_to(item[0], loc[1] - min(data)) # move to the base line on the far right 
-                self.ctx.line_to(0, loc[1] - min(data)) # the nth far left
+            #if clamp:
+            self.ctx.line_to(item[0], loc[1] - min(data)) # move to the base line on the far right 
+            self.ctx.line_to(0, loc[1] - min(data)) # the nth far left
             self.ctx.fill()
         else:
             self.ctx.stroke()
             
         if opt.track.draw_names:
+            if not name:
+                name = track_data["name"]
             self.__drawText(opt.track.label_fontsize, loc[1] - opt.track.height_px["graph"] + (opt.track.label_fontsize*2), 
-                opt.graphics.font, track_data["name"], size=opt.track.label_fontsize)
+                opt.graphics.font, name, size=opt.track.label_fontsize)
             
         if opt.track.draw_scales:
             self.__drawText(self.w - 10, loc[1] - 5, opt.graphics.font, 
