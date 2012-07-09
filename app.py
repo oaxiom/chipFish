@@ -3,7 +3,7 @@ import sys, os
 
 import opt, gDraw
 
-from glbase_wrapper import glload, track, location, peaklist, format
+from glbase_wrapper import glload, track, location, format, flat_track
 from error import *
 
 class app():
@@ -46,9 +46,14 @@ class app():
         res = {}
         for i in t:
             if "=" in i: # ignore mangled options
-                try: # try to cooerce ints and floats
-                    if "." in i.split("=")[1]:
+                opt, val = i.split("=")
+                try: # try to cooerce ints and floats and bools
+                    if "." in i.split("=")[1]: # try float
                         res[i.split("=")[0]] = float(i.split("=")[1])
+                    elif val == "True":
+                        res[opt] = True
+                    elif val == "False":
+                        res[opt] = False
                     else:
                         res[i.split("=")[0]] = int(i.split("=")[1])
                 except ValueError:
@@ -71,7 +76,7 @@ class app():
 
         if tracklist: # Although it doesn't really make much sense not to supply a tracklist
             oh = open(tracklist, "rU")
-            path = os.path.dirname(tracklist)
+            track_path = os.path.dirname(tracklist)
             mode = None
             for line in oh:
                 if "#" in line:
@@ -92,22 +97,37 @@ class app():
                             mode = "bed"
                         elif "genome:" in line:
                             mode = "genome"
+                        elif "flat:" in line:
+                            mode = "flat"
                         else:
                             raise ErrorUnrecognisedTrackMode, mode
                             
                         # process options
                         options = self.__do_options(line.split(":")[-1], mode)
                     elif mode:
-                        name = line.replace("\n", "").replace("\r", "").replace("\t", "").replace(" ", "")
+                        path = track_path
+                        name = line.strip()
+                        print options
+                        if "abs_path" in options and options["abs_path"] == "True":
+                            tail, head = os.path.split(name)
+                            # The path will be relative to the path, not relative to chipFish. Which could be anywhere
+                            # 
+                            path = os.path.normpath(os.path.join(track_path, tail))
+                            name = head
+                            print path, name
+                            
                         if name:
-                            if mode=="track":
+                            if mode == "track":
                                 self.draw.bindTrack(track(filename=os.path.join(path, name)), options=options)
+                                print "Bound Track:", os.path.join(path, name)
+                            elif mode == "flat":
+                                self.draw.bindTrack(flat_track(filename=os.path.join(path, name), bin_format="f"), track_type="graph", options=options)
                                 print "Bound Track:", os.path.join(path, name)
                             elif mode == "kde_track":
                                 self.draw.bindTrack(track(filename=os.path.join(path, name)), options=options, track_type="kde_graph")
                                 print "Bound KDE Track:", os.path.join(path, name)
                             elif mode=="bed":
-                                self.draw.bindTrack(peaklist(filename=os.path.join(path, name), format=format_bed), options=options)
+                                self.draw.bindTrack(genelist(filename=os.path.join(path, name), format=format.bed), options=options)
                                 print "Bound Bed:", os.path.join(path, name) 
                             elif mode=="macs_bed":
                                 f = format_minimal_bed

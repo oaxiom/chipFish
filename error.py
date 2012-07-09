@@ -38,8 +38,6 @@ class AssertionError(Exception):
         Output the error message and tidy up the traceback, and perform other stuff.
         """
         print "Error: %s" % (message)
-        if not config.DEBUG: # this only works in Py3k right?
-            self.__traceback__ = None
 
 # ---------------------------------------------------------------------
 # Exceptions
@@ -56,8 +54,6 @@ class ErrorUnrecognisedTrackMode(Exception):
         Output the error message and tidy up the traceback, and perform other stuff.
         """
         self.message = "Error: Mode in track descriptor file '%s' not recognised" % (message)
-        if not config.DEBUG: # this only works in Py3k right?
-            self.__traceback__ = None
 
 class ErrorCairoDraw(Exception):
     """

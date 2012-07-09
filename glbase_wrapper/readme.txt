@@ -2,7 +2,7 @@
 This is a part of chipFish, it is a series of headers overriding the
 vanilla glbase.
 
-(c) 2009-2011 A.Hutchins and oAxiom.
+(c) 2009-2012 A.Hutchins.
 
 Introduction
 ------------
@@ -19,7 +19,5 @@ the current writing), below are the current definitions that are defined
 GUI Specifications:
 -------------------
 
-object.method.locale.<language>.tooltip
-    this is the locale[name] used to look up the appropriate string
-
+This has been removed form chipFish
 

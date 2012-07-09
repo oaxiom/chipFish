@@ -82,6 +82,14 @@ class genome(glbase.genome):
 
         return(ret)
 
+    def __getitem__(self, key):
+        """
+        I need to override this, to only return metadata.
+        glbase genome objects return self.qkewyfind[key] by default.
+        """
+        if key == "name":
+            return(self.name)
+
     # descriptions, text for localisation
     __doc__ = "Overriden: Not Present"
     __tooltype__ = "Vanilla genelist"
