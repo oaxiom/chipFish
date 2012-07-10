@@ -5,7 +5,7 @@ genelist pass through for chipFish, see the accompanying readme.txt for details.
 
 """
 
-import sys, os
+import sys, os, numpy
 
 sys.path.append("..") # get the parent options
 import opt
@@ -22,6 +22,8 @@ class genelist(glbase.genelist):
     # descriptions, text for localisation
     __doc__ = "Overriden: Not Present"
     __tooltype__ = "Vanilla genelist"
+    _default_draw_type = "bar"
+    _available_draw_types = ("bar", "spot")
 
     # I have to redefine the methods chipFish respects here:
     def annotate(self, **kargs):
@@ -32,14 +34,18 @@ class genelist(glbase.genelist):
     annotate.__gui__ = {"required": {"list": "genelist", "key": "list key", "distance": "int"},
         "optional": {"resolution": "filename"}} # bind gui descriptor
 
-    # next method:
     def __getitem__(self, key):
         """
         Emulate a dict
+        
+        I need to override this, to only return metadata.
+        glbase genome objects return self.qkewyfind[key] by default.
         """
         if key == "info": # catch this special key
             for k in self.meta_data:
                 print "%s\t:\t%s" % (k, self.meta_data[k])
+        elif key == "name":
+            return(self.name)
         else:
             assert key in self.meta_data, "'%s' not found in this track" % key
             return(self.meta_data[key])
@@ -64,11 +70,11 @@ class genelist(glbase.genelist):
         """
         if type == "bar":
             # make a single array
-            ret = zeros(int( (loc["right"]-loc["left"]+resolution)/resolution ))
+            ret = numpy.zeros(int( (loc["right"]-loc["left"]+resolution)/resolution ))
 
             if loc["chr"] in self.dataByChr:
                 for item in self.dataByChr[loc["chr"]]:
-                    if qcollide(loc["left"], loc["right"], item["loc"]["left"], item["loc"]["right"]):
+                    if loc.qcollide(item["loc"]):
                         # make a suitable draw object
                         for rloc in xrange(item["loc"]["left"], item["loc"]["right"], int(resolution)):
                             array_relative_location = int((rloc - loc["left"]) / resolution) # convert relative to the array

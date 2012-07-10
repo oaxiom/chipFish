@@ -97,7 +97,7 @@ class gDraw:
             # basic data:
             item = {"type": track["type"],
                 "track_location": track["track_location"],
-                "name": track["data"]["name"], # This is problematic for genome()
+                "name": track["data"]["name"], # This is problematic for genome() and genelist
                 "options": track["options"]}
 
             if track["type"] == "graph":

@@ -3,7 +3,7 @@ import sys, os
 
 import opt, gDraw
 
-from glbase_wrapper import glload, track, location, format, flat_track
+from glbase_wrapper import glload, track, location, format, flat_track, genelist
 from error import *
 
 class app():
@@ -130,9 +130,9 @@ class app():
                                 self.draw.bindTrack(genelist(filename=os.path.join(path, name), format=format.bed), options=options)
                                 print "Bound Bed:", os.path.join(path, name) 
                             elif mode=="macs_bed":
-                                f = format_minimal_bed
+                                f = format.minimal_bed
                                 f["skiplines"] = 1 # Changes in recent version of macs bed.
-                                self.draw.bindTrack(peaklist(filename=os.path.join(path, name), format=f), options=options)
+                                self.draw.bindTrack(genelist(filename=os.path.join(path, name), format=f), options=options)
                                 print "Bound MACS bed file:", os.path.join(path, name)
                             elif mode=="genome": # must be a glb
                                 self.draw.bindTrack(glload(os.path.join(path, name)))
