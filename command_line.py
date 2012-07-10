@@ -17,11 +17,11 @@ a.startup("../Tracks/stat3_tracks.txt")
 a.draw.setLocation(loc=location(loc="chr11:100747467-100813886"))
 a.draw.exportImage("Stat3.svg", type="svg")
 
-a.draw.setLocation(loc=location(loc="chr11:100747467-100813886"))
-a.draw.exportImage("Stat3.svg", type="svg")
+a.draw.setLocation(loc=location(loc="chr11:117801020-117857062"))
+a.draw.exportImage("Socs3.svg", type="svg")
 
-a.draw.setLocation(loc=location(loc="chr11:100747467-100813886"))
-a.draw.exportImage("Stat3.svg", type="svg")
+a.draw.setLocation(loc=location(loc="chr7:20376837-20425079"))
+a.draw.exportImage("Bcl3.svg", type="svg")
 
-a.draw.setLocation(loc=location(loc="chr11:100747467-100813886"))
-a.draw.exportImage("Stat3.svg", type="svg")
+a.draw.setLocation(loc=location(loc="chr2:167734770-167805825"))
+a.draw.exportImage("Ptpn1.svg", type="svg")
