@@ -89,9 +89,11 @@ class app():
                         # There can only be one mode
                         if "kde_track:" in line: # Must go before "track"
                             mode = "kde_track"
+                        elif "split_track" in line:
+                            mode = "split_track"
                         elif "track:" in line:
                             mode = "track"
-                        elif "macs_bed:" in line:
+                        elif "macs_bed:" in line: # must go before bed
                             mode = "macs_bed"
                         elif "bed:" in line:
                             mode = "bed"
@@ -107,7 +109,6 @@ class app():
                     elif mode:
                         path = track_path
                         name = line.strip()
-                        print options
                         if "abs_path" in options and options["abs_path"] == "True":
                             tail, head = os.path.split(name)
                             # The path will be relative to the path, not relative to chipFish. Which could be anywhere
@@ -119,6 +120,9 @@ class app():
                         if name:
                             if mode == "track":
                                 self.draw.bindTrack(track(filename=os.path.join(path, name)), options=options)
+                                print "Bound Track:", os.path.join(path, name)
+                            elif mode == "split_track":
+                                self.draw.bindTrack(track(filename=os.path.join(path, name)), options=options, track_type="graph_split_strand")
                                 print "Bound Track:", os.path.join(path, name)
                             elif mode == "flat":
                                 self.draw.bindTrack(flat_track(filename=os.path.join(path, name), bin_format="f"), track_type="graph", options=options)

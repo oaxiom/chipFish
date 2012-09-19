@@ -1,7 +1,7 @@
 """
 A web interface for chipfish.
 
-Copyright 2011 oAxiom
+Copyright 2011-2012 oAxiom
 
 This is the abandonment of the GUI
 
@@ -10,6 +10,9 @@ BUGS:
 . If the local machine is not connected to the internet, it sometimes takes an age to begin serving
 . favicon.ico not found
 . root dir is not htdocs, chipfish .
+. This must surely be a really bad way to do this.
+. Isn't there a better (more secure) lightweight way to do this?
+. GUI? Even possible? - not with this crappy server!
 
 """
 import time, os, sys
@@ -27,7 +30,7 @@ cf.startup(sys.argv[1])
 
 Adapted from SimpleHTTPRequiestHandler
 
-(I don't claim copyright on this).
+(I don't claim copyright on everything below).
 It really needs to be cleaned out and a better server system put in.
 
 """

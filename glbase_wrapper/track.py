@@ -55,8 +55,8 @@ class track(glbase.track):
                 if not strand:
                     return(self.get(loc, resolution=resolution, **kargs))
                 else:
-                    return({"+": self.get(loc, resolution=resolution, strand="+"),
-                        "-": self.get(loc, resolution=resolution, strand="-")})
+                    return({"+": self.get(loc, resolution=resolution, strand="+", **kargs),
+                        "-": self.get(loc, resolution=resolution, strand="-", **kargs)})
         raise AssertionError, "draw mode not available"
 
     # gui stuff.
