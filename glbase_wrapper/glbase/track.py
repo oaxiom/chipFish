@@ -7,6 +7,8 @@ from __future__ import division
 
 import cPickle, sys, os, struct, math, sqlite3, zlib, time, csv
 
+from operator import itemgetter
+
 from progress import progressbar
 from errors import AssertionError
 from location import location
@@ -78,9 +80,9 @@ class track(base_track):
         # make the new chromsome table:
         table_name = "chr_%s" % str(chromosome)
         c.execute("CREATE TABLE %s (left INT, right INT, strand TEXT)" % (table_name, ))
-        c.execute("CREATE INDEX %s_com_idx ON %s(left, right)" % (table_name, table_name))
-        c.execute("CREATE INDEX %s_lef_idx ON %s(left)" % (table_name, table_name))
-        c.execute("CREATE INDEX %s_rig_idx ON %s(right)" % (table_name, table_name))
+        #c.execute("CREATE INDEX %s_com_idx ON %s(left, right)" % (table_name, table_name))
+        #c.execute("CREATE INDEX %s_lef_idx ON %s(left)" % (table_name, table_name))
+        #c.execute("CREATE INDEX %s_rig_idx ON %s(right)" % (table_name, table_name))
 
         c.close()
         return(True)
@@ -121,6 +123,12 @@ class track(base_track):
         if not self.__has_chromosome(loc["chr"]):
             self.__add_chromosome(loc["chr"])
 
+        # convert strand to +, -
+        if strand in positive_strand_labels:
+            strand = "+"
+        elif strand in negative_strand_labels:
+            strand = "-"
+
         c = self._connection.cursor()
 
         # insert location into new array.
@@ -138,7 +146,7 @@ class track(base_track):
         c.close()
 
     def get(self, loc, resolution=1, read_extend=0, kde_smooth=False, 
-        view_wid=0, **kargs):
+        view_wid=0, strand=False, **kargs):
         """
         **Purpose**
             get the data between location 'loc' and return it formatted as
@@ -167,41 +175,47 @@ class track(base_track):
             an 'numpy.array([0, 1, 2 ... n])' contiginous array
             or a tuple containing two arrays, one for each strand.
         """
-           
-        extended_loc = location(loc=str(loc)).expand(read_extend)
+        if not isinstance(loc, location):
+            loc = location(loc=loc)
+        extended_loc = loc.expand(read_extend)
 
-        result = self.get_reads(extended_loc)
+        result = self.get_reads(extended_loc, strand=strand)
         
         if kde_smooth:
             return(self.__kde_smooth(loc, reads, resolution, 0, view_wid, read_extend))
 
-        # make a single array
-        a = zeros(int( (loc["right"]-loc["left"]+resolution)/resolution ), dtype=integer)
+        loc_left = loc["left"]
+        loc_right = loc["right"]
 
-        # Bound the resolution to 1bp if int(resolution) reports <1
-        min_res = int(resolution)
-        if min_res == 0:
-            min_res = 1
+        # make a single array
+        a = [0] * int( (loc_right-loc_left+resolution)/resolution ) # Fast list allocation
+        # Python lists are much faster for this than numpy or array
+
+        len_a = len(a)
         
         for r in result:
-            if r[2] in positive_strand_labels:
-                read_left = r[0]
-                read_right = r[1] + read_extend + 1 # coords are open
-            elif r[2] in negative_strand_labels:
-                read_left = r[0] - read_extend
-                read_right = r[1] + 1 # coords are open 
+            read_left, read_right, strand = r
+            if strand == "+":
+                read_right += (read_extend + 1) # coords are open
+            elif strand == "-" :
+                read_left -= read_extend
+                read_right += 1 # coords are open 
             
-            rel_array_left = (read_left - loc["left"]) // resolution
-            rel_array_right = (read_right - loc["left"]) // resolution            
+            rel_array_left = (read_left - loc_left) // resolution
+            rel_array_right = (read_right - loc_left) // resolution            
             
-            #a[rel_array_left:rel_array_right] += 1
-            # The below is a very tiny amount faster
+            if rel_array_left <= 0:
+                rel_array_left = 0
+            if rel_array_right > len_a:
+                rel_array_right = len_a
             
             for array_relative_location in xrange(rel_array_left, rel_array_right, 1):
-                if array_relative_location >= 0 and array_relative_location < len(a): # within array
-                    a[array_relative_location] += 1
+                a[array_relative_location] += 1
             
-        return(a)
+            #a[rel_array_left:rel_array_right] += 1 # Why is this slower than the for loop?
+            
+            #[a[array_relative_location].__add__(1) for array_relative_location in xrange(rel_array_left, rel_array_right, 1)] # just returns the exact item, a is unaffected?
+        return(numpy.array(a))
 
     def __kde_smooth(self, loc, reads, resolution, bandwidth, view_wid, read_shift=100):
         """
@@ -324,7 +338,6 @@ class track(base_track):
         if len(loc["chr"]) < 30: # small security measure.
             table_name = "chr_%s" % loc["chr"]
 
-        
         result = self._connection.execute("SELECT * FROM %s WHERE (?>=left AND ?<=right) OR (?>=left AND ?<=right) OR (left<=? AND right>=?) OR (?<=left AND ?>=right)" % table_name,
             (loc["left"], loc["left"], loc["right"], loc["right"], loc["left"], loc["right"], loc["left"], loc["right"]))
         
@@ -351,8 +364,20 @@ class track(base_track):
         #self._c.execute("SELECT left, right, strand FROM %s WHERE (?-left > -1 AND ?-left<?) OR (?-right>-1 AND ?-right<?)" % table_name,
         #    (loc["right"], loc["right"], span, loc["left"], loc["left"], span))
     
-        #result = None
+        #result = None       
         result = result.fetchall() # safer for empty lists and reusing the cursor
+        
+        if result and strand: # sort out only this strand
+            if strand in positive_strand_labels:
+                strand_to_get = positive_strand_labels
+            elif strand in negative_strand_labels:
+                strand_to_get = negative_strand_labels
+            
+            newl = []
+            for r in result:
+                if r[2] in strand_to_get:
+                    newl.append(r)
+            result = newl                    
 
         return(result)
 
@@ -442,7 +467,9 @@ class track(base_track):
                 the name of the image file to save the pileup graph to.
                 
             heatmap_filename (Optional)
-                draw a heatmap, where each row is a single gene. And red is the tag density
+                draw a heatmap, where each row is a single gene. And red is the tag density.
+                Please see heatmap() for a better, more customizable means of drawing 
+                heatmaps of tags
             
             raw_tag_filename (Optional)
                 Save a tsv file that contains the heatmap values for each row of the genelist.
@@ -642,33 +669,126 @@ class track(base_track):
 
         return(pileup)
 
+    def heatmap(self, filename=None, genelist=None, distance=1000, read_extend=200, log=2, 
+        bins=20, sort_by_intensity=True, **kargs):
+        """
+        **Purpose**
+            Draw a heatmap of the seq tag density drawn from a genelist with a "loc" key.
+            
+        **Arguments**
+            filename (Required)
+                filename to save the heatmap into
+                
+            genelist (Required)
+                a genelist with a 'loc' key.
+                
+            distance (Optional, default=1000)
+                Number of base pairs around the location to extend the search
+                
+            bins (Optional, default=20)
+                Number of bins to use. (i.e. the number of columns)
+                
+            read_extend (Optional, default=200)
+                number of base pairs to extend the sequence tag by. 
+                
+            log (Optional, default=2)
+                log transform the data, optional, the default is to transform by log base 2.
+                Note that this parameter only supports "e", 2, and 10 for bases for log
+            
+            sort_by_intensity (Optional, default=True)
+                sort the heatmap so that the most intense is at the top and the least at 
+                the bottom of the heatmap.
+                
+        **Results**
+            file in filename and the heatmap table
+        """
+        assert filename, "must specifty a filename"
+        assert genelist, "must provide a genelist"
+        assert "loc" in genelist.keys(), "appears genelist has no 'loc' key"
+        assert "left" in genelist.linearData[0]["loc"].keys(), "appears the loc key data is malformed"
+        assert log in ("e", math.e, 2, 10), "this 'log' base not supported"
+        
+        table = []
+        bin_size = int((distance*2) / bins)
+        
+        for item in genelist.linearData:
+            l = item["loc"].pointify().expand(distance)
+            
+            row = self.get(l, read_extend=read_extend)
+       
+            # bin the data
+            row = numpy.array(utils.bin_data(row, bin_size))
+            
+            table.append(row)            
+        
+        # sort the data by intensity
+        # no convenient numpy. So have to do myself.
+        mag_tab = []
+        for index, row in enumerate(table):
+            mag_tab.append({"n": index, "sum": row.max()})
+        
+        if sort_by_intensity:
+            mag_tab = sorted(mag_tab, key=itemgetter("sum"))
+        
+        data = numpy.array(table)+1
+        
+        newt = []
+        for item in mag_tab:
+            newt.append(data[item["n"],])
+        data = numpy.array(newt)
+        
+        if log:
+            if log == "e" or log == math.e:
+                data = numpy.log(data)-1
+            elif log == 2:
+                data = numpy.log2(data)-1
+            elif log == 10:
+                data = numpy.log10(data)-1
+               
+        # draw heatmap
+        
+        if not self._draw:
+            self._draw = draw()
+            
+        filename = self._draw.heatmap2(data=data, filename=filename, bracket=[1, data.max()], **kargs)
+        
+        config.log.info("Saved pileup tag density to '%s'" % filename)
+        return({"data": data})
+
 if __name__ == "__main__":
     """
-    No index (normal): 4.2 s
-    2 indeces: 4 s 
+
+    Current 15 s
 
     """
-    
-    import random
+    import random, time
     from location import location
     from genelist import genelist
     
-    t = track(filename="test.trk2", name="test", new=True)
-    for n in xrange(0, 100000):
-        l = random.randint(0, 100000000)
-        t.add_location(location(chr="1", left=l, right=l+35), "+")
+    s = time.time()
+    print "Building...",
+    t = track(filename="testold.trk2", name="test", new=True)
+    for n in xrange(0, 10000):
+        l = random.randint(0, 100000)
+        t.add_location(location(chr="1", left=l, right=l+35), strand="+")
     t.finalise()
+    e = time.time()
+    print e-s, "s"
     
+    s = time.time()
+    print "Fake bed..."
     # fake a bed
     newb = []
-    for n in xrange(0, 100):
-        l = random.randint(0, 100000000)
+    for n in xrange(0, 1000):
+        l = random.randint(1000, 100000) # 1000 is for the window size. -ve locs are real bad.
         newb.append({"loc": location(chr="1", left=l, right=l+200), "strand": "+"})
     bed = genelist()
     bed.load_list(newb)
+    e = time.time()
+    print e-s, "s"
     
-    t = track(filename="test.trk2")
-                
+    t = track(filename="testold.trk2")
+    print "Pileup..."
     import cProfile, pstats
     cProfile.run("t.pileup(genelist=bed, filename='test.png', bin_size=10, window_size=1000)", "profile.pro")
     p = pstats.Stats("profile.pro")

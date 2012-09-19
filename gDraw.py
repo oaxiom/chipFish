@@ -100,20 +100,26 @@ class gDraw:
                 "name": track["data"]["name"], # This is problematic for genome() and genelist
                 "options": track["options"]}
 
+            # Big If statement coming:
             if track["type"] == "graph":
                 item["array"] = track["data"].get_data("graph", location(loc=self.curr_loc),
                     resolution=self.bps_per_pixel, **track["options"])
-            if track["type"] == "kde_graph":
+                    
+            elif track["type"] == "kde_graph":
                 item["array"] = track["data"].get_data("graph", location(loc=self.curr_loc),
                     resolution=self.bps_per_pixel, kde_smooth=True, view_wid=self.w, **track["options"])
+                    
             elif track["type"] == "bar":
                 item["array"] = track["data"].get_data("bar", location(loc=self.curr_loc),
                     resolution=self.bps_per_pixel, **track["options"])
+                    
             elif track["type"] == "spot":
                 item["array"] = track["data"].get_data("spot", location(loc=self.curr_loc))
+                
             elif track["type"] == "graph_split_strand":
                 item["array"] = track["data"].get_data("graph", location(loc=self.curr_loc),
                     strand=True, resolution=self.bps_per_pixel, **track["options"])
+                
             elif track["type"] == "genome":
                 item["array"] = track["data"].get_data("genome", location(loc=self.curr_loc))
 
@@ -124,14 +130,19 @@ class gDraw:
             # Fid the max_values for all of the tracks and then load min_scaling 
             scale = opt.track.min_scale
             for item in draw_data:
+                mmax = 0
                 if item["type"] in ["graph", "kde_graph"]:
-                    if max(item["array"]) > scale:
-                        scale = max(item["array"])
+                    mmax = max(item["array"])
+                elif item["type"] == "graph_split_strand": # got two max's to do.
+                    mmax = max([max(item["array"]["+"]), max(item["array"]["-"])])
+                
+                if mmax > scale: # see if we need to adjust scale
+                    scale = mmax
+                    
             # Now set all tracks to the same scale.
             for item in draw_data:
-                if item["type"] in ["graph", "kde_graph"]:
-                    if "min_scaling" not in item["options"]: # Don't overwrite if already present
-                        item["options"]["min_scaling"] = scale
+                if item["type"] in ["graph", "kde_graph", "graph_split_strand"]:
+                    item["options"]["min_scaling"] = scale
                                 
         # And finally draw:
         for item in draw_data:
@@ -424,7 +435,8 @@ class gDraw:
         self.ctx.fill()
         return( (0, base_loc[1]-opt.track.height_px[track_type], self.w, opt.track.height_px[track_type]-2) )
 
-    def __drawTrackGraph(self, track_data, scaled=True, min_scaling=opt.track.min_scale, clamp=True, sliding_window_smoothing=False, 
+    def __drawTrackGraph(self, track_data, scaled=True, min_scaling=opt.track.min_scale, clamp=True, 
+        sliding_window_smoothing=False, 
         no_scaling=False, colour=None, name=None, **kargs):
         """
         **Arguments**
@@ -528,7 +540,8 @@ class gDraw:
 
         return(colbox)# collision box dimensions
 
-    def __drawTrackGraph_split_strand(self, track_data, scaled=True, min_scaling=30):
+    def __drawTrackGraph_split_strand(self, track_data, scaled=True, min_scaling=opt.track.min_scale, 
+        name=None, clamp=True, **kargs):
         """
         **Purpose**
             Similar to Graph, but draws the track into a top strand and a bottom strand.
@@ -556,29 +569,44 @@ class gDraw:
 
         half_way_point = opt.track.height_px["graph"] / 2
 
+        track_max = max([track_data["array"]["+"].max(), track_data["array"]["-"].max()])
+        track_min = min([track_data["array"]["+"].min(), track_data["array"]["-"].min()])
+
         if scaled:
-            track_max = max([max(track_data["array"]["+"]), max(track_data["array"]["-"])])
+            track_max = max([min_scaling, max(track_data["array"]["+"]), max(track_data["array"]["-"])])
 
             if min_scaling and track_max < min_scaling:
                 scaling_value = min_scaling / float(half_way_point)
             else:
                 scaling_value = track_max / float(half_way_point)
+                
             # only works if numpy array?
             new_f_array = track_data["array"]["+"] / scaling_value # okay numpy can be sweet
-            new_r_array = track_data["array"]["-"] / scaling_value # okay numpy can be sweet
+            new_r_array = track_data["array"]["-"] / scaling_value 
         else:
             new_f_array = track_data["array"]["+"]
             new_r_array = track_data["array"]["-"]
 
+        print new_f_array
+        print track_data["array"]
+
         colbox = self.__drawTrackBackground(track_data["track_location"], "graph")
 
-        for i, s in enumerate([new_f_array, new_r_array]):
-            # + strand:
-            if i == 0:
-                self.__setPenColour( (0.8,0,0) )
+        for i, s in enumerate([new_f_array, new_r_array]): 
+            if i == 0:# + strand:
+                self.__setPenColour( (0, 0, 0.8) )
             elif i == 1:
-                self.__setPenColour( (0,0,0.8) )
+                self.__setPenColour( (0.8, 0, 0) )
+                
             self.ctx.set_line_width(2)
+            
+            # work out the list of screen-space coords
+            #coords = []
+            #lastpx = -1
+            #for index, value in enumerate(data):
+            #    loc = self.__realToLocal(self.lbp + index, track_data["track_location"])
+            #    coords.append( (index, loc[1] - value)) # +30 locks it to the base of the track
+            
             coords = []
             lastpx = -1
             for index, value in enumerate(s):
@@ -586,18 +614,38 @@ class gDraw:
                 # get the middle:
                 middle = loc[1] - half_way_point
                 if i == 0:
-                    coords.append( (index, middle + value)) # +30 locks it to the base of the track
-                elif i == 1:
                     coords.append( (index, middle - value)) # +30 locks it to the base of the track
+                elif i == 1:
+                    coords.append( (index, middle + value)) # +30 locks it to the base of the track
 
             self.ctx.move_to(coords[0][0], coords[0][1]) # start x,y
             for index, item in enumerate(coords):
-                self.ctx.line_to(item[0], item[1])
-            self.ctx.stroke()
+                self.ctx.line_to(item[0], item[1]) # move along each coord
+                
+            if opt.track.filled:
+                if clamp:
+                    loc = self.__realToLocal(1, track_data["track_location"])
+                else:
+                    loc = self.__realToLocal(0, track_data["track_location"])
 
-        # - strand
+                self.ctx.line_to(item[0], middle) # move to the base line on the far right 
+                self.ctx.line_to(0, middle) # the nth far left
+                self.ctx.fill()
+            else:
+                self.ctx.stroke()
 
-        self.__drawText(0, loc[1] - 25 , opt.graphics.font, track_data["name"])
+        if opt.track.draw_names:
+            if not name:
+                name = track_data["name"]
+            self.__drawText(opt.track.label_fontsize, loc[1] - opt.track.height_px["graph"] + (opt.track.label_fontsize*2), 
+                opt.graphics.font, name, size=opt.track.label_fontsize)
+            
+        if opt.track.draw_scales: # only track_max is drawn on split_graphs
+            self.__drawText(self.w - 10, loc[1] - opt.track.height_px["graph"] + opt.track.scale_bar_font_size + 5, 
+                opt.graphics.font, 
+                int(max(min_scaling, track_max)), 
+                size=opt.track.scale_bar_font_size, align="right", colour=(0,0,0))
+
         return(colbox)
 
     def __drawTrackSpot(self, track_data, **kargs):
