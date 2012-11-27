@@ -101,6 +101,7 @@ class gDraw:
                 "options": track["options"]}
 
             # Big If statement coming:
+            print self.curr_loc
             if track["type"] == "graph":
                 item["array"] = track["data"].get_data("graph", location(loc=self.curr_loc),
                     resolution=self.bps_per_pixel, **track["options"])

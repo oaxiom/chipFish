@@ -201,8 +201,8 @@ class track(base_track):
                 read_left -= read_extend
                 read_right += 1 # coords are open 
             
-            rel_array_left = (read_left - loc_left) // resolution
-            rel_array_right = (read_right - loc_left) // resolution            
+            rel_array_left = int((read_left - loc_left) // resolution)
+            rel_array_right = int((read_right - loc_left) // resolution)        
             
             if rel_array_left <= 0:
                 rel_array_left = 0
@@ -465,15 +465,7 @@ class track(base_track):
                 
             filename (Required)
                 the name of the image file to save the pileup graph to.
-                
-            heatmap_filename (Optional)
-                draw a heatmap, where each row is a single gene. And red is the tag density.
-                Please see heatmap() for a better, more customizable means of drawing 
-                heatmaps of tags
-            
-            raw_tag_filename (Optional)
-                Save a tsv file that contains the heatmap values for each row of the genelist.
-            
+                                       
             bin_size (Optional, default=500)
                 bin_size to use for the heatmap
                 
@@ -667,20 +659,30 @@ class track(base_track):
                         dpi=150, figsize=(6, 24), aspect="long")
                 config.log.info("saved heatmap to '%s'" % real_filename)
 
-        return(pileup)
+        ret = {"pileup": pileup}
+        if heatmap_filename or raw_tag_filename: #if binned_data:
+            # __nonzero__ not set in numpy arrays, so assume binned_data is valid
+            # if doing heatmap
+            ret["binned_data"] = binned_data
+
+        return(ret)
 
     def heatmap(self, filename=None, genelist=None, distance=1000, read_extend=200, log=2, 
-        bins=20, sort_by_intensity=True, **kargs):
+        bins=20, sort_by_intensity=True, raw_heatmap_filename=None, bracket=None, **kargs):
         """
         **Purpose**
             Draw a heatmap of the seq tag density drawn from a genelist with a "loc" key.
             
         **Arguments**
-            filename (Required)
-                filename to save the heatmap into
-                
             genelist (Required)
                 a genelist with a 'loc' key.
+                
+            filename (Optional)
+                filename to save the heatmap into
+                Can be set to None if you don't want the png heatmap.
+
+            raw_heatmap_filename (Optional)
+                Save a tsv file that contains the heatmap values for each row of the genelist.
                 
             distance (Optional, default=1000)
                 Number of base pairs around the location to extend the search
@@ -694,6 +696,7 @@ class track(base_track):
             log (Optional, default=2)
                 log transform the data, optional, the default is to transform by log base 2.
                 Note that this parameter only supports "e", 2, and 10 for bases for log
+                if set to None no log transform takes place.
             
             sort_by_intensity (Optional, default=True)
                 sort the heatmap so that the most intense is at the top and the least at 
@@ -702,16 +705,16 @@ class track(base_track):
         **Results**
             file in filename and the heatmap table
         """
-        assert filename, "must specifty a filename"
         assert genelist, "must provide a genelist"
         assert "loc" in genelist.keys(), "appears genelist has no 'loc' key"
         assert "left" in genelist.linearData[0]["loc"].keys(), "appears the loc key data is malformed"
-        assert log in ("e", math.e, 2, 10), "this 'log' base not supported"
+        assert log in ("e", math.e, 2, 10, None), "this 'log' base not supported"
         
         table = []
         bin_size = int((distance*2) / bins)
         
-        for item in genelist.linearData:
+        p = progressbar(len(genelist.linearData))
+        for idx, item in enumerate(genelist.linearData):
             l = item["loc"].pointify().expand(distance)
             
             row = self.get(l, read_extend=read_extend)
@@ -719,7 +722,8 @@ class track(base_track):
             # bin the data
             row = numpy.array(utils.bin_data(row, bin_size))
             
-            table.append(row)            
+            table.append(row)   
+            p.update(idx)         
         
         # sort the data by intensity
         # no convenient numpy. So have to do myself.
@@ -736,6 +740,7 @@ class track(base_track):
         for item in mag_tab:
             newt.append(data[item["n"],])
         data = numpy.array(newt)
+        data = numpy.delete(data, numpy.s_[-1:], 1)
         
         if log:
             if log == "e" or log == math.e:
@@ -749,10 +754,21 @@ class track(base_track):
         
         if not self._draw:
             self._draw = draw()
-            
-        filename = self._draw.heatmap2(data=data, filename=filename, bracket=[1, data.max()], **kargs)
         
-        config.log.info("Saved pileup tag density to '%s'" % filename)
+        if filename:
+            if not bracket:
+                bracket=[1, data.max()]
+            elif len(bracket) == 1: # Assume only minimum.
+                bracket = [bracket[0], data.max()]
+            
+            filename = self._draw.heatmap2(data=data, filename=filename, bracket=bracket, **kargs)
+        
+        if raw_heatmap_filename:
+            numpy.savetxt(raw_heatmap_filename, data, delimiter="\t")
+            
+            config.log.info("saved raw_heatmap_filename to '%s'" % raw_heatmap_filename)
+        
+        config.log.info("Saved heatmap tag density to '%s'" % filename)
         return({"data": data})
 
 if __name__ == "__main__":
@@ -793,3 +809,5 @@ if __name__ == "__main__":
     cProfile.run("t.pileup(genelist=bed, filename='test.png', bin_size=10, window_size=1000)", "profile.pro")
     p = pstats.Stats("profile.pro")
     p.strip_dirs().sort_stats("time").print_stats()
+
+    print t.heatmap(genelist=bed, raw_heatmap_filename="test.tsv", filename='test.png', bin_size=10, window_size=1000)
