@@ -7,12 +7,12 @@ And output svgs etc.
 
 """
 
-
+import os
 from app import app
 from glbase_wrapper import location
 
 a = app()
-a.startup("../Tracks/stat3_pec_only_tracks.txt")
+a.startup(os.path.expanduser("~/Desktop/Projects/coSTAT3/5.ChIP-seq/stat3_trks/stat3_tracks.txt"))
 
 a.draw.setLocation(loc=location(loc="chr11:100747467-100813886"))
 a.draw.exportImage("Stat3.svg", type="svg")
