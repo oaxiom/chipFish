@@ -30,26 +30,26 @@ CACHE_SIZE = 100000 # maximum number of blocks to keep in memory.
 # needs to be tested on a Windows and MACOSX machine.
 
 class flat_track(base_track):
-    """
-    **Purpose**
-        track definition, used for things like sequence reads across the genome
-    
-    **Arguments**
-        name (string)
-            name for the track, if not specified, it takes it from the meta_data
-            If a new bd then it defaults to filename
-
-        filename (string)
-            directory location of the track file.
-            only respected if dir_name is set.
-            
-        bin_format (Optional, default="i")
-            the format to store the data in. 
-            This is the same format as the python array, so "i" = integer,
-            "f" = float
-
-    """
     def __init__(self, name=None, new=False, filename=None, bin_format=None):
+        """
+        **Purpose**
+            track definition, used for things like sequence reads across the genome
+        
+        **Arguments**
+            name (string)
+                name for the track, if not specified, it takes it from the meta_data
+                If a new bd then it defaults to filename
+    
+            filename (string)
+                directory location of the track file.
+                only respected if dir_name is set.
+                
+            bin_format (Optional, default="i")
+                the format to store the data in. 
+                This is the same format as the python array, so "i" = integer,
+                "f" = float
+    
+        """
         base_track.__init__(self, name, new, filename)
         
         if bin_format: # Change the bin_format of the db.
@@ -191,7 +191,7 @@ class flat_track(base_track):
                 # right is inc'd by 1
                 # as that is what is usually expected from 10-20.
                 # (i.e. coords are NOT 0-based and are closed).
-                if local_pos >= 0 and local_pos <= TRACK_BLOCK_SIZE: # within the span to increment.
+                if local_pos >= 0 and local_pos < TRACK_BLOCK_SIZE: # within the span to increment.
                     self.cache[blockID][local_pos] = score
                     #print local_pos, local_pos >= 0 and local_pos <= TRACK_BLOCK_SIZE
             #print self.cache[blockID]
@@ -210,14 +210,13 @@ class flat_track(base_track):
         if self.cache.has_key(blockID):
             return(True) # on cache, so must exist.
 
-        has = False
         c = self._connection.cursor()
         c.execute("SELECT blockID FROM data WHERE blockID=?", (blockID, ))
         result = c.fetchone()
-        if result:
-            has = True
         c.close()
-        return(has)
+        if result:
+            return(True)
+        return(False)
 
     def __commit_block(self, blockID, data):
         """
@@ -487,10 +486,13 @@ class flat_track(base_track):
                     # For the reverse strand all I have to do is flip the array.
                     if i["strand"] in negative_strand_labels:
                         a = a[::-1]
-                    
-                hist += a
+                
+                if a: # It's possible that get() will return nothing 
+                    # For example if you send bad chromosome names or the locations are nonsensical (things like:
+                    # chr9_GL000201_RANDOM:-500-1500
+                    hist += a
 
-                if mask_zero:
+                if mask_zero: # surely a better way of doing this...
                     t = numpy.zeros(loc_span)
                     for ee, xx in enumerate(a):
                         if xx > 0:
@@ -567,5 +569,5 @@ class flat_track(base_track):
                
         actual_filename = self._draw.savefigure(fig, filename)
         
-        config.log.info("Saved '%s'" % actual_filename)
+        config.log.info("pileup(): Saved '%s'" % actual_filename)
         return(hist, bkgd)

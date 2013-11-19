@@ -8,20 +8,27 @@ renamed to glglob as it clashes with a matplotlib and python module name
 
 from __future__ import division
 
-import sys, os, csv, string, math
+import sys, os, csv, string, math, numpy, cPickle, random # random is for occasional testing
 
 from numpy import array, zeros, object_, arange
 from copy import deepcopy
+from operator import itemgetter
 
 import config, utils
 from flags import *
 from base_genelist import _base_genelist
 from draw import draw
 from errors import AssertionError, NotImplementedError, GlglobDuplicateNameError
+from location import location
+from progress import progressbar
+from genelist import genelist
 
 import matplotlib.pyplot as plot
 import matplotlib.cm as cm
 from scipy.stats import spearmanr, pearsonr
+
+if config.SKLEARN_AVAIL: # These are optional
+    from sklearn.cluster import DBSCAN
 
 class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
     """
@@ -40,11 +47,12 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
 
         # args should be a list of lists.
         # we then store them in the linearData set
-        #for a in args: # no need for this restriction?
-        #    for b in args:
-        #        assert a == b, "Lists must be equivalent"
-        self.linearData = args
-        self._optimiseData()
+
+        if args: # So we can have empty glglobs.
+            self.linearData = args
+            self._optimiseData()
+        else:
+            self.linearData = []
         self.draw = draw(self)
 
     def __repr__(self):
@@ -161,13 +169,21 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 elif ia < ib: # make search triangular
                     pass
                 else:
+                    res = 0
                     if method == "collide":
-                        matrix[ia, ib] = len(la.collide(genelist=lb, loc_key=key, delta=delta))
+                        res = la.collide(genelist=lb, loc_key=key, delta=delta)
                     elif method == "overlap":
-                        matrix[ia, ib] = len(la.overlap(genelist=lb, loc_key=key, delta=delta))
+                        res = la.overlap(genelist=lb, loc_key=key, delta=delta)
                     elif method == "map":
-                        matrix[ia, ib] = la.map(genelist=lb, key=key)
-
+                        res = la.map(genelist=lb, key=key)
+                    
+                    if res:
+                        res = len(res)
+                    else:
+                        res = 1 # If two lists collide to produce 0 hits it eventually ends up with nan 
+                        # in the table which then buggers up the clustering below.
+                    matrix[ia, ib] = res
+                
         # fill in the gaps in the triangle
         for ia, la in enumerate(self.linearData):
             for ib, lb in enumerate(self.linearData):
@@ -190,16 +206,18 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         for ia, la in enumerate(self.linearData):
             for ib, lb in enumerate(self.linearData):
                 matrix[ia,ib] = (matrix[ia,ib] / min([len(la), len(lb)]))
-
+                
         spear_result_table = zeros( (len(self), len(self)) ) # square matrix to store the data.
         # convert the data to a spearmanr score.
         for ia, this_col in enumerate(matrix):
             for ib, other_col in enumerate(matrix):
-                #if ia != ib:
-                #spear_result_table[ia,ib] = spearmanr(this_col, other_col)[0] # [0] = r score, [1] = p-value
-                spear_result_table[ia,ib] = pearsonr(this_col, other_col)[0] # [0] = r score, [1] = p-value
+                if ia != ib:
+                    # I think pearson actually works the best as it is more sensitive to outliers. 
+                    #spear_result_table[ia,ib] = spearmanr(this_col, other_col)[0] # [0] = r score, [1] = p-value
+                    spear_result_table[ia,ib] = pearsonr(this_col, other_col)[0] # [0] = r score, [1] = p-value
+                else:
+                    spear_result_table[ia,ib] = 1.0
 
-        #print spear_result_table
         result_table = spear_result_table
 
         """
@@ -247,31 +265,35 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             aspect = kargs["aspect"]
         else:
             aspect = "normal"
-            
+        
+        #print dict_of_lists
+        
         # draw the heatmap and save:
-        realfilename = self.draw.heatmap(data=dict_of_lists, filename=filename,
+        ret = self.draw.heatmap(data=dict_of_lists, filename=filename,
             colbar_label="correlation", bracket=[-0.2, 1],
             square=True, cmap=cm.hot, cluster_mode="euclidean", row_cluster=row_cluster, col_cluster=col_cluster,
             row_names=row_names, col_names=row_names, aspect=aspect)
 
-        config.log.info("Saved Figure to '%s'" % realfilename)
+        config.log.info("Saved Figure to '%s'" % ret["real_filename"])
         return(dict_of_lists)
 
-    def venn_diagrams(self, key=None, filename=None, **kargs):
+    def venn(self, key=None, filename=None, **kargs):
         """
         **Purpose**
-            draw 2,3,4 venn Diagrams
+            draw 2,3 or 4 venn Diagrams
             currently only equally size venndiagrams are supported.
             (proportional venn diagrams are experimental only, enable them
             using experimental_proportional_venn = True as an argument).
 
-            your glglob should be loaded with several genelist-like objects
-            that have a valid map() function (i.e. pretty much all of them)
+            your glglob should be loaded with several genelist-like objects.
 
             Note that you can do simple 2 overlap venn_diagrams using any
             pair of genelists with this sort of code:
 
             genelist.map(genelist=other_genelist, <...>, image_filename="venndiagram.png")
+            
+            Note also that the data from linearData will be converted to unique 
+            values. So the final numbers may not match your original list sizes 
 
         **Arguments**
             key
@@ -306,10 +328,46 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             self.linearData[0].map(genelist=self.linearData[1], image_filename=kargs["filename"], venn_proportional=proportional)
             config.log.info("Save a venn diagram to: %s" % kargs["filename"])
             return(None)
+        
         elif len(self.linearData) == 3:
-            raise NotImplementedError, "Hillariously, 2 and 4 venn diagrams are implemented. But not 3..."
+            A = set(self.linearData[0][key])
+            B = set(self.linearData[1][key])
+            C = set(self.linearData[2][key])
+            
+            AB = A & B
+            AC = A & C
+            BC = B & C
+            
+            ABC = A & B & C
+            
+            # check for none's:
+            if AB:
+                AB = len(AB)
+            else:
+                AB = 0
+            
+            if AC:
+                AC = len(AC)
+            else:
+                AC = 0
+                
+            if BC:
+                BC = len(BC)
+            else:
+                BC = 0
+                
+            if ABC:
+                ABC = len(ABC)
+            else:
+                ABC = 0         
+            
+            realfilename = self.draw.venn3(len(A), len(B), len(C), AB, AC, BC, ABC, 
+                self.linearData[0].name, self.linearData[1].name, self.linearData[2].name, 
+                filename, **kargs)
+            
         elif len(self.linearData) == 4:
-            config.log.warning("Due to the nature of 4-way venn diagrams, opposing corners are not overlapped as a pair")
+            config.log.warning("Due to the nature of this implemetation of 4-way venn diagrams")
+            config.log.warning("opposing corners are not overlapped as a pair.")
             config.log.warning("You should be aware of this limitation")
             # work out the overlap matrix:
 
@@ -390,7 +448,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                     scores[k] -= scores["ABCD"]
 
             realfilename = self.draw._venn4(lists=lists, scores=scores, filename=filename)
-
+        
         config.log.info("Saved Figure to '%s'" % realfilename)
         return(None)
 
@@ -495,3 +553,686 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 row_cluster=False, col_cluster=True, colour_map=cm.Blues, #vmax=1,
                 colbar_label=scalebar_name, aspect="square")
         config.log.info("Saved image to '%s'" % real_filename)
+
+    def overlap_heatmap(self, filename=None, score_key=None, resolution=1000, optics_cluster=True):
+        """
+        **Purpose**
+            Draw a heatmap from ChIP-seq binding data (or lists of genomic coordinates), 
+            showing one row for each binding site, particularly where the sites overlap.
+            
+            This will compare (and overlap) each of the lists, then produce a large heatmap 
+            with each row for a unique genomic location.
+            
+            For the purposes of this tool, the genome is divided up into blocks (based on 
+            resolution) and binding is then tested against these blocks.
+            
+        **Arguments**
+            filename (Required)
+                filename to save the heatmap to.
+                
+            score_key (Optional, default=None)
+                by default each row will be scored in a binary manner. i.e. Is the binding site present or not?
+                However, if your ChIP-seq lists have some sort of intensity score then this 
+                can be used instead to score the overlap.
+                
+            resolution (Optional, default=1000)
+                Number of base pairs to divide the genome up into.
+                
+            optics_cluster (Optional, default=True)
+                By default overlap_heatmap() will cluster the data based on OPTICS:
+                
+                https://en.wikipedia.org/wiki/OPTICS_algorithm
+                If optics_cluster=False 
+        
+        
+        **Returns**
+            A heatmap and the heatmap data (as a Numpy array) for any further processing.
+        """
+        assert filename, "Must provide a filename"
+        assert config.SKLEARN_AVAIL, "the Python package sklearn is required for overlap_heatmap()"
+        
+        # Iterate through each genelist and build a non-redundant table of genomic
+        # blocks
+        
+        chr_blocks = {}
+        total_rows = 0
+        
+        for index, gl in enumerate(self.linearData):
+            for item in gl:
+                # Add chromosome to the cache if not present.
+                if item["loc"]["chr"] not in chr_blocks:
+                    chr_blocks[item["loc"]["chr"]] = {}
+                    
+                block_id = "bid:%s" % (math.floor(item["loc"]["left"] / resolution) * 1000, )
+                if block_id not in chr_blocks[item["loc"]["chr"]]:
+                    chr_blocks[item["loc"]["chr"]][block_id] = [0 for x in xrange(len(self.linearData))] # one for each gl
+                    total_rows += 1
+                
+                if score_key:
+                    chr_blocks[item["loc"]["chr"]][block_id][index] = item[score_key]
+                else:
+                    chr_blocks[item["loc"]["chr"]][block_id][index] = 1
+        
+        config.log.info("overlap_heatmap(): Found %s unique genomic regions" % total_rows)
+        
+        # Build the table for the heatmap
+        tab = numpy.zeros([len(self.linearData), total_rows])
+        
+        crow = 0
+        for c in chr_blocks:
+            for bid in chr_blocks[c]:
+                for i in xrange(len(chr_blocks[c][bid])): # or len(self.linearData)
+                    tab[i, crow] = chr_blocks[c][bid][i]
+                crow += 1
+        
+        tab = tab.T        
+        # dendrogram dies here, so need other ways to cluster 
+        # DBSCAN consumes too much unnecessary memory.    
+        """   
+        alg = DBSCAN(eps=0.2)
+        print alg.fit(tab)      
+        print alg.labels_ 
+        clusters = numpy.unique(alg.labels_)
+        print clusters
+        # reorder the list based on cluster membership
+        newd = {}
+        for index, c in enumerate(alg.labels_):
+            if c not in newd:
+                newd[c] = []
+            newd[c].append(tab[index])                   
+        
+        # load it back into a numpy array
+        tab = None
+        for c in clusters:
+            new = numpy.vstack(newd[c])
+            if tab is None:
+                tab = new
+            else:
+                tab = numpy.vstack([tab, new])
+        """
+        # Yay, roll my own clustering!
+        
+        # I already know how many possible clusters there will be.
+        #num_clusters = math.factorial(len(self.linearData))
+        
+        # build a cluster table, containing all possible variants for this len(self.linearData)
+        clusters = {}
+        for row in tab:
+            # Make an identifier for the cluster:
+            id = tuple([bool(i) for i in row])
+            if id not in clusters:
+                clusters[id] = []
+            clusters[id].append(row)
+        
+        # I want to sort the clusters first:
+        sorted_clusters = []
+        for c in clusters:
+            sorted_clusters.append({"id": c, "score": sum(c)})
+        sorted_clusters = sorted(sorted_clusters, key=itemgetter("score"))
+        
+        # Flattent the arrays and load it back into a numpy array
+        tab = None
+        for c in sorted_clusters:
+            new = numpy.vstack(clusters[c["id"]])
+            if tab is None:
+                tab = new
+            else:
+                tab = numpy.vstack([tab, new])
+                               
+        ret = self.draw.heatmap(data=tab, filename=filename, col_names=[gl.name for gl in self.linearData], row_names=None,
+                row_cluster=False, col_cluster=True, colour_map=cm.Reds, heat_wid=0.7, heat_hei=0.7, bracket=[0,tab.max()])
+                
+        config.log.info("overlap_heatmap(): Saved overlap heatmap to '%s'" % ret["real_filename"])
+        return(tab)
+        
+    def chip_seq_cluster_heatmap(self, list_of_peaks, list_of_trks, filename=None, normalise=True, bins=20, 
+        pileup_distance=1000, merge_peaks_distance=400, sort_clusters=True, cache_data=False, log=2, bracket=None,
+        range_bracket=None, frames=False, titles=None, **kargs):
+        """
+        **Purpose**
+            Combine and merge all peaks, extract the read pileups then categorize the peaks into
+            similar groupings. Return a new list of genelists, one genelist for each grouping
+            that contains the list of genomic locations in each group. Finally, draw a nice 
+            heatmap to <filename>.
+            
+            The order of the genomic locations and order of the groups must be maintained
+            between the heatmap and the returned data.
+            
+            NOTE: I sort of named this function incorectly with the whole 'cluster' business.
+            Although it's not wrong to label the returned groups as clusters it is certainly
+            confusing and may imply that some sort of k-means or hierarchical clustering
+            is performed. No clustering is performed, instead groups are made based on a binary 
+            determination from the list_of_peaks. So below, where I refer to 'cluster'
+            I really mean group. Later I may add k-means clustering, which may make things even more
+            confusing.
+            
+            Here is a detailed explanation of this function:
+            
+            1. Join all of the peaks into a redundant set of coordinates
+
+            2. Merge all of the bins to produce a single list of unique genomic regions 
+            (this is what it means by "chip_seq_cluster_heatmap(): Found <number> unique 
+            genomic regions")
+
+            3. Build a table of all possible peak combinations:
+
+            e.g. for two chip-seq lists, A and B:
+
+            listA only: [True, False]
+            listB only: [False, True]
+            listA and listB: [True, True]
+
+            It is these that are the 'clusters' (or groups). In this case there would 
+            be just 3 groups. The more lists the more possible groups.
+
+            Note that groups with no members are culled. 
+
+            4. for <each genome location> get the pileup from the approprate track. expand 
+            around the genomic location of the bin by <pileup_distance> and build a heat map. 
+            (This is the really slow bit). The option <bins> will bin the pileup 
+            (i.e. chr1:10001-10400 would have 400 base pairs, but would be divided into twenty bins. 
+            This makes drawing the heatmap feasable as too many squares for the heatmap 
+            will consume RAM and CPU.
+
+            6. Order the heatmap from most complex bin (genome regions with peaks in all libraries) 
+            to least complex bin (chip-seq library specific peaks) and draw.
+              
+        **Arguments**
+            list_of_peaks (Required)
+                A list of genelists of peaks from your ChIP-seq data to interrogate. The order of the libraries
+                MUST be the same as the order of the list_of_trks. genomic location data 
+                should be stored in a 'loc' key in the genelist.
+                
+            list_of_trks (Required)
+                A list of trks to draw the sequence tag reads from to build the pileups. 
+                This list MUST be in the same order as the list_of_peaks.
+                
+            filename (Optional, default=None)
+                If set to a string a heatmap will be saved to filename.
+                
+            normalise (Optional, default=True)
+                Normalize the read pileup data within each library to the size of the 
+                library to assist in across-comparison of ChIP-seq libraries.
+                                              
+            merge_peaks_distance (Optional, default=400)
+                Maximum distance that two peaks can be apart before the two peaks are merged into
+                a single peak.
+                
+            pileup_distance (Optional, default=1000)
+                distance around the particular bin to draw in the pileup.
+
+            bins (Optional, default=10)
+                number of bins to use for the pileup. Best to use conservative numbers (10-50) as 
+                large numbers of bins can consume huge amounts of memory.
+                
+            sort_clusters (Optional, default=True)
+                sort the clusters from most complex to least complex.
+                Note that chip_seq_cluster_heatmap cannot preserve the order of the peaks
+                (it's impossible), so setting this to false will just randomise the order of the clusters
+                which may not be particularly helpful.
+                
+            log (Optional, default=2)
+                Use logarithms for the heatmap. Possible options are 2 and 10.
+            
+            cmap (Optional, default=matplotlib.cm.YlOrRd)
+                A valid colour map for the heatmap.
+            
+            titles (Optional, default=peaks.name)
+                Supply your own titles for the top of the heatmap columns
+            
+            range_bracket (Optional, default=None, exclusive with range_bracket)
+                Okay, hold your hats, this is complicated.
+                range_bracket will bracket the range of values as a fraction between [min(data), max(data)]
+                i.e. If range_bracket=0.5 (the default) then the data is bracketed as:
+                [max(data)*range_bracket[0], max(data)*range_bracket[1]]. The practical upshot of this is it allows you to shift
+                the colour bracketing on the heatmap around without having to spend a long time finding
+                a suitable bracket value. 
+                
+                Bracketing is performed AFTER log.
+                
+                Typical bracketing would be something like [0.4, 0.9]
+                
+                By default glbase attempts to guess the best range to draw based on the
+                median and the stdev. It may not always succeed.
+                
+            bracket (Optional, default=None, exclusive with range_bracket)
+                chip_seq_cluster_heatmap() will make a guess on the best bracket values and will output that
+                as information. You can then use those values to set the bracket manually here. 
+                This is bracketing the data AFTER log transforming.
+                
+            cache_data (Optional, default=False)
+                cache the pileup data into the file specified in cache_data. This speeds up analysis.
+                Note that storage of data is AFTER normalisation, resolution, pileup_distance, 
+                bins, but before sort_clusters and before heatmap drawing.
+                This allows you to store the very slow part of chip_seq_cluster_heatmap()
+                and so iterate through different heatmap drawing options without having to
+                do the whole pileup again.
+                
+                note that if cache_data file does not exist then it will be created and 
+                pileup data generated. If the file does exist, data will be read from that
+                file and used for heatmap drawing.
+                
+            frames (Optional, default=False)
+                Draw black frames around the heatmaps and category maps. I prefer without,
+                so that is the default!
+                
+        **Returns**
+            Returns a list of genelists, one genelist for each major category. The genelist
+            contains a list of locations belonging to that group. Note that the genomic locations
+            may not exactly match with the original provided locations as chip_seq_cluster_heatmap()
+            will merge redundant peaks by taking the mid point between two close peaks.
+            
+            The order of the genomic locations and order of the groups will be maintained
+            between the heatmap and the returned data.
+            
+            The formal returned data is in a dict so that it can give information about each cluster grouping:
+            
+            {"<cluster_id>": {"genelist": <a genelist object>, "cluster_membership": (True, True, ..., False)}, ...}
+            
+            The "cluster_membership" key returns a tuple of the same length as the number 
+            list_of_peaks (and in the same order) indicating that this particular cluster 
+            represents binding (True) or not (False) in each original list_of_peaks.
+        """
+        assert not (range_bracket and bracket), "You can't use both bracket and range_bracket"
+
+        # get a non-redundant list of genomic regions based on resolution.           
+        chr_blocks = {} # stores a binary identifier 
+        pil_blocks = {}
+        total_rows = 0
+        resolution = merge_peaks_distance # laziness hack!
+        
+        # Make a super list of all the peaks.
+        mega_list_of_peaks = sum([gl["loc"] for gl in list_of_peaks], [])
+        mega_list_of_peaks = [p.pointify().expand(merge_peaks_distance) for p in mega_list_of_peaks]
+        config.log.info("chip_seq_cluster_heatmap(): Started with %s redundant peaks" % len(mega_list_of_peaks))
+        
+        # Merge overlapping peaks   
+        merged_peaks = {}
+        p = progressbar(len(list_of_peaks))
+        for idx, gl in enumerate(list_of_peaks):
+            for p1 in gl["loc"]:
+                p1 = p1.pointify().expand(merge_peaks_distance)
+                if not p1["chr"] in chr_blocks:
+                    chr_blocks[p1["chr"]] = {}
+            
+                binary = [0 for x in xrange(len(list_of_peaks))] # set-up here in case I need to modify it.
+            
+                for p2 in chr_blocks[p1["chr"]]: # p2 is now a block_id tuple
+                    #if p1.qcollide(p2):
+                    if p1["right"] >= p2[0] and p1["left"] <= p2[1]: # unfolded for speed.
+                        binary = chr_blocks[p1["chr"]][p2]["binary"] # preserve the old membership
+                    
+                        # remove the original entry
+                        del chr_blocks[p1["chr"]][p2]
+                        total_rows -= 1
+                    
+                        # Add in a new merged peak:
+                        p1 = location(chr=p1["chr"], 
+                            left=int((p1["left"]+p2[0])/2.0), 
+                            right=int((p1["right"]+p2[1])/2.0)).pointify().expand(merge_peaks_distance)
+                        break
+                        
+                # modify binary to signify membership for this peaklist
+                binary[idx] = 1
+            
+                # Add p1 onto the blocklist
+                block_id = (p1["left"], p1["right"])
+                if block_id not in chr_blocks[p1["chr"]]:
+                    chr_blocks[p1["chr"]][block_id] = {"binary": binary,
+                        "pil": [0 for x in xrange(len(list_of_peaks))]} # one for each gl, load pil with dummy data.
+                    total_rows += 1 # because the result is a dict of dicts {"<chrname>": {"bid": {data}}, so hard to keep track of the total size.
+
+            p.update(idx)
+            
+        config.log.info("chip_seq_cluster_heatmap(): Found %s unique genomic regions" % total_rows)
+            
+        # Get the size of each library if we need to normalize the data.
+        if normalise:
+            # get and store the read_counts for each library to reduce an sqlite hit.
+            read_totals = [trk.get_total_num_reads() for trk in list_of_trks]
+        
+        # I will need to go back through the chr_blocks data and add in the pileup data:
+        bin_size = int((resolution+resolution+pileup_distance) / bins)
+        block_len = (resolution+resolution+pileup_distance+pileup_distance) # get the block size
+        
+        # sort out cached_data
+        if cache_data and os.path.isfile(cache_data): # reload previously cached data.
+            oh = open(os.path.realpath(cache_data), "rb")
+            chr_blocks = cPickle.load(oh)
+            oh.close()
+            config.log.info("Reloaded previously cached pileup data: '%s'" % cache_data)
+            # this_loc will not be valid and I test it for length below, so I need to fake one.
+
+        else:
+            # No cahced data, so we have to collect ourselves.
+            p = progressbar(len(list_of_trks))
+            # New version that grabs all data and does the calcs in memory, uses more memory but ~2-3x faster
+            for pindex, trk in enumerate(list_of_trks):
+                for index, chrom in enumerate(chr_blocks):
+                    data = trk.get_array_chromosome(chrom, read_extend=200)
+
+                    for block_id in chr_blocks[chrom]:
+                        left = block_id[0] - pileup_distance 
+                        right = block_id[1] + pileup_distance
+                        # It's possible to ask for data beyond the edge of the actual data. So trim the right vals
+                        if right > len(data):
+                            right = len(data)
+                        if left > len(data):
+                            left = len(data)
+                                
+                        dd = data[left:right]
+                        
+                        #print "dd", left, right, len(dd), block_len,
+                        if len(dd) < block_len: # This should be a very rare case...
+                            num_missing = block_len - len(dd) 
+                            ad = numpy.zeros(num_missing)
+                            dd = numpy.append(dd, ad)
+                        #print "fixed", len(dd)
+                        
+                        pil_data = numpy.array(utils.bin_sum_data(dd, bin_size), dtype=numpy.float32)
+                        if normalise:
+                            # normalise before or after bin?
+                            pil_data /= read_totals[pindex]
+                        chr_blocks[chrom][block_id]["pil"][pindex] = pil_data 
+                p.update(pindex)
+            """
+            # Older version which relies on trk. Potentially this might be faster in future:
+            for pindex, chrom in enumerate(chr_blocks):
+                for block_id in chr_blocks[chrom]:
+                    this_loc = location(loc="chr%s:%s-%s" % (chrom, int(block_id.split(":")[1])-pileup_distance, int(block_id.split(":")[1])+resolution+pileup_distance))
+                    for index, trk in enumerate(list_of_trks):
+                        # ignore pileup_distance for now
+                        pil_data = numpy.array(utils.bin_sum_data(trk.get(loc=this_loc, read_extend=200), bin_size), dtype=numpy.float32)
+
+                        if normalise:
+                            # normalise before or after bin?
+                            pil_data /= read_totals[index]
+                            
+                        chr_blocks[chrom][block_id]["pil"][index] = pil_data 
+                p.update(pindex)
+            """
+            if cache_data: # store the generated data for later.
+                oh = open(cache_data, "wb")
+                cPickle.dump(chr_blocks, oh, -1)
+                oh.close()
+                config.log.info("Saved pileup data to cache file: '%s'" % cache_data)
+            
+        # assign each item to a group and work out all of the possible groups
+        cluster_ids = []
+        for chrom in chr_blocks:
+            for block_id in chr_blocks[chrom]:
+                cluster_id = tuple([bool(i) for i in chr_blocks[chrom][block_id]["binary"]])
+                if cluster_id not in cluster_ids:
+                    cluster_ids.append(cluster_id)
+                chr_blocks[chrom][block_id]["cluster_membership"] = cluster_id
+        
+        # I want to sort the groups from the most complex to the least complex.     
+        if sort_clusters:
+            sorted_clusters = []
+            for c in cluster_ids:
+                sorted_clusters.append({"id": c, "score": sum(c)})
+            sorted_clusters = sorted(sorted_clusters, key=itemgetter("score"))
+            # This result is actually least to most, but as the heatmap is drawn bottom to top it makes sense to
+            # preserve this order.
+        else:
+            pass
+            #URK!
+        
+        # build the super big heatmap table (later should be multi_heatmap()?)
+        tab_wid = block_len * len(list_of_peaks)
+        tab_spa = len(list_of_peaks) # distance between each set of blocks.
+        tab = None
+        
+        ret_data = {}
+        list_of_tables = [None for i in list_of_peaks]
+        groups = []
+        pileup_data = {}
+        
+        # And arrange according to the groups.
+        for cluster_index, cluster_id in enumerate(sorted_clusters):
+            for chrom in chr_blocks:
+                for block_id in chr_blocks[chrom]:
+                    if chr_blocks[chrom][block_id]["cluster_membership"] == cluster_id["id"]:
+                        for peaks in xrange(len(list_of_peaks)):
+                            row = chr_blocks[chrom][block_id]["pil"][peaks]
+                            if list_of_tables[peaks] is None:
+                                # append together all pileup data in a long row and stick on the tab array.
+                                list_of_tables[peaks] = row
+                            else:
+                                list_of_tables[peaks] = numpy.vstack((list_of_tables[peaks], row)) # yes, arg 1 is a tuple.
+                                
+                            # store the pileup_data for later.
+                            if (cluster_index+1) not in pileup_data:
+                                pileup_data[cluster_index+1] = [None for i in list_of_peaks]
+                                
+                            if pileup_data[cluster_index+1][peaks] is None: # numpy testing.
+                                pileup_data[cluster_index+1][peaks] = row
+                            else:
+                                pileup_data[cluster_index+1][peaks] += row
+                        
+                        # Also add it into the return data.     
+                        if cluster_index+1 not in ret_data:
+                            ret_data[cluster_index+1] = {"genelist": genelist(name="cluster_%s" % (cluster_index+1,)), "cluster_membership": cluster_id["id"]}
+                        this_loc = location(loc="chr%s:%s-%s" % (chrom, int(block_id[0]), int(block_id[1]))) # does not include the pileup_distance
+                        ret_data[cluster_index+1]["genelist"].linearData.append({"loc": this_loc})
+                        groups.append(cluster_index+1)
+
+        
+        # finish off the pileup_data:
+        for cid in pileup_data:
+            for pid in xrange(len(pileup_data[cid])):
+                pileup_data[cid][pid] /= len(ret_data[cid]["genelist"])
+            
+        self.__pileup_data = pileup_data
+        self.__pileup_names = [g.name for g in list_of_peaks] # names for each sample, taken from peaks.
+        self.__pileup_groups_membership = sorted_clusters
+        self.__pileup_group_sizes = [groups.count(i) for i in xrange(0, len(sorted_clusters)+1)]
+        
+        config.log.info("chip_seq_cluster_heatmap(): There are %s groups" % len(sorted_clusters))             
+        
+        # I will need the max of all the tables for some calcs below:
+        tab_max = max([tab.max() for tab in list_of_tables])         
+        
+        # rebuild the genelist quickdata and make genelist valid:
+        for cid in ret_data:
+            ret_data[cid]["genelist"]._optimiseData()
+        
+        colbar_label = "tag density"
+        
+        if log:
+            for index in xrange(len(list_of_tables)):
+                # multiply the data so that max() = 100000
+                list_of_tables[index] /= tab_max
+                list_of_tables[index] *= 1000        
+                if log == 2:
+                    list_of_tables[index] = numpy.log2(list_of_tables[index]+1)
+                    colbar_label = "tag density (log2)"
+                elif log == 10:
+                    list_of_tables[index] = numpy.log10(list_of_tables[index]+1)
+                    colbar_label = "tag density (log10)"
+
+        if normalise:
+            colbar_label = "normalised %s" % colbar_label
+        
+        self.__pileup_y_label = colbar_label
+            
+        tab_max = max([tab.max() for tab in list_of_tables]) # need to get new tab_max for log'd values.
+        tab_min = min([tab.min() for tab in list_of_tables])
+        tab_median = numpy.median([numpy.median(tab) for tab in list_of_tables])
+        tab_mean = numpy.average([numpy.average(tab) for tab in list_of_tables])
+        tab_stdev = numpy.std(numpy.array([tab for tab in list_of_tables]))    
+        
+        config.log.info("chip_seq_cluster_heatmap(): min=%.2f, max=%.2f, median=%.2f, mean=%.2f, stdev=%.2f" % (tab_min, tab_max, tab_median, tab_mean, tab_stdev))   
+        if range_bracket:
+            bracket = [tab_max*range_bracket[0], tab_max*range_bracket[1]]
+        elif bracket:
+            bracket = bracket # Fussyness for clarity.
+        else: # guess a range: This should really be done on a per-heatmap basis.
+            bracket = [tab_median+tab_stdev, tab_median+(tab_stdev*2.0)] 
+            config.log.info("chip_seq_cluster_heatmap(): suggested bracket = [%s, %s]" % (bracket[0], bracket[1]))   
+     
+        #real_filename = self.draw.heatmap2(filename=filename, row_cluster=False, col_cluster=False, 
+        #    data=tab, colbar_label=colbar_label, bracket=bracket)
+        if filename:
+            if not titles:
+                titles = [p.name for p in list_of_peaks]
+            real_filename = self.draw.multi_heatmap(filename=filename, groups=groups, titles=titles,
+                list_of_data = list_of_tables, colbar_label=colbar_label, bracket=bracket, frames=frames)        
+
+        config.log.info("chip_seq_cluster_heatmap(): Saved overlap heatmap to '%s'" % real_filename)   
+        return(ret_data)
+            
+    def chip_seq_cluster_pileup(self, filename=None, multi_plot=True, **kargs):
+        """
+        **Purpose**
+            This is an addendum to chip_seq_cluster_heatmap(). You only need run this 
+            directly after chip_seq_cluster_heatmap() and it will draw aggregate pileup
+            graphs either all on the same graph (with a legend) or will draw a multi_plot
+            with many graphs (when multi_plot=True, the default).
+            
+            Note, you do not need to respecify the data for this, but you must run 
+            chip_seq_cluster_heatmap() first, before this function.
+            
+            By default the yscale is locked to the maximum value - so the plots are all to the same
+            scale.
+            
+        **Arguments**
+            filename (Required)
+                A base file name to save the images to. This function will save multiple files, one 
+                for each cluster/group. The file name will be modified in this manner:
+                
+                if filename=="base.png", the modified versions will be: "base_cid[1..n].png"
+                i.e. "_cid<num>" will be inserted before the final filetype (in this case a png
+                file).
+            
+            multi_plot (Optional, default=True) NOT CURRENTLY IMPLEMENTED, only True is implemented.
+                If True, plot all pileups on separate graphs, plotted sequentially horizontally as part of the same
+                figure.
+                
+                If False then plot them all on the same graph, and with a legend.
+                
+        **Returns** 
+            The pileup_data as a dict in the form:
+            {<cluster_id>: [array_data1, array_data2 ... array_dataN], 
+            <cluster_id>: [...],
+            ...
+            }
+        """
+        assert filename, "chip_seq_cluster_pileup(): you must provide a filename"
+        assert self.__pileup_names, "chip_seq_cluster_pileup(): You must run chip_seq_cluster_heatmap() first"
+        
+        #print self.__pileup_data
+        
+        base_filename = ".".join(filename.split(".")[0:-1])
+        
+        num_plots = len(self.__pileup_data[1])
+        if not "size" in kargs:
+            kargs["size"] = (4*num_plots, 7)
+            
+        maxx = self.__pileup_data[1][0].shape[0]              
+        for cid in self.__pileup_data:
+            this_filename = "%s_cid%s.png" % (base_filename, cid) # savefigure will modify png if needed.
+                        
+            fig = self.draw.getfigure(**kargs)
+            fig.suptitle("Group: %s #members: %s Membership: %s" % (cid, self.__pileup_group_sizes[cid], self.__pileup_groups_membership[cid-1]["id"]))
+            # get the max x and y axes:
+            maxy = max([a.max() for a in self.__pileup_data[cid]])
+            miny = min([a.min() for a in self.__pileup_data[cid]])
+            
+            for cfig, data in enumerate(self.__pileup_data[cid]): 
+                ax = fig.add_subplot(1, len(self.__pileup_data[cid]), cfig+1)
+                ax.plot(data)
+                
+                ax.set_xlim([0, maxx-2]) # -2 to trim off the unsightly tail due to binning.
+                [t.set_visible(False) for t in ax.get_xticklabels()]
+                ax.set_ylim([miny, maxy])
+                if cfig >= 1: # nice bodge to blank labels on subsequent graphs.
+                    [t.set_visible(False) for t in ax.get_yticklabels()]
+                else:
+                    ax.set_ylabel(self.__pileup_y_label)
+                ax.set_title("%s (%s)" % (self.__pileup_names[cfig], self.__pileup_groups_membership[cid-1]["id"][cfig]))
+                
+                self.draw.do_common_args(ax, **kargs)
+            
+            self.draw.savefigure(fig, this_filename)
+        return(self.__pileup_data)
+        
+    def genome_dist_radial(self, genome, layout, filename=None, randoms=None, **kargs):
+        """
+        **Purpose**
+            Measure genome distributions of a list of genome coordinates relative to a list of TSS's.
+            
+            As seen in Hutchins et al., 2013 NAR Figure 1D. The version here is slightly generalised compared 
+            to the version used in that paper.
+            
+            Also, one disadvantage here is the lack of a key...
+            
+        **Arguments**
+            genome (Required)
+                A genome with a tss_loc key or loc key to annotate against
+                
+            layout (Required)
+                You need to specify a tuple describing the layout arrangement i.e. the number of radial plot rows and columns
+                
+            randoms (Optional)
+                A list of random peaks to treat as the background binding or binding pattern expected by chance alone.
+                
+            filename (Required)
+                filename to save the radial plots to
+        
+        """    
+        
+        assert genome[0], "genome_dist_radial(): genome appears to be empty"
+        assert "tss_loc" in genome.keys(), "genome_dist_radial(): genome does not have a 'tss_loc' key"
+        # check layout == len(self.linearData)
+
+        annotation = genome
+
+        res = {}
+
+        for p in self.linearData:
+            data, back, back_err, cats = p.genome_distribution(annotation, randoms, filename=None)
+    
+            res[p.name] = {"data": data, "back": back, "err": back_err}
+    
+        fig = self.draw.getfigure(**kargs)
+        fig.subplots_adjust(0.02, 0.02, 0.97, 0.97, wspace=0.1, hspace=0.1)
+        
+        # Work out values for the histograms 
+        erad = 0.69813170079773 # each segment gets 0.69813170079773 (or thereabouts) rads
+        eradh = erad / 2.0
+        eradq = eradh / 2.0
+        theta = numpy.arange(0.0, 2*numpy.pi, 2*numpy.pi/len(data))
+        width = (numpy.pi/4)*len(data) # in rads?
+        width = 0.5
+        
+        # colour for each segment
+        colors = ["#FFF800", # (255, 248, 0)
+            "#000E7C", # (0, 14, 177)
+            "#001EFF", # (0, 30, 255)
+            "#6275FF", # (98, 117, 255)
+            "#B1BAFF", # (177, 186, 255)
+            "#FFB7B1", # (255, 183, 177)
+            "#FF6E62", # (255, 110, 98)
+            "#FF1300", # (255, 19, 0)
+            "#7C0900"] # (124, 9, 0)
+        
+        for i, k in enumerate(res): # ugh. random order...
+            ax = fig.add_subplot(layout[0], layout[1], i+1, polar=True)
+            
+            if res[k]["back"]:
+                axes[k].bar(theta-0.10, res[k]["back"], width=erad, bottom=0.0, alpha=0.8, ec="none", color="grey")
+            ax.bar(theta, res[k]["data"], width=erad-0.20, bottom=0.0, alpha=0.9, ec="none", color=colors)
+            ax.set_title(k, size=7)
+            ax.set_xticks(theta-0.10)
+            ax.set_xticklabels("")
+            l = ax.get_ylim()
+            #print k, ["%s%%" % i for i in range(l[0], l[1]+5, l[1]//len(axes[k].get_yticklabels()))]
+            #print [str(t) for t in axes[k].get_yticklabels()]
+            [t.set_fontsize(10) for t in ax.get_yticklabels()]
+            #print ["%s%%" % (i*10, ) for i, t in enumerate(axes[k].get_yticklabels())]
+            #print [t.get_text() for t in axes[k].get_yticklabels()]
+            ax.set_yticklabels(["%s%%" % i for i in range(int(l[0]), int(l[1]+5), int(l[1]//len(ax.get_yticklabels())))][1:])
+    
+        actual_filename = self.draw.savefigure(fig, filename)
+        config.log.info("genome_dist_radial(): Saved '%s'" % actual_filename)

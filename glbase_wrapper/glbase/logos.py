@@ -132,7 +132,7 @@ class logo:
     def __load_file(self, filename):
         # See if the file is a fasta file:
         oh = open(filename, "rU")
-        for i in xrange(2):
+        for i in xrange(100): # take a big sample
             l = oh.readline()
             if ">" in l:
                 # It's probably a FASTA

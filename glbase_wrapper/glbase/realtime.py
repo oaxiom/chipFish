@@ -292,47 +292,47 @@ class realtime:
 
         self.importByColumnNumber(_csvfile, 1, cSamName, cPrimerName, cCt, cCtCall)
 
-    def importByColumnNumber(self, csvfile, _numRowsToSkip, _SamColNum, _PrimerColNum, _CtColNum, _CtCallColNum=None):
+    def importByColumnNumber(self, csvfile, _numRowsToSkip, _SamColNum, _PrimerColNum, _CtColNum, tsv=False, **kargs):
         """
         (Internal)
         This should probably be internal
         Supply the known column numbers for the particular categories.
         only CtCallColNum can be None
         """
-        fh = open(csvfile, "rb")
-        csvr = csv.reader(fh)
-        # read the header row
-        line = csvr.next()
+        fh = open(csvfile, "rU")
+        if tsv:
+            csvr = csv.reader(fh, dialect=csv.excel_tab)
+        else:
+            csvr = csv.reader(fh)
 
         lineno = 0
         # and now iterate through the rest of the file and load in the data
         for row in csvr:
             lineno += 1
             if lineno > _numRowsToSkip:
-                n = self.contains(row[_PrimerColNum], row[_SamColNum])
                 try:
-                    if n:
-                        if _CtCallColNum: n.addCt(float(row[_CtColNum]) , row[_CtCallColNum])
-                        else: n.addCt(float(row[_CtColNum]))
+                    entry = self.contains(row[_PrimerColNum], row[_SamColNum]) # check if pre-exisiting entry
+                    if entry:
+                        entry.addCt(float(row[_CtColNum]))
                     else: # not present so make a new element
                         Ct = float(row[_CtColNum]) # I do this first as if it fails the Ct is empty and so it will fail to add a superfluous entry.
                         a = assay(row[_SamColNum], row[_PrimerColNum])
-                        if _CtCallColNum: a.addCt(Ct, row[_CtCallColNum])
-                        else: a.addCt(float(row[_CtColNum]))
+                        a.addCt(float(row[_CtColNum]))
                         self.assayList.append(a)
-                except ValueError:
-                    # if the 'Ct' column is empty it throws a Value Error, in which case add a dummy entry with an empty
-                    # Ct and a Ct_call of fail.
-                    # I have to add these as otherwise a list gets out of sync ?!
+                    
+                    sample_name = row[_SamColNum]
+                    probe_name = row[_PrimerColNum]
+                    
+                    # is this a new sample type?
+                    if sample_name not in self.sampleList:
+                        self.sampleList.append(sample_name)
+                    # is this a new primer type?
+                    if probe_name not in self.primerList:
+                        self.primerList.append(probe_name)
+                        
+                except ValueError, IndexError:
+                    # Ct column is empty and this is an empty row, skip it.
                     pass
-                # is this a new sample type?
-                if (not self.sampleList.count(row[_SamColNum])) and row[_CtColNum]: # block empty entries with no Ct
-                    self.sampleList.append(row[_SamColNum])
-                # is this a new primer type?
-                if (not self.primerList.count(row[_PrimerColNum])) and row[_CtColNum]:
-                    self.primerList.append(row[_PrimerColNum])
-            else:
-                print row
 
         fh.close()
 

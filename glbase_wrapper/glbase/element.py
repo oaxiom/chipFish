@@ -76,7 +76,10 @@ class motif:
             self._scrambleMotif()
 
     def isPalindromic(self):
-        return(self.bPalindromic)
+        return(self.palindromic)
+
+    def isPalindrome(self):
+        return(self.palindromic)
 
     def getRegEx(self):
         """
@@ -202,15 +205,49 @@ class motif:
             if res["num_motifs_found"]:
                 newi = copy.deepcopy(item)
                 item[self.name] = "Found"
+                item["%s_seqs" % self.name] = ", ".join(res["sequences"])
                 newl.append(item)
             elif not keep_found_only:
                 newi = copy.deepcopy(item)
                 item[self.name] = "None"
+                item["%s_seqs" % self.name] = "None"
                 newl.append(item)
                     
         newgl = seq_data.__copy__()
         newgl.load_list(newl)
         return(newgl)                
+
+    def count_sequences_with_motif(self, seq_data=None, both_strands=True, **kargs):
+        """
+        **Purpose**
+            Return some statistics about the numbers and percent of motifs found in each list.
+            
+            Returns some information in a dict:
+                {"num_motifs": <The total number of motifs found>,
+                "with_motif": <The number of items in genelist with 1 or more motif>.
+                "percent": <The percent of the genelist/fasta with 1 or more motif>}
+                
+        **Arguments**
+            seq_data (Required)
+                the DNA sequence, loaded from a FASTA or a genelist containing a "seq"
+                key
+                
+            both_strands (Optional, default=True)
+                search both strands of the sequence?
+        """
+        assert seq_data, "You must provide sequence data"
+        
+        results = {"num_motifs": 0, "with_motif": 0}
+        newl = []
+        for item in seq_data:               
+            res = self.scan_sequence(item["seq"], both_strands=both_strands)
+
+            if res["num_motifs_found"]:
+                results["num_motifs"] += res["num_motifs_found"]
+                results["with_motif"] += 1
+        
+        results["percent"] = (results["with_motif"] / float(len(seq_data))) * 100.0
+        return(results)
 
     def getMotifMatches(self, genelist=None, both_strands=True, return_num_motifs_only=False):
         """
@@ -290,7 +327,6 @@ class motif:
                             local_pos.append(abs(seq_len - m.end())) # convert to get the 5' most
                         num_motifs += 1
 
-
         for pos in local_pos:
             for p in range(pos, pos+len(self)):
                 pileup[p] += 1
@@ -350,7 +386,7 @@ class motif:
         if not isinstance(genelist, list):
             genelist = [genelist]
 
-        if not isinstance(random_fastas, list):
+        if random_fastas and not isinstance(random_fastas, list):
             random_fastas = [random_fastas]
 
         motif = self.getRegEx()

@@ -11,6 +11,8 @@ These are constants, although they can be changed, in case, for example,
 the value of pi changes.
 """
 
+# This file must be clean of imports
+
 regex_dict = {
     "a" : "a",
     "c" : "c",
@@ -42,8 +44,9 @@ compdict = {'A': 'T',
             }
 
 ignorekeys = frozenset(["dialect", "duplicates_key",
-"skiplines", "debug", "special", "skiptill", "force_tsv",
-"gtf_decorators", "endwith", "__description__"]) # these are functional tags - so I should ignore them.
+    "skiplines", "debug", "special", "skiptill", "force_tsv",
+    "gtf_decorators", "endwith", "__description__",
+    "commentlines", "keepifxin"]) # these are functional tags - so I should ignore them.
 
 typical_headers = frozenset(["chipseq_loc", "loc", "chr", "#",
 "Gene Name", "", "GenBank", "RefSeq",

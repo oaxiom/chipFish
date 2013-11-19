@@ -12,10 +12,11 @@ import sys, os, csv
 import config, utils
 
 from genelist import genelist
-from flags import *
 from errors import AssertionError
 from location import location
 from progress import progressbar
+from format import sniffer, sniffer_tsv
+from data import * 
 
 class genome(genelist):
     """
@@ -59,7 +60,7 @@ class genome(genelist):
             if "format" in kargs:
                 format = kargs["format"]
             else:
-                format = default # sniffer
+                format = sniffer # sniffer
             
             if "force_tsv" in kargs and kargs["force_tsv"]:
                 format["force_tsv"] = True
@@ -300,12 +301,12 @@ class genome(genelist):
                 second_line = self.seq[chr_key].readline() # should be sequence.
                 assert len(second_line[0]) > 0, "Not a valid FASTA file, sequence is missing?"
                 self.seq_data[chr_key]["linelength"] = len(second_line) -1 # each line.
-        config.log.info("Bound Genome sequence: %s" % path)
+        config.log.info("Bound Genome sequence: '%s', found %s FASTA files" % (path, len(self.seq_data)))
         self.bHasBoundSequence = True
 
         return(True)
 
-    def getSequence(self, **kargs):
+    def getSequence(self, loc=None, **kargs):
         """
         **Purpose**
 
@@ -313,7 +314,7 @@ class genome(genelist):
 
         **Arguments**
 
-        coords or loc (one is Required)
+        loc or coords (one is Required)
             genomic coordinates of the form "chr1:100100-100200"
 
         strand
@@ -323,26 +324,30 @@ class genome(genelist):
 
         mask (Optional, default=False)
             'repeat mask' the returned sequence (i.e. convert lower-case
-            acgt to NNNN)
+            acgt to NNNN). DOES NOT perform repeat masking. Only converts lower-cased
+            bases to NNN. 
 
         **Result**
 
         returns a string containing the sequence at 'coords'
         """
-        valid_args = ["coords", "loc", "strand", "mask"]
+        
+        # This is old and ugly code. 
+        # But it works and has been pretty extensively tested.
+        
+        valid_args = ["coords", "strand", "mask"]
         for key in kargs:
             assert key in valid_args, "getSequence() - Argument '%s' is not recognised" % key
 
-        assert "loc" in kargs or "coords" in kargs, "No valid coords or loc specified"
+        assert loc or "coords" in kargs, "No valid coords or loc specified"
         assert self.bHasBoundSequence, "No Available genome FASTA files"
 
-        if "loc" in kargs: 
-            loc = kargs["loc"]
-        elif "coords" in kargs: 
+        if "coords" in kargs: 
             loc = kargs["coords"]
+            
         try:
             loc = location(loc=loc)
-        except:
+        except Exception:
             pass
             
         assert isinstance(loc, location), "'loc' must be a proper genome location"
@@ -448,13 +453,13 @@ class genome(genelist):
         """
 
         assert self.bHasBoundSequence, "No Available genome FASTA files"
-        assert genelist, "Required argument: 'list' is missing or malformed"
+        assert genelist, "Required argument: 'genelist' is missing or malformed"
         assert loc_key, "Required argument: 'loc_key' is missing or malformed"
-        assert self.__repr__() != "<glbase.delayedlist>", "Sorry, delayedlists cannot have sequence added"
+        assert self.__repr__() != "glbase.delayedlist", "delayedlists cannot have sequence added, see delayedlist.getSequences()"
         #assert "deltaleft" in kargs and "strand_key" in kargs, "You must specify a strand_key if you want to assymetrically expand the coordinates"
         #assert "deltaright" in kargs and "strand_key" in kargs, "You must specify a strand_key if you want to assymetrically expand the coordinates"
 
-        newl = genelist.__copy__()
+        newl = []
 
         strand_key = False
         if "strand_key" in kargs:
@@ -464,8 +469,8 @@ class genome(genelist):
         if "mask" in kargs and kargs["mask"]:
             mask = True
 
-        p = progressbar(len(newl.linearData))
-        for index, item in enumerate(newl.linearData): # this will break delayedlists...
+        p = progressbar(len(genelist))
+        for index, item in enumerate(genelist): 
             newloc = item[loc_key]
 
             if "pointify" in kargs and kargs["pointify"]:
@@ -475,15 +480,21 @@ class genome(genelist):
                 newloc = newloc.expand(kargs["delta"])
 
             if "deltaleft" in kargs and kargs["deltaleft"]:
-                if kargs["strand_key"] in positive_strand_labels:
+                if "strand" in kargs and kargs["strand"]:
+                    if item[kargs["strand_key"]] in positive_strand_labels:
+                        newloc = newloc.expandLeft(kargs["deltaleft"])
+                    elif item[kargs["strand_key"]] in negative_strand_labels:
+                        newloc = newloc.expandRight(kargs["deltaleft"])
+                else:
                     newloc = newloc.expandLeft(kargs["deltaleft"])
-                elif kargs["strand_key"] in negative_strand_labels:
-                    newloc = newloc.expandRight(kargs["deltaleft"])
 
             if "deltaright" in kargs and kargs["deltaright"]:
-                if kargs["strand_key"] in positive_strand_labels:
-                    newloc = newloc.expandLeft(kargs["deltaright"])
-                elif kargs["strand_key"] in negative_strand_labels:
+                if "strand" in kargs and kargs["strand"]:
+                    if item[kargs["strand_key"]] in positive_strand_labels:
+                        newloc = newloc.expandLeft(kargs["deltaright"])
+                    elif item[kargs["strand_key"]] in negative_strand_labels:
+                        newloc = newloc.expandRight(kargs["deltaright"])
+                else:
                     newloc = newloc.expandRight(kargs["deltaright"])
 
             if replace_loc_key:
@@ -498,9 +509,18 @@ class genome(genelist):
 
             item["seq"] = seq
             item["seq_loc"] = newloc
+            if seq: # only add if sequence found
+                newl.append(item)
+                
             p.update(index)
 
-        newl._optimiseData()
-        config.log.info("Got sequences for '%s'" % self.name)
-        newl._history.append("Added DNA sequence")
-        return(newl)
+        newgl = genelist.shallowcopy()
+        newgl.linearData = newl
+        newgl._optimiseData()
+
+        if len(newl) > 0:
+            config.log.info("Got sequences for '%s'" % self.name)
+            newgl._history.append("Added DNA sequence")
+        else:
+            config.log.warning("No sequences found!")
+        return(newgl)

@@ -22,7 +22,7 @@ class genelist(glbase.genelist):
     # descriptions, text for localisation
     __doc__ = "Overriden: Not Present"
     __tooltype__ = "Vanilla genelist"
-    _default_draw_type = "bar"
+    _default_draw_type = "spot"
     _available_draw_types = ("bar", "spot")
 
     # I have to redefine the methods chipFish respects here:
@@ -86,7 +86,7 @@ class genelist(glbase.genelist):
             ret = []
             if loc["chr"] in self.dataByChr:
                 for item in self.dataByChr[loc["chr"]]:
-                    if qcollide(loc["left"], loc["right"], item["loc"]["left"], item["loc"]["right"]):
+                    if loc.qcollide(item["loc"]):
                         ret.append(item["loc"])
             return(ret)
         return(None)

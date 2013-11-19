@@ -101,7 +101,6 @@ class gDraw:
                 "options": track["options"]}
 
             # Big If statement coming:
-            print self.curr_loc
             if track["type"] == "graph":
                 item["array"] = track["data"].get_data("graph", location(loc=self.curr_loc),
                     resolution=self.bps_per_pixel, **track["options"])
@@ -436,8 +435,8 @@ class gDraw:
         self.ctx.fill()
         return( (0, base_loc[1]-opt.track.height_px[track_type], self.w, opt.track.height_px[track_type]-2) )
 
-    def __drawTrackGraph(self, track_data, scaled=True, min_scaling=opt.track.min_scale, clamp=True, 
-        sliding_window_smoothing=False, 
+    def __drawTrackGraph(self, track_data, scaled=True, min_scaling=opt.track.min_scale, clamp=1, 
+        sliding_window_smoothing=False,
         no_scaling=False, colour=None, name=None, **kargs):
         """
         **Arguments**
@@ -454,8 +453,8 @@ class gDraw:
                 full height of the track. Instead the track will be scaled to
                 this value as a minimum.
             
-            clamp (default=True)
-                clamp the display scale from 1 .. n
+            clamp (default=1)
+                clamp the display scale from <clamp> .. n
                 rather than 0 .. n
                 
             sliding_window_smoothing (default=False)
@@ -474,10 +473,10 @@ class gDraw:
 
         if clamp:
             for i, v in enumerate(data):
-                if v > 0.0:
+                if v > clamp-1.0:
                     data[i] = v
                 else:
-                    data[i] = 1
+                    data[i] = clamp
 
         track_max = max(data)
         track_min = min(data)

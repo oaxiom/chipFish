@@ -1,13 +1,24 @@
 """
 track, part of glbase
 
+Brand new bucket reworking of tracks.
+
+This approach is currently about 100% slower than the old track (12 s versus 25 s). But it has an extension for PE reads
+and may become more efficient if typical sequence read libraries become greater than ~100 million tags.
+
+This approach should also win in organisms with only a few chromsomes and large numbers of reads (e.g. Drosophila)
+
+Finally, this approach still has a lot of room for optimisation, whereas track.py is mined out.
+For track.py 1/2 the time is spent in SQL and the other half in a very tight get() loop.
+
+Here a lot more time is spent in Python which could potentially be optimised. At the very least it
+can equal track.py. Then as seq depths get larger this approach will win.
+
 """
 
 from __future__ import division
 
 import cPickle, sys, os, struct, math, sqlite3, zlib, time, csv
-
-from operator import itemgetter
 
 from progress import progressbar
 from errors import AssertionError
@@ -18,11 +29,10 @@ from draw import draw
 import matplotlib.cm as cm
 import matplotlib.pyplot as plot
 import scipy.stats as stats
-from scipy.stats import pearsonr
 from base_track import base_track
 
 import numpy
-from numpy import array, zeros, set_printoptions, int32, append, linspace, argmax, amax, delete
+from numpy import array, zeros, set_printoptions, int32, append, linspace, argmax, amax, delete, integer
 
 TRACK_CACHE_SIZE = 10 # number of track segments to cache.
 
@@ -41,13 +51,26 @@ class track(base_track):
         new (Optional, default=False)
             Use seqToTrk() in preference of this. But if you know what you are 
             doing then this will generate a new (empty) db.
+            
+        paired_end (Optional, default=False)
+            This is a paired-end library.
+            
+            NOTE: PE support is experimental and incomplete. 
+            
+        bucket_size (Optional, default=10000)
+            The size of buckets to partition the data into
+            It is strongly recommended that you do not change this value.
 
     """
-    def __init__(self, name=None, new=False, filename=None, **kargs):
+    def __init__(self, name=None, new=False, filename=None, bucket_size=10000, paired_end=False, **kargs):
         base_track.__init__(self, name, new, filename)
+        
+        self.__bucket_size=bucket_size # should be meta data
+        self.paired_end = paired_end # a PE library or not
         
         if new:
             self.__setup_tables(filename)
+            self.__next_id = 0 # a running unique id for each read
 
     def __repr__(self):
         return("glbase.track")
@@ -60,6 +83,7 @@ class track(base_track):
         c = self._connection.cursor()
 
         c.execute("CREATE TABLE main (chromosome TEXT PRIMARY KEY, seq_reads INT)")
+        c.execute("CREATE TABLE bucket_ids (chromosome TEXT, buck_id INT)") # neither can be indexed as neither is unique...
 
         self._connection.commit()
         c.close()
@@ -80,11 +104,37 @@ class track(base_track):
 
         # make the new chromsome table:
         table_name = "chr_%s" % str(chromosome)
-        c.execute("CREATE TABLE %s (left INT, right INT, strand TEXT)" % (table_name, ))
-        #c.execute("CREATE INDEX %s_com_idx ON %s(left, right)" % (table_name, table_name))
-        #c.execute("CREATE INDEX %s_lef_idx ON %s(left)" % (table_name, table_name))
-        #c.execute("CREATE INDEX %s_rig_idx ON %s(right)" % (table_name, table_name))
+        if self.paired_end:
+            c.execute("CREATE TABLE %s (id INT PRIMARY KEY, left INT, right INT, strand TEXT, pe_left INT, pe_right INT, pe_strand TEXT)" % (table_name, ))
+        else:
+            c.execute("CREATE TABLE %s (id INT PRIMARY KEY, left INT, right INT, strand TEXT)" % (table_name, ))
+        
+        table_name = "buck_%s" % (str(chromosome),)
+        c.execute("CREATE TABLE %s (buck_id INT, set_data TEXT)" % table_name) # and corresponding bucket table
+        
+        c.close()
+        return(True)
 
+    def __add_bucket(self, chromosome, buck_id):
+        """
+        add a chromosome to the main table.
+        add a chromosome table.
+
+        returns True if succesfully created/already present.
+        """
+        c = self._connection.cursor()
+        # check bucket is not already present.
+        if self.__has_bucket(chromosome, buck_id):
+            return(True)
+
+        c.execute("INSERT INTO bucket_ids VALUES (?, ?)", (chromosome, buck_id)) # add chr to master table.
+
+        # make the new chromsome table:
+        table_name = "buck_%s" % (str(chromosome),)
+        c.execute("INSERT INTO %s VALUES (?, ?)" % table_name, (buck_id, sqlite3.Binary(cPickle.dumps(set([]))))) # add in spoof data
+        
+        #print "added bucket", table_name, buck_id
+        
         c.close()
         return(True)
 
@@ -104,7 +154,20 @@ class track(base_track):
             return(True)
         return(False)
 
-    def add_location(self, loc, strand="+", increment=1):
+    def __has_bucket(self, chromosome, bucket_id):
+        """
+        Test if the bucket exits
+        """
+        c = self._connection.cursor()
+
+        # Check if we have the master chrom table?
+        c.execute("SELECT * FROM bucket_ids WHERE chromosome=? AND buck_id=?", (chromosome, bucket_id))
+        result = c.fetchone()
+        if result:
+            return(True)
+        return(False)  
+
+    def add_location(self, loc, pe_loc=None, strand="+", pe_strand=None):
         """
         **Purpose**
             Add a location to the track.
@@ -114,7 +177,15 @@ class track(base_track):
         **Arguments**
             loc
 
+            pe_loc
+                Support for paired-end reads. Insert the location of the paired end
+                here.
+
             strand
+                strand of the read
+                
+            pe_strand 
+                strand of the paired-end.
 
             increment
 
@@ -134,20 +205,81 @@ class track(base_track):
 
         # insert location into new array.
         table_name = "chr_%s" % str(loc["chr"])
+        
+        buckets_reqd = self.__get_buck_ids(loc["left"], loc["right"])
+        if buckets_reqd:
+            for buck in buckets_reqd:
+                if not self.__has_bucket(loc["chr"], buck):
+                    self.__add_bucket(loc["chr"], buck)
+                
+                buck_set = self.__get_buck(loc["chr"], buck)
+                buck_set.add(self.__next_id)
+                self.__update_buck(loc["chr"], buck, buck_set)
 
+        """
+        # I don't need these anymore?
         # get the old number of seq_reads
         c.execute("SELECT seq_reads FROM main WHERE chromosome=?", (loc["chr"], ))
         current_seq_reads = c.fetchone()[0] # always returns a tuple
 
-        c.execute("UPDATE main SET seq_reads=? WHERE chromosome=?", (current_seq_reads+1, loc["chr"]))
+        c.execute("UPDATE main SET seq_reads=? WHERE chromosome=?", (current_seq_reads+1, loc["chr"])) 
+        """
 
         # add the location to the seq table:
-        c.execute("INSERT INTO %s VALUES (?, ?, ?)" % table_name, (loc["left"], loc["right"], strand))
+        if self.paired_end:
+            c.execute("INSERT INTO %s VALUES (?, ?, ?, ?, ?, ?, ?)" % table_name, 
+                (self.__next_id, loc["left"], loc["right"], strand, pe_loc["left"], pe_loc["right"], pe_strand))
+        else:
+            c.execute("INSERT INTO %s VALUES (?, ?, ?, ?)" % table_name, 
+                (self.__next_id, loc["left"], loc["right"], strand))
 
+
+        self.__next_id += 1
         c.close()
 
+    def __get_buck(self, chrom, bucket_id):
+        """
+        get the data within chrom/bucket_id
+        
+        Does not test if the bucket exists...
+        """
+        c = self._connection.cursor()
+        table_name = "buck_%s" % str(chrom)
+        c.execute("SELECT set_data FROM %s WHERE buck_id=?" % table_name, (bucket_id, ))
+        result = c.fetchone()
+        c.close()
+
+        #print "got:", chrom, bucket_id
+
+        if result:
+            return(cPickle.loads(str(result[0])))
+        else:
+            raise Exception, "No Block!"
+
+    def __update_buck(self, chrom, buck_id, buck_set):
+        """
+        Update the bucket with a new set
+        """
+        data_to_put = sqlite3.Binary(cPickle.dumps(buck_set ,1))
+        
+        c = self._connection.cursor()
+        table_name = "buck_%s" % str(chrom)
+        c.execute("UPDATE %s SET set_data=? WHERE buck_id=?" % table_name, 
+                (data_to_put, buck_id))
+        c.close()
+
+    def __get_buck_ids(self, left, right):
+        """
+        return a list of all the bucket_ids this read spans
+        """
+        left_buck = int((left-1)/config.bucket_size)*config.bucket_size
+        right_buck = int((right)/config.bucket_size)*config.bucket_size
+        buckets_reqd = range(left_buck, right_buck+config.bucket_size, config.bucket_size) # make sure to get the right spanning and left spanning sites
+
+        return(buckets_reqd)
+
     def get(self, loc, resolution=1, read_extend=0, kde_smooth=False, 
-        view_wid=0, strand=False, **kargs):
+        view_wid=0, **kargs):
         """
         **Purpose**
             get the data between location 'loc' and return it formatted as
@@ -180,43 +312,41 @@ class track(base_track):
             loc = location(loc=loc)
         extended_loc = loc.expand(read_extend)
 
-        result = self.get_reads(extended_loc, strand=strand)
+        result = self.get_reads(extended_loc)
         
         if kde_smooth:
             return(self.__kde_smooth(loc, reads, resolution, 0, view_wid, read_extend))
 
-        loc_left = loc["left"]
-        loc_right = loc["right"]
-
         # make a single array
-        a = [0] * int( (loc_right-loc_left+resolution)/resolution ) # Fast list allocation
-        # Python lists are much faster for this than numpy or array
-
-        len_a = len(a)
+        #a = zeros(int( (loc["right"]-loc["left"]+resolution)/resolution ), dtype=integer)
+        a = [0] * int( (loc["right"]-loc["left"]+resolution)/resolution ) # Fast list allocation
+        # Python lists are much faster for this
         
         for r in result:
             read_left, read_right, strand = r
-            if strand == "+":
+            if r[2] == "+":
                 read_right += (read_extend + 1) # coords are open
-            elif strand == "-" :
+            elif r[2] == "-" :
                 read_left -= read_extend
                 read_right += 1 # coords are open 
             
-            rel_array_left = int((read_left - loc_left) // resolution)
-            rel_array_right = int((read_right - loc_left) // resolution)        
+            rel_array_left = (read_left - loc["left"]) // resolution
+            rel_array_right = (read_right - loc["left"]) // resolution            
             
             if rel_array_left <= 0:
                 rel_array_left = 0
-            if rel_array_right > len_a:
-                rel_array_right = len_a
+            if rel_array_right > len(a):
+                rel_array_right = len(a)
+            
+            #a[rel_array_left:rel_array_right] += 1
+            # The below is a very tiny amount faster
             
             for array_relative_location in xrange(rel_array_left, rel_array_right, 1):
+                #print array_relative_location
                 a[array_relative_location] += 1
             
-            #a[rel_array_left:rel_array_right] += 1 # Why is this slower than the for loop?
-            
-            #[a[array_relative_location].__add__(1) for array_relative_location in xrange(rel_array_left, rel_array_right, 1)] # just returns the exact item, a is unaffected?
         return(numpy.array(a))
+
 
     def __kde_smooth(self, loc, reads, resolution, bandwidth, view_wid, read_shift=100):
         """
@@ -246,41 +376,6 @@ class track(base_track):
         res = array(kk, dtype=integer)
         
         return(res)
-    
-    def get_all_reads_on_chromosome(self, chrom, strand=None):
-        """
-        **Purpose**
-            Get all of the reads on chromosomes.
-            
-        **Arguments**
-            chromosome (Required)  
-                the name of the chromosome to pull from.
-                
-            strand (Optional)
-                selct + or - strands and only collect those.
-                
-        **Returns**
-            An iterator to collect the data from.
-            
-            You must process the data in some sort of for loop:
-            for read in trk.get_all_reads_on_chromosome("1")
-        """
-        assert chrom, "You must provide a chromosome"
-        assert chrom in self.get_chromosome_names(), "chromsome '%s' not found in this track" % chromosome
-        
-        if not self._c:
-            self._c = self._connection.cursor()
-            
-        if len(chrom) < 30: # small security check
-            table_name = "chr_%s" % chrom
-        
-        if strand:
-            result = self._c.execute("SELECT * FROM %s WHERE strand=?" % table_name, strand)
-        else:
-            result = self._c.execute("SELECT * FROM %s" % table_name)
-            
-        #reads = self._c.fetchall()
-        return(result)                
                 
     def get_array_chromosome(self, chromosome, strand=None, resolution=1, read_extend=0, **kargs):
         """
@@ -295,8 +390,6 @@ class track(base_track):
                 strand, but only valid for stranded tracks
                 if "+" return only that strand, if '-' return only the negative
                 strand (will recognise several forms of strand, e.g. F/R, +/-
-                
-                NOT SUPPORTED AT THIS TIME
 
             resolution (default = 1bp)
                 nbp resolution required (you should probably send a float for accurate rendering)
@@ -329,32 +422,30 @@ class track(base_track):
                 right_most = i[1]+read_extend
 
         # make an array.
-        a = [0] * int( (right_most+resolution)/resolution ) # Fast list allocation
-        # Python lists are much faster for this than numpy or array
-        len_a = len(a) # == right_most+resolution
+        a = zeros(int(right_most+int(resolution), int(resolution)), dtype=integer)
 
         for r in reads:
-            read_left, read_right, strand = r
-            if strand == "+":
-                read_right += (read_extend + 1) # coords are open
-            elif strand == "-" :
-                read_left -= read_extend
-                read_right += 1 # coords are open 
-            
-            rel_array_left = int(read_left // resolution)
-            rel_array_right = int(read_right // resolution)        
-            
-            if rel_array_left <= 0:
-                rel_array_left = 0
-            if rel_array_right > len_a:
-                rel_array_right = len_a
-            
-            for array_relative_location in xrange(rel_array_left, rel_array_right, 1):
-                a[array_relative_location] += 1
+            # read_extend
+            if r[2] in positive_strand_labels:
+                left = r[0]
+                right = r[1] + read_extend + 1
+            elif r[2] in negative_strand_labels:
+                left = r[0] - read_extend
+                right = r[1] + 1
+
+            # check for array wrap arounds:
+            if left < 0: left = 0
+
+            for loc in xrange(left, right, 1):
+                if resolution <= 1: # force 1bp read # this may be incorrect as it may add the read several times until it increments?
+                    # this is the source of the artivacts when resolution < 1.0?
+                    a[loc] += 1
+                else:
+                    a[int(loc/resolution)] += 1
 
         #print "array_len", len(a)
 
-        return(numpy.array(a))
+        return(a)
 
     def get_reads(self, loc, strand=None):
         """
@@ -369,35 +460,50 @@ class track(base_track):
         **Returns**
             a list containing all of the reads between loc.
         """
-        #if not isinstance(loc, location):
-        #    loc = location(loc=loc)
-
-        #if len(loc["chr"]) < 30: # small security measure.
-        table_name = "chr_%s" % loc["chr"]
-
-        #result = self._connection.execute("SELECT * FROM %s WHERE (?>=left AND ?<=right) OR (?>=left AND ?<=right) OR (left<=? AND right>=?) OR (?<=left AND ?>=right)" % table_name,
-        #    (loc["left"], loc["left"], loc["right"], loc["right"], loc["left"], loc["right"], loc["left"], loc["right"]))
-        
-        # This is the code used in location.collide():
-        #self["right"] >= loc["left"] and self["left"] <= loc["right"]
-        result = self._connection.execute("SELECT left, right, strand FROM %s WHERE (right >= ? AND left <= ?)" % table_name,
-            (loc["left"], loc["right"]))
-    
-        #result = None       
-        result = result.fetchall() # safer for empty lists and reusing the cursor
-        
-        if result and strand: # sort out only this strand
-            if strand in positive_strand_labels:
-                strand_to_get = positive_strand_labels
-            elif strand in negative_strand_labels:
-                strand_to_get = negative_strand_labels
+        if not isinstance(loc, location):
+            loc = location(loc=loc)
             
-            newl = []
-            for r in result:
-                if r[2] in strand_to_get:
-                    newl.append(r)
-            result = newl                    
+        if not self._c:
+            self._c = self._connection.cursor()
 
+        # Should test for chrom here?
+
+        if len(loc["chr"]) < 30: # small security measure.
+            table_name = "chr_%s" % loc["chr"]
+
+        read_ids = set() 
+
+        # bucket_ids I need to interrogate
+        bucks_reqd = self.__get_buck_ids(loc["left"], loc["right"])
+        for bucket_id in bucks_reqd:
+            table_name = "buck_%s" % loc["chr"]
+            #result = self._connection.execute("SELECT set_data FROM %s WHERE buck_id=?" % table_name, (buck,)) 
+            
+            self._c.execute("SELECT set_data FROM %s WHERE buck_id=? LIMIT 1" % table_name, (bucket_id, ))
+            result = cPickle.loads(str(self._c.fetchone()[0]))
+            if result:
+                read_ids |= result
+        
+        result = []
+        if read_ids:
+            # Now get the reads based on id:
+            table_name = "chr_%s" % str(loc["chr"])
+            read_ids = str(read_ids).replace("set", "").replace("[", "").replace("]","")
+            if self.paired_end:
+                raise "Not implemented!"
+            else:
+                self._c.execute("SELECT left, right, strand FROM %s WHERE id IN %s" % (table_name, read_ids)) # So sue me
+            reads = [f for f in self._c.fetchall()]
+            #reads += [r for r in reads]
+        
+            for r in reads: # Now they are unique, with no overlapping reads.
+                # retrieve only the overlapping reads
+                #print r
+                if loc.qcollide(location(chr=loc["chr"], left=r[0], right=r[1])):
+                    result.append(r)
+                    #print loc, r, loc.qdistance(location(chr=loc["chr"], left=r[0], right=r[1]))
+        
+        #print len(result)
         return(result)
 
     def get_read_count(self, loc):
@@ -418,9 +524,13 @@ class track(base_track):
 
         table_name = "chr_%s" % loc["chr"]
 
-        self._c.execute("SELECT left, right, strand FROM %s WHERE (right >= ? AND left <= ?)" % table_name,
-            (loc["left"], loc["right"]))
-            
+        self._c.execute("SELECT * FROM %s WHERE (?>=left AND ?<=right) OR (?>=left AND ?<=right) OR (left<=? AND right>=?) OR (?<=left AND ?>=right)" % table_name,
+            (loc["left"], loc["left"], loc["right"], loc["right"], loc["left"], loc["right"], loc["left"], loc["right"]))
+
+        # this is here in the hope that in the future cursor.rowcount
+        # will be correctly supported...
+        # at the moment probably provides little or no benefit.
+
         return(len(self._c.fetchall()))
 
     def get_chromosome_names(self):
@@ -439,45 +549,7 @@ class track(base_track):
         
         self._c.execute("SELECT chromosome FROM main")
         r = [i[0] for i in self._c.fetchall()]
-        return(set(r))
-
-    def get_numreads_on_chromosome(self, name):
-        """
-        **Purpose**
-            Return the number of reads on chromosme name
-            
-        **Arguments**
-            name (Required)
-                get the number of reads on chromsome 'name'
-            
-        **Returns**
-            An integer containing the number of reads
-        """
-        if not self._c:
-            self._c = self._connection.cursor()
-
-        self._c.execute("SELECT chromosome, seq_reads FROM main WHERE chromosome=?", (str(name), ))
-        r = self._c.fetchone()
-        return(r[1])
-
-    def get_total_num_reads(self):
-        """
-        **Purpose**
-            Return the number total number of reads for this track.
-            
-        **Arguments**
-            None
-            
-        **Returns**
-            An integer containing the number of reads
-        """
-        if not self._c:
-            self._c = self._connection.cursor()
-
-        self._c.execute("SELECT chromosome, seq_reads FROM main")
-        r = [int(i[1]) for i in self._c.fetchall()]
-        
-        return(sum(r))
+        return(r)
 
     def _debug__print_all_tables(self):
         c = self._connection.cursor()
@@ -518,7 +590,13 @@ class track(base_track):
                 
             filename (Required)
                 the name of the image file to save the pileup graph to.
-                                       
+                
+            heatmap_filename (Optional)
+                draw a heatmap, where each row is a single gene. And red is the tag density
+            
+            raw_tag_filename (Optional)
+                Save a tsv file that contains the heatmap values for each row of the genelist.
+            
             bin_size (Optional, default=500)
                 bin_size to use for the heatmap
                 
@@ -712,274 +790,23 @@ class track(base_track):
                         dpi=150, figsize=(6, 24), aspect="long")
                 config.log.info("saved heatmap to '%s'" % real_filename)
 
-        ret = {"pileup": pileup}
-        if heatmap_filename or raw_tag_filename: #if binned_data:
-            # __nonzero__ not set in numpy arrays, so assume binned_data is valid
-            # if doing heatmap
-            ret["binned_data"] = binned_data
-
-        return(ret)
-
-    def heatmap(self, filename=None, genelist=None, distance=1000, read_extend=200, log=2, 
-        bins=20, sort_by_intensity=True, raw_heatmap_filename=None, bracket=None, **kargs):
-        """
-        **Purpose**
-            Draw a heatmap of the seq tag density drawn from a genelist with a "loc" key.
-            
-        **Arguments**
-            genelist (Required)
-                a genelist with a 'loc' key.
-                
-            filename (Optional)
-                filename to save the heatmap into
-                Can be set to None if you don't want the png heatmap.
-
-            raw_heatmap_filename (Optional)
-                Save a tsv file that contains the heatmap values for each row of the genelist.
-                
-            distance (Optional, default=1000)
-                Number of base pairs around the location to extend the search
-                
-            bins (Optional, default=20)
-                Number of bins to use. (i.e. the number of columns)
-                
-            read_extend (Optional, default=200)
-                number of base pairs to extend the sequence tag by. 
-                
-            log (Optional, default=2)
-                log transform the data, optional, the default is to transform by log base 2.
-                Note that this parameter only supports "e", 2, and 10 for bases for log
-                if set to None no log transform takes place.
-            
-            sort_by_intensity (Optional, default=True)
-                sort the heatmap so that the most intense is at the top and the least at 
-                the bottom of the heatmap.
-                
-        **Results**
-            file in filename and the heatmap table
-        """
-        assert genelist, "must provide a genelist"
-        assert "loc" in genelist.keys(), "appears genelist has no 'loc' key"
-        assert "left" in genelist.linearData[0]["loc"].keys(), "appears the loc key data is malformed"
-        assert log in ("e", math.e, 2, 10, None), "this 'log' base not supported"
-        
-        table = []
-        bin_size = int((distance*2) / bins)
-        
-        p = progressbar(len(genelist.linearData))
-        for idx, item in enumerate(genelist.linearData):
-            l = item["loc"].pointify().expand(distance)
-            
-            row = self.get(l, read_extend=read_extend)
-       
-            # bin the data
-            row = numpy.array(utils.bin_data(row, bin_size))
-            
-            table.append(row)   
-            p.update(idx)         
-        
-        # sort the data by intensity
-        # no convenient numpy. So have to do myself.
-        mag_tab = []
-        for index, row in enumerate(table):
-            mag_tab.append({"n": index, "sum": row.max()})
-        
-        if sort_by_intensity:
-            mag_tab = sorted(mag_tab, key=itemgetter("sum"))
-        
-        if log:
-            data = numpy.array(table)+1
-        else:
-            data = numpy.array(table)
-        
-        newt = []
-        for item in mag_tab:
-            newt.append(data[item["n"],])
-        data = numpy.array(newt)
-        data = numpy.delete(data, numpy.s_[-1:], 1)
-        
-        if log:
-            if log == "e" or log == math.e:
-                data = numpy.log(data)-1
-            elif log == 2:
-                data = numpy.log2(data)-1
-            elif log == 10:
-                data = numpy.log10(data)-1
-               
-        # draw heatmap
-        
-        if not self._draw:
-            self._draw = draw()
-        
-        if filename:
-            if not bracket:
-                bracket=[1, data.max()]
-            elif len(bracket) == 1: # Assume only minimum.
-                bracket = [bracket[0], data.max()]
-            
-            filename = self._draw.heatmap2(data=data, filename=filename, bracket=bracket, **kargs)
-        
-        if raw_heatmap_filename:
-            numpy.savetxt(raw_heatmap_filename, data, delimiter="\t")
-            
-            config.log.info("saved raw_heatmap_filename to '%s'" % raw_heatmap_filename)
-        
-        config.log.info("Saved heatmap tag density to '%s'" % filename)
-        return({"data": data})
-
-    def measure_frip(self, genelist=None, sample=None, delta=None, pointify=False):
-        """
-        **Purpose**
-            Measure the FRiP 'Fraction of Reads in Peaks' as defined by Landt et al., 2012; 
-            Gen Res, 22:1813-1831.
-            
-            Essentially the fraction of reads inside a list of peaks (from the genelist).
-            
-        **Arguments**
-            genelist (Required)
-                A list of peaks, must have a "loc" key containing the location data.
-                Ideally this is the peak spans reported by your peak discovery tool,
-                but you can provide delta=xxx bp argument to expand the locations.
-                
-            sample (Optional)
-                sample only the first n peaks. By default, all peaks are used.
-                
-            delta (Optional, default=None)
-                a value to expand the locations by + and - delta.
-                
-            pointify (Optional, default=False)
-                'pointify' (Convert a span of base pairs to the centre point).
-                Executed before 'delta'
-            
-        **Returns**
-            The FRiP score, the total number of reads and the number of reads inside the peaks
-        """
-        assert genelist, "You must provide a genelist"
-        assert "loc" in genelist.linearData[0], "The genelist does not appear to have a 'loc' key"
-        
-        if sample:
-            gl = gl[sample]
-        else:
-            gl = genelist.deepcopy() # get a copy as I may mess with it.
-        
-        if pointify:
-            gl = gl.pointify("loc")
-            
-        if delta:
-            gl = gl.expand("loc", delta)
-        
-        # work out the total number of reads in this library
-        chr_names = self.get_chromosome_names()
-        total_reads = 0
-        for chrom in chr_names:
-            total_reads += self.get_numreads_on_chromosome(chrom)
-                    
-        num_reads = 0
-        p = progressbar(len(gl))
-        for idx, item in enumerate(gl):
-            num_reads += self.get_read_count(item["loc"])
-            p.update(idx)
-        
-        return({"FRiP": num_reads/float(total_reads), "Total number of reads": total_reads, "Number of reads in peaks": num_reads})
-
-    def qc_encode_idr(self, chrom_sizes=None, filename=None, max_shift=400, **kargs):
-        """
-        **Purpose**
-            Perform QC for ChIP-seq libraries, as explained 
-            
-            https://sites.google.com/site/anshulkundaje/projects/idr
-            
-            and in Landt et al., 2012, Gen Res, 22:1813-1831.
-        
-        **Arguments**
-            chromosome_sizes (Required)
-                You must provide a dict, containing the chromosome names and the 
-                number of base pairs.
-                
-                For mm9 this data is available as part of glbase and can be specified:
-                
-                trk.qc_encode_idr(chromosome_sizes=gldata.chromsizes["mm9"])
-                
-                Potentially, hg18, hg19, mm8 and mm9 will be available. too. maybe.
-                
-            filename (Required)
-                filename to save the plot to
-                
-        **Returns**
-            NSC and RSC values. (See Landt et al., 2012; Gen Res, 22:1813-1831) for 
-            details.
-        """ 
-        assert chrom_sizes, "You must provide chromosome sizes"
-        assert filename, "You must provide a filename"
-
-        if not self._draw:
-            self._draw = draw()
-        
-        # I only need to generate the + strand once.
-        plus_strands = {}
-        minu_strands = {}
-        
-        # constructing a numpy array is excessively large. I only need store pairs of reads
-        
-        all_chroms = set(self.get_chromosome_names()) & set([i.replace("chr", "") for i in chrom_sizes.keys()]) # only iterate ones in both list
-        all_p = numpy.array([])
-        all_m = numpy.array([])
-        res = []
-        pears = numpy.zeros([max_shift, len(all_chroms)])
-        
-        for idx, chrom in enumerate(all_chroms):
-            this_p = numpy.array([r[0] for r in self.get_all_reads_on_chromosome(chrom, "+")])
-            this_m = numpy.array([r[1] for r in self.get_all_reads_on_chromosome(chrom, "-")])
-                        
-            p = progressbar(max_shift)
-            for n in xrange(max_shift):                   
-                this_m = this_m - 1    
-                                 
-                union = numpy.union1d(this_p, this_m) # only ones I will have to look at
-                #union = numpy.intersect1d(this_p, this_m) 
-                #xor_union = numpy.setxor1d(this_p, this_m)
-                #union = numpy.append(union, xor_union)
-    
-                pair_p = numpy.bincount(this_p, minlength=max(this_p.max(), this_m.max())+1)[union]
-                pair_m = numpy.bincount(this_m, minlength=max(this_p.max(), this_m.max())+1)[union]
-                
-                pears[n, idx] = pearsonr(pair_p, pair_m)[0]
-                p.update(n)
-                """
-                fig = self._draw.getfigure()
-                ax = fig.add_subplot(111)
-                ax.plot(pair_p, pair_m, 'o', mec="none", alpha=0.2)
-                ax.set_title("Pearson: %.3f" % pears[n, idx])
-                fig.savefig("plots/test_%s_%s.png"% (chrom, n))
-                """
-            print "Done chromosome '%s'" % chrom
-
-        print pears            
-        for row in pears:
-            res.append(numpy.average(row))
-        print res
-        
-        fig = self._draw.getfigure(**kargs)
-        ax = fig.add_subplot(111)
-        ax.plot(numpy.arange(len(res)), res)
-        self._draw.savefigure(fig, filename)            
-        
-        ret = {"NSC": 0.0, "RSC": 0.0}
-        return(ret)
+        return(pileup)
 
 if __name__ == "__main__":
     """
+    Current target is 0.9 s and 31 s
 
-    Current 15 s
+    Current (working) is 2.5s and 50 s
 
     """
+    
     import random, time
     from location import location
     from genelist import genelist
     
     s = time.time()
     print "Building...",
-    t = track(filename="testold.trk2", name="test", new=True)
+    t = track(filename="testnew.trk2", name="test", new=True, bucket_size=100)
     for n in xrange(0, 10000):
         l = random.randint(0, 100000)
         t.add_location(location(chr="1", left=l, right=l+35), strand="+")
@@ -999,12 +826,10 @@ if __name__ == "__main__":
     e = time.time()
     print e-s, "s"
     
-    t = track(filename="testold.trk2")
+    t = track(filename="testnew.trk2")
+    
     print "Pileup..."
     import cProfile, pstats
     cProfile.run("t.pileup(genelist=bed, filename='test.png', bin_size=10, window_size=1000)", "profile.pro")
     p = pstats.Stats("profile.pro")
     p.strip_dirs().sort_stats("time").print_stats()
-
-    print t.heatmap(genelist=bed, raw_heatmap_filename="test.tsv", filename='test.png', bin_size=10, window_size=1000)
-    print t.heatmap(genelist=bed, raw_heatmap_filename="test.tsv", filename='test.png', bin_size=10, window_size=1000, log=None)

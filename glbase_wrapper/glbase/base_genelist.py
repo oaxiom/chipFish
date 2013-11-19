@@ -1,5 +1,5 @@
 
-import copy, cPickle
+import copy, cPickle, re
 
 import config
 from helpers import *
@@ -25,39 +25,48 @@ class _base_genelist:
         Confer: 
         if "key" in genelist:
         """
-        return(key in self.keys)
+        return(key in self.keys())
 
     def __nonzero__(self):
         """
         Fixes:
-        if genelist_object:
-            Now True
+        if genelist: # contains something
+            True
             
-        and fixes 
-        if genelist: # fails if it is an empty genelist.
+        and fixes:
+        
+        len(genelist) = 0
+        if genelist: # Would pass even if the genelist is empty
+            False
+        
         """
         return(len(self) > 0)
 
-    def __copy__(self):
+    #def __copy__(self):
+    #    raise Exception, "__copy__() is NOT supported for genelists, use gl.deepcopy() or gl.shallowcopy()"
+    
+    def __shallowcopy__(self):
+        raise Exception, "__shallowcopy__() is NOT supposrted for genelists, use gl.deepcopy() or gl.shallowcopy()"
+    
+    def __deepcopy__(self, fake_arg):
+        raise Exception, "__deepcopy__() is NOT supposrted for genelists, use gl.deepcopy() or gl.shallowcopy()"
+    
+    def deepcopy(self):
         """
-        (Override)
-        Confer copy to mean a deep copy as opposed to a shallow copy.
+        Confer copy to mean a deepcopy as opposed to a shallowcopy.
         
         This is required as genelists are compound lists.
         """
-        try:
-            return(cPickle.loads(cPickle.dumps(self, -1))) # This is 2-3x faster and presumably uses less memory
-        except PicklingError:
-            return(copy.deepcopy(self)) # Use the generic version
+        return(cPickle.loads(cPickle.dumps(self, -1))) # This is 2-3x faster and presumably uses less memory
 
-    def __shallowcopy__(self):
+    def shallowcopy(self):
         """
         (New)
 
         Some weird behaviour here, I know, this is so I can still get access to
         the shallow copy mechanism even though 90% of the operations are copies.
         """
-        return(copy.copy(self))
+        return(copy.copy(self)) # But doesnt this just call __copy__() anyway?
         
     def __len__(self):
         """
@@ -83,6 +92,27 @@ class _base_genelist:
         """
         for n in self.linearData:
             yield n
+
+    def __setitem__(self, index, *args):
+        """
+        (Override)
+        Block key editing.
+        """
+        raise AssertionError, "Cannot modify list in-place"
+
+    def __hash__(self):
+        """
+        (Override)
+
+        compute a sensible hash value
+        """
+        try:
+            return(hash(self.name + str(self[0]) + str(self[-1]) + str(len(self)))) # hash data for comparison.
+        except Exception:
+            try:
+                return(hash(self.name + str(self[0]) + str(self[-1]))) # len() probably not available (delayedlist?).
+            except Exception: # I bet the list is empty.
+                return(hash(self.name))
 
     def keys(self):
         """
@@ -123,7 +153,7 @@ class _base_genelist:
                 try: # see if I can cooerce it into a location:
                     return(location(loc=value))
                 except (TypeError, IndexError, AttributeError, AssertionError, ValueError): # this is not working, just store it as a string
-                    return(str(value))
+                    return(str(value).strip())
         return("") # return an empty datatype. 
         # I think it is possible to get here. If the exception at int() or float() returns something other than a 
         # ValueError (Unlikely, Impossible?)

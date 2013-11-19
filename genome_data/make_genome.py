@@ -1,7 +1,7 @@
 """
 'make' a genome
 
-turn refGene table (from mm8) into a genome.
+turn refGene table into a genome.
 """
 
 import sys, csv
@@ -47,22 +47,12 @@ print mm9
 mm9.save("mm9_refGene.glb")
 print mm9._findByLabel("name", "Nanog")
 
-"""
-# Continue to use refseq, as the ensembl table is missing the name...
-format_mm9_ensembl = {
-        "loc": {"code": "location(chr=column[2], left=int(column[4]), right=int(column[5]))"},
-        "strand": 3,
-        "name": 12,
-        "refseq": 1,
-        "cds_loc": {"code": "location(chr=column[2], left=column[6], right=column[7])"},
-        "exons_count": 8,
-        "exonStarts": {"code": "[int(x) for x in column[9].strip(\",\").split(\",\")]"},
-        "exonEnds": {"code": "[int(x) for x in column[10].strip(\",\").split(\",\")]"},
-        "dialect" : csv.excel_tab
-        } # This is now in glbase >0.161.hg
+hg19 = glbase_wrapper.genome(name="hg19", filename="hg19_refGene.tsv", format=format_mm9_refgene)
+print hg19
+hg19.save("hg19_refGene.glb")
+print hg19._findByLabel("name", "Nanog")
 
-ens_mm9 = glbase_wrapper.genome(name="mm9", filename="format_mm9_ensembl.tsv", format=format_mm9_ensembl)
-print ens_mm9
-ens_mm9.save("mm9_refGene.glb")
-print ens_mm9._findByLabel("name", "Nanog")
-"""
+mm10 = glbase_wrapper.genome(name="mm10", filename="mm10_refGene.tsv", format=format_mm9_refgene)
+print mm10
+mm10.save("mm10_refGene.glb")
+print mm10._findByLabel("name", "Nanog")

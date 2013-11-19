@@ -14,7 +14,7 @@ from .. import genelist
 from .. import format
 from .. import config
 
-def seqToTrk(infilename, outfilename, name, stranded=True, **kargs):
+def seqToTrk(infilename=None, outfilename=None, name=None, stranded=True, format=format.minimal_bed, **kargs):
     """
     **Purpose**
         Convert a list of genomic coordinates to a trk database (Actually an SQL
@@ -25,14 +25,16 @@ def seqToTrk(infilename, outfilename, name, stranded=True, **kargs):
             the name of the filename to read from. This should be a csv.
             The data is loaded using a delayedlist(), so memory
             is not a big problem.
+            
+            You can also send a list of filenames, 
 
         outfilename
             The filename of the trk file to write to.
 
-        name
-            A name describing the track
+        name (Required)
+            A name describing the track.
 
-        format (Optional, default=GERALD export.txt)
+        format (Optional, default=format.minimal_bed)
             a format specifier in the glbase format describing the csv
             file.
 
@@ -44,18 +46,12 @@ def seqToTrk(infilename, outfilename, name, stranded=True, **kargs):
         and a trk file in outfilename
 
     """
-    assert os.path.realpath(infilename), "no filename specified"
-    assert os.path.realpath(outfilename), "no save filename specified"
-
-    if "format" in kargs and kargs["format"]:
-        default_format = kargs["format"]
-    else:
-        default_format = format.exporttxt_loc_only
-
-    if "force_cache" in kargs and kargs["force_cache"]: # This is undocumented and generally a really bad idea
-        seqfile = genelist(filename=os.path.realpath(infilename), format=default_format)
-    else:
-        seqfile = delayedlist(filename=os.path.realpath(infilename), format=default_format)
+    assert infilename, "seqToTrk(): You must specify infilename"
+    assert outfilename, "seqToTrk(): You must specify outfilename"
+    assert name, "seqToTrk(): You must specify a name for the track"
+    
+    if not isinstance(infilename, list):
+        infilename = [infilename]
 
     n = 0
     m = 0
@@ -63,22 +59,24 @@ def seqToTrk(infilename, outfilename, name, stranded=True, **kargs):
 
     t = track(filename=outfilename, stranded=stranded, new=True, name=name, **kargs)
 
-    config.log.info("Started %s -> %s" % (infilename, outfilename))
-
     s = time.time()
-    for item in seqfile:
-        if "strand" in item and stranded:
-            t.add_location(item["loc"], strand=item["strand"])
-        else:
-            t.add_location(item["loc"])
+    for file in infilename:
+        config.log.info("Started %s -> %s" % (file, outfilename))
+        seqfile = delayedlist(filename=os.path.realpath(file), format=format)
+        for item in seqfile:
+            if "strand" in item and stranded:
+                t.add_location(item["loc"], strand=item["strand"])
+            else:
+                t.add_location(item["loc"])
 
-        n += 1
-        total += 1
-        if n > 1000000:
-            m += 1
-            n = 0
-            config.log.info("%s,000,000 tags read" % m) # How to correct for 1000 M tags?
-            #break
+            n += 1
+            total += 1
+            if n > 1000000:
+                m += 1
+                n = 0
+                config.log.info("%s,000,000 tags read" % m) # How to correct for 1000 M tags?
+                #break
+     
     e = time.time()
     # 1000 = averages 8-9 s
     # 3.65 s cache.
