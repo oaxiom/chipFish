@@ -15,9 +15,16 @@ See below for the catalogue of file formats
 
 """
 
-import csv
+import csv, re, copy
 
 from format_container import fc
+from helpers import lst_find
+
+# ------------------- 'sniffer' formats - tell glbase to guess the file format.
+
+default = {"sniffer": 0} # the default, it loads your file based on the heading labels in the csv.
+sniffer = default # alternative name
+sniffer_tsv = {"sniffer": 0, "force_tsv": True} # alternative name
 
 # ------------------- standard formats:
 bed = fc(name="bed",
@@ -35,7 +42,7 @@ full_bed = fc(name="full_bed", # The full formal definition of a BED file.
     format={"loc": "location(chr=column[0], left=column[1], right=column[2])",  
         "name": 3, "score": 4, "strand": 5, "thickStart": 6, "thickEnd": 7,
         "itemRgb": 8, "blockCount": 9, "blockSizes": 10, "blockStarts": 11, 
-        "force_tsv": True, "skiplines": -1},
+        "force_tsv": True, "skiplines": -1, "commentlines": "#"},
     description= "This is the full 12-column definition of a BED file")
     
 # Would be useful to add a "optional" and "required" for bed files? 
@@ -58,8 +65,8 @@ fasta = fc(name="fasta",
 gtf = fc(name="gtf",
     description="GTF, gene transfer file format.",
     format={"feature_type": 1, "feature": 2, "gtf_decorators": 8,
-	    "loc": "location(chr=column[0], left=column[3], right=column[4])", 
-	    "strand": 6, "skiplines": -1, "force_tsv": True})
+        "loc": "location(chr=column[0], left=column[3], right=column[4])", 
+        "strand": 6, "skiplines": -1, "force_tsv": True})
 
 snp = fc(name="snp",
     format=dict(bin=0, name=4, score=5, strand=6, refNCBI=7, refUCSC=8, observed=9,
@@ -90,18 +97,18 @@ encode_broadpeak = fc("encode_broadpeak",
 # --------------------- motif discovery formats
 fimo_out = fc(name="fimo_out", 
     description="Load in the fimo.txt file output by FIMO, part of the MEME suite.",
-    format={"force_tsv": True, "pattern-name": 0, "sequence": 1, "left": 2, "right": 3, "score": 4,
+    format={"force_tsv": True, "pattern-name": 0, "sequence": 1, "score": 4,
         "p-value": 5, "q-value": 6, "sequence": 7, 
         "loc": "location(chr=column[1], left=min(column[2], column[3]), right=max(column[2], column[3]))"})
 
-# --------------------- ChIP-seq file-types
+# --------------------- peak-discovery tool file-types
 macs_output = {"loc": {"code": "location(chr=column[0], left=column[1], right=column[2])"}, "tag_height": 5,
     "skiptill": "chr", "force_tsv": True, "fold_change": 7}
 
 macs_summit = {"loc": {"code": "location(chr=column[0], left=int(column[1])+int(column[4]), right=int(column[1])+int(column[4]))"},
-	"fold_change": 7, "tag_count": 5, 
-	"skiptill": "chr", 
-	"force_tsv": True}
+    "fold_change": 7, "tag_count": 5, "fdr": 8,
+    "skiptill": "chr", 
+    "force_tsv": True}
 
 ccat_output = {"loc": {"code": "location(chr=column[0], left=column[1], right=column[1])"}, "force_tsv": True,
     "tag_height": 4, "fold": 6, "skiplines": -1}
@@ -113,6 +120,11 @@ ccat_output_csv = {"loc": {"code": "location(chr=column[0], left=column[1], righ
 sissrs_output = {"loc": {"code": "location(chr=column[0], left=column[1], right=column[2])"}, "tag_height": 3,
     "fold": 4, "p-value": 5, "force_tsv": True, "skiplines": 57}
 
+homer_peaks = fc(name="homer_peaks",
+    format={"loc": {"code": "location(chr=column[1], left=column[2], right=column[3])"},
+    "force_tsv": True, "commentlines": "#", "tagcount": 5},
+    description="file format output by HOMER findPeaks")
+
 # --------------------- next-gen sequencing formats:
 # This is not a full implementation of the sam file specification.
 # but it will accept a sam file as outputted by tophat.
@@ -120,6 +132,19 @@ sam_tophat = fc(name="sam_tophat",
     format={"name": 0, "loc": {"code": "location(chr=column[2], left=column[3], right=column[3])"},
         "mapq": 3, "seq": 9, "force_tsv": True, "skiplines": -1},
     description="SAM file. Note this only implements SAM files as output by tophat")
+
+# lst_find() is in helpers.py
+sam_tophat_xs = fc(name="sam_tophat_xs",
+    format={"name": 0, "loc": {"code": "location(chr=column[2], left=column[3], right=column[3])"},
+        "mapq": 4, "seq": 9, "force_tsv": True, "skiplines": -1, "keepifxin": "XS:",
+        "strand": {"code": "re.sub(r'[A-Z]*[:]*', '', column[lst_find(column, lambda x: 'XS:' in x)])"}},
+    description="Tophat SAM file. This uses the XS tag for the strand, for strand-specific RNA-seq")
+
+sam = fc(name="sam",
+    format={"qname": 0, "flag": 1, "cigar": 5,
+        "loc": {"code": "location(chr=column[2], left=column[3], right=column[3])"},
+        "mapq": 3, "seq": 9, "force_tsv": True, "skiplines": -1, "commentlines": "@"},
+    description="SAM file. This is a partial implementation")
 
 exporttxt_loc_only = fc(name="exporttxt_loc_only",
     format={"loc": {"code": "location(chr=column[10].strip(\".fa\"), left=column[12], right=int(column[12])+25)"},
@@ -131,7 +156,17 @@ exporttxt_all = fc(name="exporttxt_all",
     format={"loc": {"code": "location(chr=column[10].strip(\".fa\"), left=column[12], right=int(column[12])+25)"},
         "strand": 13, "seq": 6, "quality_score": 7,
         "force_tsv": True}, # export.txt file (output from the illumina pipeline), but only loads the location and strand.
-    description="Load in the export.txt file as output by the Illumina HTS pipeline.\n\t\tThis variant loads the location, sequence and quality score")
+    description="Load in the export.txt file as output by the Illumina HTS pipeline.\n\t\tThis variant loads the location, sequence, strand and quality score")
+
+bowtie = fc(name="bowtie",
+    format={"loc": "location(chr=column[2], left=column[3], right=column[3])", "strand": 1, 
+        "seq": 4, "quality_scores": 5, "force_tsv": True},
+    description="Loads most of the relevant data from the default bowtie output")
+
+bowtie_loc_only = fc(name="bowtie_loc_only",
+    format={"loc": "location(chr=column[2], left=column[3], right=column[3])", "strand": 1, 
+        "force_tsv": True},
+    description="Loads the genomic location and strand from the default bowtie output")
 
 # --------------------- miscellaneous file formats
 ann_list = {"loc": 4, "strand": 6, "name": 9, "refseq": 11, "entrez": 12, "tag_height": 1}# output format from my annotation script
@@ -160,6 +195,7 @@ mm8_refgene = fc(name="mm8_refgene",
         },
     description="The mm8 refGene table downloaded from UCSC Genome Browser")
 
+# --------------------- UCSC/Ensembl annotations
 mm9_refgene = fc(name="mm9_refgene",
     format={"loc": "location(chr=column[2], left=column[4], right=column[5])",
         "strand": 3, "name": 12, "force_tsv": True,
@@ -169,11 +205,34 @@ mm9_refgene = fc(name="mm9_refgene",
         }, # description is lost from the mm9 table?
     description="The mm9 refGene table downloaded from UCSC Genome Browser")
 
+mm10_refgene = fc(name="mm10_refgene",
+    format={"loc": "location(chr=column[2], left=column[4], right=column[5])",
+        "strand": 3, "name": 12, "force_tsv": True,
+        "refseq": 1, "tss_loc": {"code": "strandSorter(column[2], column[4], column[5], column[3])"},
+        "cds_loc": {"code": "location(chr=column[2], left=column[6], right=column[7])"},
+        "exons_count": 8
+        }, # description is lost from the mm9 table?
+    description="The mm10 refGene table downloaded from UCSC Genome Browser")
+
 ensembl = {"loc": {"code": "location(chr=column[2], left=column[4], right=column[5])"},
-	"tss_loc": {"code": "strandSorter(column[2], column[4], column[5], column[3])"},
-	"ensmbl": 1, "name": 12, "exon_count": 8,
-	"force_tsv": True, "skiplines": 0} 
-	
+    "tss_loc": {"code": "strandSorter(column[2], column[4], column[5], column[3])"},
+    "ensmbl": 1, "name": 12, "exon_count": 8,
+    "force_tsv": True, "skiplines": 0} 
+
+hg19_refgene = fc(name="hg19_refgene",
+    format = {
+        "loc": {"code": "location(chr=column[2], left=int(column[4]), right=int(column[5]))"},
+        "strand": 3,
+        "name": 12,
+        "refseq": 1,
+        #"tss_loc": {"code": "strandSorter(column[2], column[4], column[5], column[3])"}, # Broken in this version of glbase
+        "cds_loc": {"code": "location(chr=column[2], left=column[6], right=column[7])"},
+        "exons_count": 8,
+        "exonStarts": {"code": "[int(x) for x in column[9].strip(\",\").split(\",\")]"},
+        "exonEnds": {"code": "[int(x) for x in column[10].strip(\",\").split(\",\")]"},
+        "force_tsv" : True},
+    description="The hg19 refGene table downloaded from UCSC Genome Browser")
+    
 # hg18 default refseq export.
 hg18_refseq = fc(name="hg18_refseq",
     format={"loc": {"code": "location(chr=column[0], left=column[1], right=column[2])"},
@@ -181,14 +240,32 @@ hg18_refseq = fc(name="hg18_refseq",
         "refseq": 3, "tss_loc": {"code": "strandSorter(column[0], column[2], column[3], column[1])"}},
     description="The Hg18 RefSeq gene table as downloaded from the UCSC Genome Browser")
 
+# --------------------- miscellaneous
 homer_annotated= {"loc": "location(chr=column[0], left=column[1], right=column[2])",
     "peak_id":3,"motif_score":4,"strand": 5,"motif_seq":6,"summit_dist":7,
-    "summit_height":8,"neares_gene":9,"TSS_dist":10,"annotation":11, 
+    "summit_height":8,"nearest_gene":9,"TSS_dist":10,"annotation":11, 
     "force_tsv": True,"skiplines": -1} 
 
 MACS_combined={"loc": "location(chr=column[0], left=column[1], right=column[2])","peak_id":3,
     "summit_height":4,"p-value_score": 5,"number_tags":6,"fold_enrichment":7,"FDR":8, "force_tsv": True,
     "skiplines": -1}
+
+# --------------------- RNA-seq data
+
+# 1.2.0 version:
+rsem_gene = fc(name="rsem_gene", 
+    format={"ensg": 0, "tpm": 8, "tpm_lo": 10, "tpm_hi": 11, 
+    "transcripts": 1, "force_tsv": True},
+    description="The *.gene.* file format output by RSEM >=1.2.0")
+
+# --------------------- BLAST and related formats
+
+blast_tabular = fc(name="blast_tabular",
+    format={'queryId': 0, 'subjectId': 1, 'percIdentity': 2, 'alnLength': 3, 
+        'mismatchCount': 4, 'gapOpenCount': 5, 'queryStart': 6, 'queryEnd': 7, 
+        'subjectStart': 8, 'subjectEnd': 9, 'eVal': 10, 'bitScore': 11,
+        "force_tsv": True, "skiplines": -1},
+    description="The default BLAST tabular format output")
 
 # --------------------- class container
 
@@ -203,8 +280,10 @@ class fccatalogue():
     def __str__(self):
         print "Found %s formats" % len(self.formats)
         a = []
-        for key in self.formats:
-            a.append("format.{name:24} - {desc:5}".format(name=key, desc=self.formats[key].description))
+        keys = self.formats.keys() # report in alphabetical order
+        keys.sort()
+        for k in keys:
+            a.append("format.{name:24} - {desc:5}".format(name=k, desc=self.formats[k].description))
         return("\n".join(a))
     
     def __iter__(self):
@@ -235,8 +314,9 @@ class fccatalogue():
             print "None found"
 
 catalogue = fccatalogue([fimo_out, fasta, gtf, bed, full_bed, minimal_bed,
-    exporttxt_loc_only, exporttxt_all, mm8_refgene, mm9_refgene, hg18_refseq,
-    snp, pgsnp, psl, encode_rna_expn, encode_broadpeak, sam_tophat])
+    exporttxt_loc_only, exporttxt_all, mm8_refgene, mm9_refgene, mm10_refgene, hg18_refseq, hg19_refgene,
+    snp, pgsnp, psl, encode_rna_expn, encode_broadpeak, sam_tophat, sam_tophat_xs, sam, 
+    blast_tabular, rsem_gene, bowtie_loc_only, bowtie, homer_peaks])
          
 if __name__ == "__main__":
     print catalogue

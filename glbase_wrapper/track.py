@@ -27,7 +27,7 @@ class track(glbase.track):
     _default_draw_type = "graph"
     _available_draw_types = ("graph", "graph_split_strand", "bar", "kde_graph")
 
-    def get_data(self, type, loc, strand=None, resolution=1, **kargs):
+    def get_data(self, type, loc, strand=None, resolution=1, norm_by_lib_size=False, **kargs):
         """
         **Purpose**
             get data from the track.
@@ -49,6 +49,9 @@ class track(glbase.track):
             returns a Numpy array, or a dictionary.
         """
         if type in self._available_draw_types:
+            if norm_by_lib_size:
+                trk = self.get(loc, resolution=resolution, **kargs) * 100000000 # Quick hack to get it back to ints.
+                return(trk / self.get_total_num_reads())
             if type == "kde_graph":
                 return(self.get(loc, resolution=resolution, kde_smooth=True, **kargs))
             else:

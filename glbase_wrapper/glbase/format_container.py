@@ -4,6 +4,8 @@ The new format container, with docs!
 
 """
 
+import copy
+
 class fc():
     def __init__(self, name, format, description):
         self.data = format
@@ -46,3 +48,8 @@ class fc():
     
     def update(self, dictionary):
         self.data.update(dictionary)    
+
+    def copy(self):
+        c = copy.copy(self)
+        c.data = self.data.copy() # dict copy
+        return(c)

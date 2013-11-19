@@ -3,8 +3,10 @@ import sys, os
 
 import opt, gDraw
 
+
 from glbase_wrapper import glload, track, location, format, flat_track, genelist
 from error import *
+from genome_data import genomes
 
 class app():
     """
@@ -120,27 +122,28 @@ class app():
                         if name:
                             if mode == "track":
                                 self.draw.bindTrack(track(filename=os.path.join(path, name)), options=options)
-                                print "Bound Track:", os.path.join(path, name)
                             elif mode == "split_track":
                                 self.draw.bindTrack(track(filename=os.path.join(path, name)), options=options, track_type="graph_split_strand")
-                                print "Bound Track:", os.path.join(path, name)
                             elif mode == "flat":
                                 self.draw.bindTrack(flat_track(filename=os.path.join(path, name), bin_format="f"), track_type="graph", options=options)
-                                print "Bound Track:", os.path.join(path, name)
                             elif mode == "kde_track":
                                 self.draw.bindTrack(track(filename=os.path.join(path, name)), options=options, track_type="kde_graph")
-                                print "Bound KDE Track:", os.path.join(path, name)
                             elif mode=="bed":
                                 self.draw.bindTrack(genelist(filename=os.path.join(path, name), format=format.bed), options=options)
-                                print "Bound Bed:", os.path.join(path, name) 
                             elif mode=="macs_bed":
                                 f = format.minimal_bed
                                 f["skiplines"] = 1 # Changes in recent version of macs bed.
                                 self.draw.bindTrack(genelist(filename=os.path.join(path, name), format=f), options=options)
-                                print "Bound MACS bed file:", os.path.join(path, name)
                             elif mode=="genome": # must be a glb
-                                self.draw.bindTrack(glload(os.path.join(path, name)))
-                                print "Bound genome:", name 
+                                # First see if I can get it out of the pre-packaged geneomes:
+                                try:
+                                    g = genomes()
+                                    if name in g:
+                                        print g.get_genome(name)
+                                        self.draw.bindTrack(g.get_genome(name))
+                                except AssertionError:
+                                    # Okay, that did'nt work. see If I can get a file in this dir:
+                                    self.draw.bindTrack(glload(os.path.join(path, name)))
             oh.close()
 
         self.draw.setViewPortSize(opt.draw.view_port_width)

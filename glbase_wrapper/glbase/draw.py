@@ -44,7 +44,7 @@ Then it can go::
 
 """
 
-import sys, os, copy
+import sys, os, copy, random
 
 from numpy import array, arange, mean, max, min, std, float32
 from scipy.cluster.hierarchy import distance, linkage, dendrogram
@@ -52,14 +52,13 @@ from scipy.spatial.distance import pdist # not in scipy.cluster.hierarchy.distan
 from scipy import polyfit, polyval
 from scipy.stats import linregress
 import numpy as np
-from array import array as qarray # this is now replaced by numpy?
 import matplotlib.pyplot as plot
 import matplotlib.cm as cm
 from matplotlib.colors import ColorConverter, rgb2hex
 import matplotlib.mlab as mlab
 from matplotlib.patches import Ellipse, Circle
 
-import config
+import config, cmaps, utils
 from flags import *
 from errors import AssertionError
 
@@ -103,7 +102,8 @@ class draw:
         vmin, vmax, cm.RdBu_r, **kargs))
 
     def heatmap(self, filename=None, cluster_mode="euclidean", row_cluster=True, col_cluster=True, 
-        vmin=0, vmax=None, colour_map=cm.RdBu_r, col_norm=False, row_norm=False,
+        vmin=0, vmax=None, colour_map=cm.RdBu_r, col_norm=False, row_norm=False, heat_wid=0.25, heat_hei=0.85,
+        highlights=None, discretize=False, border=False,
         **kargs):
         """
         my own version of heatmap.
@@ -130,7 +130,12 @@ class draw:
                 
             row_tree (Optional, default=False)
                 provide your own tree for drawing. Should be a Scipy tree. row_labels and the data
-                will be rearranged based on the tree, so don't rearrnge the data yourself
+                will be rearranged based on the tree, so don't rearrnge the data yourself.
+                i.e. the data should be unclustered. Use tree() to get a suitable tree for loading here
+            
+            col_tree (Optional, default=False)
+                provide your own tree for ordering the data by. See row_tree for details.
+                This one is applied to the columns.
                 
             row_font_size (Optional, default=guess suitable size)
                 the size of the row labels (in points). If set this will also override the hiding of
@@ -138,7 +143,29 @@ class draw:
                 
             col_font_size (Optional, default=8)
                 the size of the column labels (in points)
+            
+            heat_wid (Optional, default=0.25)
+                The width of the heatmap panel. The image goes from 0..1 and the left most
+                side of the heatmap begins at 0.3 (making the heatmap span from 0.3 -> 0.55).
+                You can expand or shrink this value depending wether you want it a bit larger
+                or smaller.
                 
+            heat_hei (Optional, default=0.85)
+                The height of the heatmap. Heatmap runs from 0.1 to heat_hei, with a maximum of 0.9 (i.e. a total of 1.0)
+                value is a fraction of the entire figure size.
+                
+            colbar_label (Optional, default="expression")
+                the label to place beneath the colour scale bar
+                
+            highlights (Optional, default=None)
+                sometimes the row_labels will be suppressed as there is too many labels on the plot. 
+                But you still want to highlight a few specific genes/rows on the plot.
+                Send a list to highlights that matches entries in the row_names.
+                
+            discretize (Optional, default=False)
+                change the colourmap (either supplied in cmap or the default) into a 'discretized' version
+                that has large blocks of colours, defined by the number you send to discretize
+            
         **Returns**
             The actual filename used to save the image.
         """
@@ -169,45 +196,77 @@ class draw:
                 ma = max(data[row,:])
                 data[row,:] = (data[row,:]-mi) / (ma-mi)
 
-        # positions of the items in the plot:
-        left_side_tree =    [0.05,  0.1,   0.248,  0.85]
-        top_side_tree =     [0.3,   0.952,  0.25,   0.044]
-        heatmap_location =  [0.3,   0.1,   0.25,   0.85]
+        if "square" in kargs and kargs["square"]:
+            # make the heatmap square, for e.g. comparison plots
+            left_side_tree =    [0.15,    0.15,   0.10,   0.75]
+            top_side_tree =     [0.25,    0.90,  0.55,   0.08]
+            heatmap_location =  [0.25,    0.15,   0.55,   0.75]
+        else:
+            # positions of the items in the plot:
+            # heat_hei needs to be adjusted. as 0.1 is the bottom edge. User wants the bottom
+            # edge to move up rather than the top edge to move down.
+        
+            mmheat_hei = 0.93 - heat_hei # this is also the maximal value (heamap edge is against the bottom)
+        
+            left_side_tree =    [0.05,  mmheat_hei,   0.248, heat_hei]
+            top_side_tree =     [0.3,   0.932,  heat_wid,   0.044]
+            heatmap_location =  [0.3,   mmheat_hei,   heat_wid,  heat_hei]
         scalebar_location = [0.01,  0.96,   0.24,   0.03]
         
         # set size of the row text depending upon the number of items:
+        row_font_size = 0
         if "row_font_size" in kargs:
             row_font_size = kargs["row_font_size"]         
         else:
             if "row_names" in kargs and kargs["row_names"]:
                 if len(kargs["row_names"]) <= 100:
                     row_font_size = 8
+                elif len(kargs["row_names"]) <= 150:
+                    row_font_size = 4
                 elif len(kargs["row_names"]) <= 200:
                     row_font_size = 3
                 elif len(kargs["row_names"]) <= 300:
                     row_font_size = 2
                 else:
-                    config.log.warning("heatmap has too many row labels to be visible. Suppressing row_labels")
-                    kargs["row_names"] = None
-                    row_font_size = 1
+                    if not highlights: # if highlights, don't kill kargs["row_names"] and don't print warning.
+                        config.log.warning("heatmap has too many row labels to be visible. Suppressing row_labels")
+                        kargs["row_names"] = None
+                        row_font_size = 1
+            else:
+                row_font_size = 0
+                
+        if highlights:
+            found = [False for i in highlights]
+            if row_font_size == 0:
+                row_font_size = 5 # IF the above sets to zero, reset to a reasonable value.
+            if "row_font_size" in kargs: # but override ir row_font_size is being used.
+                row_font_size = kargs["row_font_size"] # override size if highlights == True
+                # I suppose this means you could do row_font_size = 0 if you wanted.             
+            
+            # blank out anything not in row_names:
+            new_row_names = []
+            for item in kargs["row_names"]:
+                if item in highlights:
+                    new_row_names.append(item)
+                    index = highlights.index(item)
+                    found[index] = True
+                else:
+                    new_row_names.append("")
+            kargs["row_names"] = new_row_names                        
+
+            for i, e in enumerate(found): # check all highlights found:
+                if not e:
+                    config.log.warning("highlight: '%s' not found" % highlights[i])
                 
         col_font_size = 8
         if "col_font_size" in kargs:
             col_font_size = kargs["col_font_size"]
 
-        if "square" in kargs and kargs["square"]:
-            # make the heatmap square, for e.g. comparison plots
-            left_side_tree =    [0.15,    0.15,   0.10,   0.75]
-            top_side_tree =     [0.25,    0.90,  0.55,   0.08]
-            heatmap_location =  [0.25,    0.15,   0.55,   0.75]
-            row_font_size = 10
-            col_font_size = 10
-
         if "bracket" in kargs: # done here so clustering is performed on bracketed data
             data = self.bracket_data(data, kargs["bracket"][0], kargs["bracket"][1])
             vmin = kargs["bracket"][0]
             vmax = kargs["bracket"][1]
-
+            
         if not vmax:
             """
             I must guess the vmax value. I will do this by working out the
@@ -227,7 +286,10 @@ class draw:
         if "col_cluster" in kargs: col_cluster = kargs["col_cluster"]
         if not "colbar_label" in kargs: 
             kargs["colbar_label"] = "expression"
-        if "cmap" in kargs: colour_map = kargs["cmap"]
+        if "cmap" in kargs: 
+            colour_map = kargs["cmap"]
+        if discretize:
+            colour_map = cmaps.discretize(colour_map, discretize)
 
         # a few grace and sanity checks here;
         if len(data) <= 1: row_cluster = False # clustering with a single point?
@@ -244,10 +306,10 @@ class draw:
             # from scipy;
             # generate the dendrogram
             if "row_tree" in kargs:
-                Z = kargs["row_tree"]
+                Z = kargs["row_tree"]["Z"]
             else:
                 Y = pdist(data, metric=cluster_mode)
-                Z = linkage(Y, 'single')
+                Z = linkage(Y, method='complete', metric=cluster_mode)
             a = dendrogram(Z, orientation='right')
 
             ax1.set_position(left_side_tree)
@@ -284,8 +346,14 @@ class draw:
             ax2 = fig.add_subplot(142)
             ax2.set_frame_on(False)
             ax2.set_position(top_side_tree)
-            Y = pdist(transposed_data, metric=cluster_mode)
-            Z = linkage(Y, 'single')
+            if "col_tree" in kargs and kargs["col_tree"]:
+                assert "Z" in kargs["col_tree"], "col_tree appears to be improperly formed (Z is missing)"
+                #if kargs["col_names"] and kargs["col_names"]:
+                #    assert len(kargs["col_tree"]["Z"]) == len(kargs["col_names"]), "tree is not the same size as the column labels"
+                Z = kargs["col_tree"]["Z"]
+            else:
+                Y = pdist(transposed_data, metric=cluster_mode)
+                Z = linkage(Y, method='complete', metric=cluster_mode)
             a = dendrogram(Z, orientation='top')
 
             [item.set_markeredgewidth(0.0) for item in ax2.xaxis.get_ticklines()]
@@ -295,7 +363,7 @@ class draw:
 
             order = a["ivl"]
             # resort the data by order;
-            if kargs["col_names"]: # make it possible to cluster without names
+            if "col_names" in kargs and kargs["col_names"]: # make it possible to cluster without names
                 newd = []
                 new_col_names = []
                 for index in order:
@@ -306,22 +374,20 @@ class draw:
 
         # ---------------- Second plot (heatmap) -----------------------
         ax3 = fig.add_subplot(143)
-        hm = ax3.pcolor(data, cmap=colour_map, vmin=vmin, vmax=vmax, antialiased=False)
+        hm = ax3.pcolormesh(data, cmap=colour_map, vmin=vmin, vmax=vmax, antialiased=False)
 
-        ax3.set_frame_on(False)
+        ax3.set_frame_on(border)
         ax3.set_position(heatmap_location)
-        if kargs["col_names"]:
+        if "col_names" in kargs and kargs["col_names"]:
             ax3.set_xticks(arange(len(kargs["col_names"]))+0.5)
-            ax3.set_xticklabels(kargs["col_names"])
+            ax3.set_xticklabels(kargs["col_names"], rotation="vertical")
             ax3.set_xlim([0, len(kargs["col_names"])])
+            if "square" in kargs and kargs["square"]:
+                ax3.set_xticklabels(kargs["col_names"], rotation="vertical")
         else:
             ax3.set_xlim([0,data.shape[1]])
 
-        if "square" in kargs and kargs["square"]:
-            ax3.set_xticklabels(kargs["col_names"], rotation="vertical")
-        ax3.set_xticklabels(kargs["col_names"], rotation="vertical")
-
-        if "row_names" in kargs and kargs["row_names"]: # you can't meaningfully see >200 labels. So suppress them:
+        if "row_names" in kargs and kargs["row_names"]: 
             ax3.set_yticks(arange(len(kargs["row_names"]))+0.5)
             ax3.set_ylim([0, len(kargs["row_names"])])
             ax3.set_yticklabels(kargs["row_names"])
@@ -334,6 +400,106 @@ class draw:
         [item.set_markeredgewidth(0.0) for item in ax3.yaxis.get_ticklines()]
         [t.set_fontsize(row_font_size) for t in ax3.get_yticklabels()] # generally has to go last.
         [t.set_fontsize(col_font_size) for t in ax3.get_xticklabels()]
+
+        ax0 = fig.add_subplot(144)
+        ax0.set_position(scalebar_location)
+        ax0.set_frame_on(False)
+
+        cb = fig.colorbar(hm, orientation="horizontal", cax=ax0, cmap=colour_map)
+        cb.set_label(kargs["colbar_label"])
+        [label.set_fontsize(5) for label in ax0.get_xticklabels()]
+
+        return({"real_filename": self.savefigure(fig, filename), "reordered_cols": kargs["col_names"], "reordered_rows": kargs["row_names"],
+            "reordered_data": data})
+
+    def heatmap2(self, filename=None, cluster_mode="euclidean", row_cluster=True, col_cluster=True, 
+        vmin=0, vmax=None, colour_map=cm.YlOrRd, col_norm=False, row_norm=False, heat_wid=0.25,
+        **kargs):
+        """
+        **Purpose**
+            This version of heatmap is a simplified heatmap. It does not accept colnames, row_names
+            and it outputs the heatmap better centred and expanded to fill the available space
+            it does not draw a tree and (unlike normal heatmap) draws a black border
+            around. Also, the scale-bar is optional, and by default is switched off.
+            
+            It is ideal for drawing sequence tag pileup heatmaps. For that is what it was originally made for
+            (see track.heatmap())
+        
+        **Arguments**
+            data (Required)
+                the data to use. Should be a 2D array for the heatmap.
+                
+            filename (Required)
+                The filename to save the heatmap to.
+                
+            col_norm (Optional, default=False)
+                normalise each column of data between 0 .. max => 0.0 .. 1.0
+                
+            row_norm (Optional, default=False)
+                similar to the defauly output of heatmap.2 in R, rows are normalised 0 .. 1
+                                                           
+            colbar_label (Optional, default="expression")
+                the label to place beneath the colour scale bar
+                
+        **Returns**
+            The actual filename used to save the image.
+        """
+        assert filename, "heatmap() - no specified filename"
+
+        data = array(kargs["data"], dtype=float32) # heatmap2 can only accept a numpy array
+        
+        if col_norm:
+            for col in xrange(data.shape[1]):   
+                data[:,col] /= float(data[:,col].max())
+        
+        if row_norm:
+            for row in xrange(data.shape[0]):
+                mi = min(data[row,:])
+                ma = max(data[row,:])
+                data[row,:] = (data[row,:]-mi) / (ma-mi)
+
+        # positions of the items in the plot:
+        heatmap_location =  [0.05,   0.01,   0.90,   0.90]
+        scalebar_location = [0.05,  0.97,   0.90,   0.02]
+
+        if "bracket" in kargs: # done here so clustering is performed on bracketed data
+            data = self.bracket_data(data, kargs["bracket"][0], kargs["bracket"][1])
+            vmin = kargs["bracket"][0]
+            vmax = kargs["bracket"][1]
+        else:
+            vmin = data.min()
+            vmax = data.max()
+
+        if not "colbar_label" in kargs: 
+            kargs["colbar_label"] = "density"
+            
+        if "cmap" in kargs: colour_map = kargs["cmap"]
+
+        # a few grace and sanity checks here;
+        if len(data) <= 1: row_cluster = False # clustering with a single point?
+        if len(data[0]) <= 1: col_cluster = False # ditto.
+
+        if not "aspect" in kargs:
+            kargs["aspect"] = "long"
+        fig = self.getfigure(**kargs)
+
+        # ---------------- (heatmap) -----------------------
+        ax3 = fig.add_subplot(111)
+        hm = ax3.pcolormesh(data, cmap=colour_map, vmin=vmin, vmax=vmax, antialiased=False)
+
+        #ax3.set_frame_on(True)
+        ax3.set_position(heatmap_location)
+
+        ax3.set_xlim([0,data.shape[1]])
+
+        ax3.set_ylim([0,data.shape[0]])
+        ax3.set_yticklabels("")
+
+        ax3.yaxis.tick_right()
+        [item.set_markeredgewidth(0.0) for item in ax3.xaxis.get_ticklines()]
+        [item.set_markeredgewidth(0.0) for item in ax3.yaxis.get_ticklines()]
+        [t.set_fontsize(1) for t in ax3.get_yticklabels()] # generally has to go last.
+        [t.set_fontsize(1) for t in ax3.get_xticklabels()]
 
         ax0 = fig.add_subplot(144)
         ax0.set_position(scalebar_location)
@@ -422,7 +588,7 @@ class draw:
 
         ax1 = fig.add_subplot(142)
         plot_data = arraydata.T
-        hm = ax1.pcolor(plot_data, cmap=cm.RdBu_r, vmin=vmin, vmax=vmax, antialiased=False)
+        hm = ax1.pcolormesh(plot_data, cmap=cm.RdBu_r, vmin=vmin, vmax=vmax, antialiased=False)
 
         ax1.set_frame_on(False)
         ax1.set_position(left_heatmap)
@@ -458,7 +624,7 @@ class draw:
 
         a = array(bin) # reshape the bin array
         a.shape = 1,len(bin)
-        ax2.pcolor(a.T, cmap=cm.gray_r, antialiased=False)
+        ax2.pcolormesh(a.T, cmap=cm.gray_r, antialiased=True)
 
         ax2.set_frame_on(False)
         ax2.set_position(binding_map)
@@ -479,7 +645,7 @@ class draw:
         ax3.set_position(freq_plot)
         ax3.set_yticklabels("")
         ax3.set_ylim([0, len(peakdata)])
-        ax3.set_xlim([0, max(peakdata)])
+        ax3.set_xlim([min(peakdata), max(peakdata)])
         [item.set_markeredgewidth(0.0) for item in ax3.yaxis.get_ticklines()]
         [item.set_markeredgewidth(0.2) for item in ax3.xaxis.get_ticklines()]
         [t.set_fontsize(6) for t in ax3.get_xticklabels()]
@@ -493,25 +659,148 @@ class draw:
 
         return(self.savefigure(fig, kargs["filename"]))
 
+    def multi_heatmap(self, list_of_data=None, filename=None, groups=None, titles=None,
+        vmin=0, vmax=None, colour_map=cm.YlOrRd, col_norm=False, row_norm=False, heat_wid=0.25,
+        frames=False, **kargs):
+        """
+        **Purpose**
+            Draw a multi-heatmap figure, i.e. containing multiple heatmaps. And also supports a 
+            last column indicating the different groups the blocks belong to.
+        
+        **Arguments**
+            list_of_data (Required)
+                Should be a list of 2D arrays ALL OF THE SAME SIZE! and all must be numpy arrays.
+                
+            groups (Optional)
+                A list indicating which group each row belongs to.
+                
+            filename (Required)
+                The filename to save the heatmap to.
+                
+            colbar_label (Optional, default="expression")
+                the label to place beneath the colour scale bar
+                
+        **Returns**
+            The actual filename used to save the image.
+        """
+        assert filename, "heatmap() - no specified filename"
+
+        # work out a suitable size for the figure.
+        num_heatmaps = len(list_of_data)
+        
+        fig = self.getfigure(size=(3*num_heatmaps, 10))
+        
+        pad = 1.0 / (num_heatmaps+1)
+        # item positions:
+        heatmap_locations = [(0.01+(i*(pad+0.005)), 0.01, pad, 0.90) for i in xrange(num_heatmaps)]
+        scalebar_location = [0.05,  0.97,   0.90,   0.02]
+
+        if not "colbar_label" in kargs: 
+            kargs["colbar_label"] = "density"
+            
+        if "cmap" in kargs: 
+            colour_map = kargs["cmap"]
+
+        # ---------------- (heatmap) -----------------------
+        for index, data in enumerate(list_of_data):
+            ax = fig.add_subplot(1, len(heatmap_locations)+1, index+1)
+            
+            if "bracket" in kargs: # done here so clustering is performed on bracketed data
+                list_of_data[index] = self.bracket_data(data, kargs["bracket"][0], kargs["bracket"][1])
+                vmin = kargs["bracket"][0]
+                vmax = kargs["bracket"][1]
+            else:
+                vmin = list_of_data[index].min()
+                vmax = list_of_data[index].max()
+
+            hm = ax.pcolormesh(list_of_data[index], cmap=colour_map, vmin=vmin, vmax=vmax, antialiased=False)
+
+            ax.set_frame_on(frames)
+            ax.set_position(heatmap_locations[index])
+            if titles:
+                ax.set_title(titles[index])
+
+            ax.set_xlim([0,list_of_data[index].shape[1]])
+            ax.set_ylim([0,list_of_data[index].shape[0]])
+
+            #ax.yaxis.tick_right()
+            [item.set_markeredgewidth(0.0) for item in ax.xaxis.get_ticklines()]
+            [item.set_markeredgewidth(0.0) for item in ax.yaxis.get_ticklines()]
+            [t.set_visible(False) for t in ax.get_yticklabels()] # generally has to go last.
+            [t.set_visible(False) for t in ax.get_xticklabels()]
+        
+        ax0 = fig.add_subplot(1, len(heatmap_locations)+2, len(heatmap_locations)+1)
+        ax0.set_position(scalebar_location)
+        ax0.set_frame_on(False)
+        cb = fig.colorbar(hm, orientation="horizontal", cax=ax0, cmap=colour_map)
+        
+        # group membership
+        if groups:
+            ax = fig.add_subplot(1, len(heatmap_locations)+2, len(heatmap_locations)+2)
+            right_most = list(heatmap_locations[-1])
+            right_most[2] = 0.10
+            right_most[0] += pad+0.02
+            ax.set_position(right_most)
+
+            dd = np.vstack((np.array(groups), np.array(groups))).T
+            ax.pcolormesh(dd, vmin=min(groups), vmax=max(groups), antialiased=False, cmap=cm.Paired)
+            ax.set_frame_on(frames)
+
+            ax.set_xlim([0,dd.shape[1]])
+            ax.set_ylim([0,dd.shape[0]])
+
+            [item.set_markeredgewidth(0.0) for item in ax.xaxis.get_ticklines()]
+            [item.set_markeredgewidth(0.0) for item in ax.yaxis.get_ticklines()]
+            [t.set_visible(False) for t in ax.get_yticklabels()] # generally has to go last.
+            [t.set_visible(False) for t in ax.get_xticklabels()]
+            
+            # add group labels:
+            # get the upper and lower y axis coords for each group:
+            last_item = None
+            res = {}
+            hist = {}
+            for index, item in enumerate(groups):
+                if item not in res:
+                    res[item] = [index, None]   
+                if last_item and last_item != item:
+                    res[last_item][1] = index-1  
+                last_item = item
+                if item not in hist:
+                    hist[item] = 0
+                hist[item] += 1
+            
+            res[item][1] = len(groups) # fill in last item
+            
+            for r in res:
+                ax.text(1, (res[r][0] + res[r][1]) / 2, "%s (%s)" % (r, hist[r]), ha="center", va="center")
+      
+        cb.set_label(kargs["colbar_label"])
+        [label.set_fontsize(5) for label in ax0.get_xticklabels()]
+
+        return(self.savefigure(fig, filename))
+
     def boxplot(self, data=None, filename=None, labels=None, **kargs):
         """
         wrapper around matplotlib's boxplot
         """
-        assert data, "data not found"
         assert filename, "no filename specified"
         assert labels, "boxplots must have labels"
 
         fig = self.getfigure(**kargs)
 
         ax = fig.add_subplot(111)
+        #ax.axhline(0, ls=":", color="grey") # add a grey line at zero for better orientation
+        ax.grid(axis="y", ls=":", color="grey", zorder=1000000)
         r = ax.boxplot(data)
 
-        plot.setp(r['medians'], color='red')
+        plot.setp(r['medians'], color='red') # set nicer colours
         plot.setp(r['whiskers'], color='black', lw=2)
         plot.setp(r['boxes'], color='black', lw=2)
         plot.setp(r['fliers'], color="grey")
 
         ax.set_xticklabels(labels)
+
+        fig.autofmt_xdate() # autorotate labels
 
         self.do_common_args(ax, **kargs)
 
@@ -545,7 +834,6 @@ class draw:
         Very thin wrapper around matplotlibs' hist
         """
         assert filename, "Internal Error: _qhist no filename"
-        assert data, "Internal Error: _qhist missing data"
 
         log = False
         if "log" in kargs:
@@ -553,7 +841,7 @@ class draw:
 
         fig = self.getfigure(**kargs)
         axis = fig.add_subplot(111)
-        axis.hist(data, bins=bins, facecolor='orange', ec="none", alpha=0.7, log=log)
+        axis.hist(data, bins=bins, facecolor='orange', ec="none", alpha=1.0, log=log)
 
         if "title" in kargs: 
             axis.set_title(kargs["title"])
@@ -768,6 +1056,7 @@ class draw:
         #self.draw.py.yaxis([0,max(item[1])])
         if labels: 
             leg = axis.legend()#bbox_to_anchor=(0., 1.02, 1., .102), loc=3)
+            leg.get_frame().set_alpha(0.5)
             [t.set_fontsize(6) for t in leg.get_texts()]
             
         return(self.savefigure(fig, filename))
@@ -893,11 +1182,54 @@ class draw:
 
         return(self.savefigure(fig, filename))
 
-    def _venn3():
+    def venn3(self, A, B, C, AB, AC, BC, ABC, labelA, labelB, labelC, filename, **kargs):
         """
         same as _vennDiagram2 except it performs a triple overlap.
         """
-        raise NotImplementedError
+        if not "aspect" in kargs:
+            kargs["aspect"] = "square"
+        if not "size" in kargs:
+            kargs["size"] = "small"
+        
+        fig = self.getfigure(**kargs)
+        ax = fig.add_subplot(111)
+        ax.set_position([0.02, 0.02, 0.96, 0.96])
+        ax.set_xlim([0,30])
+        ax.set_ylim([0,30])
+        
+        artists = []
+        artists.append(Circle((10, 20), 8, alpha=1, facecolor="none"))
+        artists.append(Circle((20, 20), 8, alpha=1, facecolor="none"))
+        artists.append(Circle((15, 10), 8, alpha=1, facecolor="none"))
+        
+        for a in artists: # add all artists...
+            ax.add_artist(a)
+
+        #ax.set_xticks([0,20])
+        #ax.set_yticks([0,20])
+        # clear frame and axis markers:
+        ax.set_frame_on(False)
+        ax.set_yticklabels("")
+        ax.set_xticklabels("")
+        [i.set_markeredgewidth(0.0) for i in ax.yaxis.get_ticklines()]
+        [i.set_markeredgewidth(0.0) for i in ax.xaxis.get_ticklines()]
+
+        # add the labels:
+        ax.text(7.5, 20, A-AB-AC+ABC, size=15, ha="center", va="center")
+        ax.text(22.5, 20, B-AB-BC+ABC, size=15, ha="center", va="center")
+        ax.text(15, 7.5, C-AC-BC+ABC, size=15, ha="center", va="center")
+
+        ax.text(15, 21, AB-ABC, size=15, ha="center", va="center")
+        ax.text(11, 14, AC-ABC, size=15, ha="center", va="center")
+        ax.text(19, 14, BC-ABC, size=15, ha="center", va="center")
+        
+        ax.text(15, 16.5, ABC, size=15, ha="center", va="center")
+        
+        ax.text(7.5,  29, labelA, size=16, ha="center", va="center")
+        ax.text(22.5,  29, labelB, size=16, ha="center", va="center")
+        ax.text(15, 1, labelC, size=16, ha="center", va="center")
+
+        return(self.savefigure(fig, filename))
 
     def _venn4(self, filename=None, lists=None, scores=None,
         proportional=False, **kargs):
@@ -964,14 +1296,8 @@ class draw:
         artists = []
         if not proportional:
             artists.append(Circle((8, 8), 5, alpha=0.7, facecolor="#9930a7")) # (loc), size
-
-
             artists.append(Circle((12, 8), 5, alpha=0.6, facecolor="#fd8348"))
-
-
             artists.append(Circle((12, 12), 5, alpha=0.5, facecolor="#30aa7f")) # (loc), size
-
-
             artists.append(Circle((8, 12), 5, alpha=0.4, facecolor="#e7f847"))
 
             # outlines:
@@ -979,7 +1305,6 @@ class draw:
             artists.append(Circle((12, 8), 5, alpha=1.0, fill=False, lw=2))
             artists.append(Circle((12, 12), 5, alpha=1.0, fill=False, lw=2))
             artists.append(Circle((8, 12), 5, alpha=1.0, fill=False, lw=2)) # I draw the circle twice to give bold outer lines.
-
 
             # labels:
             axis.text(6, 6, "%s" %str(s["A"]), size=25, ha="center", va="center")
@@ -1062,18 +1387,18 @@ class draw:
         if not aspect:
             aspect = config.draw_aspect
         
-        if len(size) == 2:
+        if len(size) == 2: # overrides aspect/size
             size_in_in = (size[0], size[1])
             return(plot.figure(figsize=size_in_in))
-        else:
-            data = {"normal": {"small": (5,4), "medium": (8,6), "large": (12,9), "huge": (16,12)},
-                    "square": {"small": (4,4), "medium": (7,7), "large": (9,9), "huge": (12,12)},
-                    "long": {"small": (4,5), "medium": (6,8), "large": (9,12), "huge": (12,16)},
-                    "wide": {"small": (7,4), "medium": (12,6), "large": (18,9), "huge": (24,12)}
-                    }
-            dpi = {"small": 75, "medium": 150, "large": 300, "huge": 600} # This dpi doesn't actually work here...
-            # See savefigure() for the actual specification
-            return(plot.figure(figsize=data[aspect][size]))
+
+        data = {"normal": {"small": (5,4), "medium": (8,6), "large": (12,9), "huge": (16,12)},
+                "square": {"small": (4,4), "medium": (7,7), "large": (9,9), "huge": (12,12)},
+                "long": {"small": (4,5), "medium": (6,8), "large": (9,12), "huge": (12,16)},
+                "wide": {"small": (7,4), "medium": (12,6), "large": (18,9), "huge": (24,12)}
+                }
+        dpi = {"small": 75, "medium": 150, "large": 300, "huge": 600} # This dpi doesn't actually work here...
+        # See savefigure() for the actual specification
+        return(plot.figure(figsize=data[aspect][size]))
 
     def savefigure(self, fig, filename, size=config.draw_size):
         """
@@ -1095,7 +1420,10 @@ class draw:
         
         # So that saving supports relative paths.
         path, head = os.path.split(filename)
-        save_name = "%s.%s" % (".".join(head.split(".")[:-1]), config.draw_mode) # this will delete .. in filename, e.g. file.meh.png
+        if "." in filename: # trust Ralf to send a filename without a . in it Now you get your own special exception!
+            save_name = "%s.%s" % (".".join(head.split(".")[:-1]), config.draw_mode) # this will delete .. in filename, e.g. file.meh.png
+        else:
+            save_name = "%s.%s" % (head, config.draw_mode)
         
         dpi = {"small": 75, "medium": 150, "large": 200, "huge": 300}
         fig.savefig(os.path.join(path, save_name), dpi=dpi[size])
@@ -1120,10 +1448,18 @@ class draw:
                 logx - set the x scale to a log scale argument should equal the base
                 logy - set the y scale to a log scale
                 legend_size - size of the legend, small, normal, medium
-            
+                xticklabel_fontsize - x tick labels fontsizes
+                yticklabel_fontsize - y tick labels fontsizes
+                vlines - A list of X points to draw a vertical line at
+                hlines - A list of Y points to draw a vertical line at
+                
         **Returns**
             None
         """
+        legend = ax.get_legend()
+        if legend: # None in no legend on this plot
+            legend.get_frame().set_alpha(0.5) # make the legend transparent
+        
         if "xlabel" in kargs:
             ax.set_xlabel(kargs["xlabel"])
         if "ylabel" in kargs:
@@ -1139,9 +1475,17 @@ class draw:
         if "logy" in kargs:
             ax.set_yscale("log", basey=kargs["logy"])
         if "legend_size" in kargs:
-            legend = ax.get_legend()
             [t.set_fontsize(kargs["legend_size"]) for t in legend.get_texts()]
-            
+        if "xticklabel_fontsize" in kargs:
+            [t.set_fontsize(kargs["xticklabel_fontsize"]) for t in ax.get_xticklabels()]
+        if "yticklabel_fontsize" in kargs:
+            [t.set_fontsize(kargs["yticklabel_fontsize"]) for t in ax.get_yticklabels()]
+        if "vlines" in kargs and kargs["vlines"]:
+            for l in kargs["vlines"]:
+                ax.axvline(l, ls=":", color="grey")
+        if "grid" in kargs and kargs["grid"]:
+            ax.grid()
+        
 
     def _stacked_plots(self, filename, loc, features, graphs, merged=False, **kargs):
         """
@@ -1247,7 +1591,7 @@ class draw:
 
         # ---------------- Second plot (heatmap) -----------------------
         ax3 = fig.add_subplot(121)
-        hm = ax3.pcolor(data, cmap=colour_map, vmin=vmin, vmax=vmax, antialiased=False)
+        hm = ax3.pcolormesh(data, cmap=colour_map, vmin=vmin, vmax=vmax, antialiased=False)
 
         ax3.set_frame_on(True)
         ax3.set_position(heatmap_location)
@@ -1272,7 +1616,7 @@ class draw:
         return(self.savefigure(fig, filename))
     
     def nice_scatter(self, x=None, y=None, filename=None, do_best_fit_line=False, 
-        print_correlation=False, **kargs):
+        print_correlation=False, spot_size=4, plot_diag_slope=True, **kargs):
         """
         **Purpose**
             Draw a nice simple scatter plot
@@ -1288,16 +1632,23 @@ class draw:
                 These spots will be empahsised with whatever spots_cols is or an 
                 "Orange" colour by default
                 
+            spot_labels (Optional, labels to write on the spots)
+                A list of labels to write over the spots.
+                
+            plot_diag_slope (Optional, default=False)
+                Plot a diagonal line across the scatter plot.
+            
             do_best_fit_line (Optional, default=False)
                 Draw a line of best fit and the
                 
             print_correlation (Optional, default=None)
                 You have to spectify the type of correlation to print on the graph.
                 valid are:
-                    pearson = pearson correlation.
-                    pearsonr2 = R^2.
-                
-                NOTE: do_best_fit_line must be True for this to work.
+                    r = R (Correlation coefficient)
+                    r2 = R^2.
+                                
+            spot_size (Optional, default=5)
+                The size of each dot.
             
             Supported keyword arguments:
                 xlabel, ylabel, title, logx, logy
@@ -1309,16 +1660,21 @@ class draw:
         fig = self.getfigure(aspect="square")
         ax = fig.add_subplot(111)
         
-        ax.scatter(x, y, s=2, c="black", alpha=0.2, edgecolors="none")
+        ax.scatter(x, y, s=spot_size, c="black", alpha=0.2, edgecolors="none")
         
         if "spots" in kargs and kargs["spots"]:
             if "spots_cols" in kargs and kargs["spots_cols"]:
                 # Will recognise a string or sequence autmagivally.
-                ax.scatter(kargs["spots"][0], kargs["spots"][1], s=5, c=kargs["spots_cols"], alpha=0.8, edgecolor="none")
+                ax.scatter(kargs["spots"][0], kargs["spots"][1], s=spot_size*2, c=kargs["spots_cols"], alpha=0.8, edgecolor="none")
             else:
-                ax.scatter(kargs["spots"][0], kargs["spots"][1], s=5, c="orange", alpha=0.8, edgecolor="none")
+                ax.scatter(kargs["spots"][0], kargs["spots"][1], s=spot_size*2, c="orange", alpha=0.8, edgecolor="none")
         
-        if do_best_fit_line:
+            if "spot_labels" in kargs and kargs["spot_labels"]:
+                # for the matplot.lib < 100: I want to label everything.
+                for i, n in enumerate(kargs["spot_labels"]):
+                    ax.annotate(n, (kargs["spots"][0][i], kargs["spots"][1][i]), size=6)
+        
+        if print_correlation or do_best_fit_line:
             # linear regression
             (ar, br) = polyfit(x, y, 1)
             xr = polyval([ar,br], x)
@@ -1330,10 +1686,12 @@ class draw:
             ax.plot(mx, my, "r.-")
             
             if print_correlation:
-                if print_correlation == "pearson":
-                    ax.text(mx[0], my[0], "R=%.2f" % r_value)
-                elif print_correlation == "pearsonr2":
-                    ax.text(mx[0], my[0], "R2=%.2f" % (r_value*r_value))
+                if print_correlation == "r":
+                    ax.set_title("R=%.4f" % r_value)
+                elif print_correlation == "r2":
+                    ax.set_title("R2=%.4f" % (r_value*r_value))
+        if plot_diag_slope:
+            ax.plot([min(x+y), max(x+y)], [min(x+y), max(x+y)], ":", color="grey")
         
         if "logx" in kargs and kargs["logx"]:
             ax.set_xscale("log", basex=kargs["logx"])
@@ -1343,7 +1701,7 @@ class draw:
         self.do_common_args(ax, **kargs)
         
         return(self.savefigure(fig, filename))
-    
+
     def bar_chart(self, filename=None, genelist=None, data=None, cols=None, **kargs):
         """
         **Purpose**
@@ -1380,7 +1738,7 @@ class draw:
                 and left as False for standard errors.
             
             cols (Optional, default=Use a default set from matplotlib)
-                the colours to use for the bar charts, there shoudl be one for each bar.
+                the colours to use for the bar charts, there should be one for each bar.
                 
             Other kargs respected by bar_chart:
                 aspect
@@ -1458,7 +1816,8 @@ class draw:
         ax.set_ylim([0, x[-1]+(wid*2)])
         
         if "cond_names" in kargs:
-            ax.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3, ncol=2, mode="expand", borderaxespad=0.)
+            leg = ax.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3, ncol=2, mode="expand", borderaxespad=0.)
+            leg.get_frame().set_alpha(0.5)
             
         if "labels" in kargs and kargs["labels"]:
             ax.set_yticklabels(genelist[kargs["labels"]], rotation="horizontal")
@@ -1474,7 +1833,7 @@ class draw:
         return(self.savefigure(fig, filename))
 
     def pie(self, data, labels, filename, aspect="square", title=None, colours=None, 
-        draw_percents=False, cmap=None, **kargs):
+        draw_percents=False, cmap=None, font_size=12, **kargs):
         """
         Draw a PIE!
         """
@@ -1487,7 +1846,7 @@ class draw:
             extra_args["autopct"] = "%1.1f%%"
         
         if colours:
-            ax.pie(data, labels=labels, shadow=False, colors=colours, **extra_args)
+            texts = ax.pie(data, labels=labels, shadow=False, colors=colours, **extra_args)
             
         elif cmap:
             ld = len(data)
@@ -1496,12 +1855,105 @@ class draw:
             colours = cmap(ran)[:,:-1]
             colours = [rgb2hex(col) for col in colours] # rgb2hex from matplotlib not needed, but easier to print
             
-            ax.pie(data, labels=labels, shadow=False, colors=colours, **extra_args)           
+            texts = ax.pie(data, labels=labels, shadow=False, colors=colours, **extra_args)           
         else:
-            ax.pie(data, labels=labels, shadow=False, **extra_args)
+            texts = ax.pie(data, labels=labels, shadow=False, **extra_args)
+        
+        plot.setp(texts[1], fontsize=font_size)
         
         if title:
             ax.set_title(title)
         
-        real_filename = self.savefigure(fig, filename)
-        return(real_filename)
+        return(self.savefigure(fig, filename))
+        
+    def beanplot(self, data, filename, violin=True, order=None, mean=False, median=True, alpha=0.2, 
+        **kargs):
+        """
+        http://statsmodels.sourceforge.net/devel/_modules/statsmodels/graphics/boxplots.html#beanplot
+        **Purpose**
+            A beanplot/beeswarm!
+            
+        **Arguments**
+            data 
+                a dict of lists:
+                {"condition A": [0, 1, ... n],
+                "condition B": [0, 1, ... n]}
+            
+            filename (Required)
+                filename to save the file to. modified based on current draw_mode
+                
+            violin (Optional, default=True)
+                Draw a KDE violin around the points
+                
+            means (Optional, default=False)
+                draw red lines for means on each plot
+            
+            median (Optional, default=True)
+                draw a line at the median for each plot
+                
+            order (Optional, default=None)
+                list of the keys in the order you want them.
+                Also doubles as lables.
+            
+            alpha (Optional, default=0.2)
+                The alpha value to use for transparency of the spots (0...1)
+                
+            colors (Optional, default="blue")
+                A color or list of colors to use to color the spots.
+            
+            Other standard supported args:
+                aspect
+                size
+                xlabel - x-axis label
+                ylabel - y-axis label
+                title  - title
+                xlims - x axis limits
+                ylims - y-axis limits
+            
+        **Returns**
+            None
+        """
+        fig = self.getfigure(**kargs)
+        ax = fig.add_subplot(111)
+        
+        if not order:
+            order = data.keys()
+        
+        num_cats = len(data)
+        #xs = np.arange(num_cats)
+        cmin = 0
+        cmax = 0
+        bins = 50
+        for x, d in enumerate(order):
+            x_data = np.linspace(min(data[d]), max(data[d]), bins)
+            # get the violin: required, even if not drawn.
+            y_violin = utils.kde(data[d], range=(min(data[d]), max(data[d])), bins=bins, covariance=0.2)
+            y_violin = ((y_violin / max(y_violin))/2.1) # normalise
+            if violin:
+                ax.plot(x+y_violin, x_data, color="grey")
+                ax.plot(x-y_violin, x_data, color="grey")
+            
+            jitter_envelope = np.interp(data[d], x_data, y_violin)
+            jitter_coord = jitter_envelope * (np.random.uniform(low=0, high=1, size=len(data[d])) + np.random.uniform(low=-1, high=0, size=len(data[d])))
+
+            ax.scatter(jitter_coord+x, data[d], alpha=alpha, edgecolor="none", s=10)#, color="red")
+            
+            if median:
+                ax.plot([x-0.3, x+0.3], [np.median(data[d])]*2, c="red")
+            elif mean:
+                ax.axhline([x-0.3, x+0.3], [np.mean(data[d])]*2, c="red")
+                
+            if max(data[d]) > cmax: 
+                cmax = max(data[d])
+            if min(data[d]) < cmin:
+                cmin = min(data[d])
+                
+        ax.set_xticklabels([""] + order)            
+        
+        ax.set_ylim([cmin, cmax])
+        ax.set_xlim([-0.6, len(data)-0.4])
+        
+        fig.autofmt_xdate()
+        
+        self.do_common_args(ax, **kargs)
+        return(self.savefigure(fig, filename))

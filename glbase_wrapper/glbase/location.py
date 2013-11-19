@@ -160,7 +160,7 @@ class location:
     def collide(self, loc):
         if loc["chr"] != self["chr"]:
             return(False)
-        return(self.qcollide(loc))
+        return(self["right"] >= loc["left"] and self["left"] <= loc["right"])
 
     def qcollide(self, loc):
         """
@@ -171,26 +171,7 @@ class location:
         **Returns**
             True or False
         """
-
-        # quickest rejections first;
-        if self["right"] < loc["left"]:
-            return(False)
-        if self["left"] > loc["right"]:
-            return(False)
-
-        if self["left"] <= loc["right"] and self["right"] >= loc["right"]:
-            return(True) # Bright point is within A, collision
-
-        if self["right"] >= loc["left"] and self["left"] <= loc["left"]:
-            return(True) # Bleft point is within A, collision.
-
-        if loc["left"] <= self["right"] and loc["right"] >= self["right"]:
-            return(True) # Aright point is within B, collision
-
-        if loc["right"] >= self["left"] and loc["left"] <= self["left"]:
-            return(True) # Aleft point is within B, collision.
-
-        return(False)
+        return(self["right"] >= loc["left"] and self["left"] <= loc["right"]) # nice one-liner
 
     def distance(self, loc):
         """
@@ -215,6 +196,15 @@ class location:
         centreB = (loc["left"] + loc["right"]) / 2
         return(centreA - centreB)
 
+    def __sub__(self, loc):
+        """
+        **Purpose**
+            Allow things like:
+                
+            distance = locA - locB
+        """
+        return(self.distance(loc))
+
     def offset(self, base_pairs):
         """
         get a new location offset from the 5' end by n base pairs
@@ -226,6 +216,12 @@ class location:
         new.__update()
         return(new)
 
+    def keys(self):
+        """
+        Get the keys
+        """
+        return([i for i in self.loc])
+        
 if __name__ == "__main__":
     import timeit
     

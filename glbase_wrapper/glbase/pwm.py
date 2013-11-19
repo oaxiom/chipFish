@@ -32,6 +32,10 @@ try:
 except:
     WEBLOGO_AVAILABLE = False # fail silently
 
+# constant used below in score:
+con_setpos = {"a": 0, "c": 1, "g": 2, "t": 3,
+              "A": 0, "C": 1, "G": 2, "T": 3}
+
 class pwm:
     """
     **Purpose**
@@ -66,29 +70,17 @@ class pwm:
             position weight matrix.
     """
     def __init__(self, name, pwm_matrix=None, fasta_file=None, txt_file=None, isPFM=True):
-
         self.name = name
-        
-        # get around numpy.array() __non_zero__ silliness:
-        try:
-            __load_matrix = False
-            if pwm_matrix:
-                __load_matrix = True
-        except ValueError: 
-            if pwm_matrix.any():
-                __load_matrix = True
-        
-        if __load_matrix:
+
+        if pwm_matrix is not None: # get around numpy.array() __non_zero__ silliness:
             if isinstance(pwm_matrix, list):
-                # convert to a numpy array
-                if isinstance(pwm_matrix[0], dict):
-                    self.__matrix = self.__convert_dict_matrix(self, pwm_matrix)
-                else:
-                    l = len(pwm_matrix[0])
-                    pfm = array( pwm_matrix , dtype=float)
-                    self.__matrix = pfm
+                l = len(pwm_matrix[0])
+                pfm = array( pwm_matrix , dtype=float)
+                self.__matrix = pfm
+            elif isinstance(pwm_matrix[0], dict):
+                self.__matrix = self.__convert_dict_matrix(self, pwm_matrix)
             else:
-                self.__matrix = pwm_matrix # Probably a numpy array?
+                self.__matrix = pwm_matrix # Probably a numpy array? Hope the user knows what he/she is doing
         elif fasta_file:
             g = convertFASTAtoDict(fasta_file)
             pwm_matrix = None
@@ -102,16 +94,14 @@ class pwm:
             self.__matrix = self.__convert_dict_matrix(pwm_matrix)
         elif txt_file:
             oh = open(txt_file, "rU")
+            pwm_matrix = []
             for line in oh:
                 if not ">" in line:
-                    e = line.lower().strip()
-                    if not pwm_matrix: # matrix sizes not sampled yet
-                        s = len(e)
-                        pwm_matrix = [{"a": 0, "c": 0, "g": 0, "t": 0} for n in range(s)]
+                    e = line.lower().strip().split()
                     
-                    for i, bp in enumerate(e):
-                        pwm_matrix[i][bp] += 1
-            self.__matrix = self.__convert_dict_matrix(pwm_matrix)
+                    pwm_matrix.append([float(i) for i in e])
+                        
+            self.__matrix = array(pwm_matrix)# self.__convert_dict_matrix(pwm_matrix)
         else:
             raise AssertionError, "no valid input found for pwm"
             
@@ -210,7 +200,7 @@ class pwm:
         new.append([v for v in c[3]]) # t
         return(new)
 
-    def score(self, sequence):
+    def score(self, seq):
         """
         **Purpose**
             return the pwm threshold score for a particular sequence.
@@ -229,18 +219,15 @@ class pwm:
         **Returns**
             A dictionary {"+": <upper strand score>, "-": <lower strand score>}
         """
-        seq = sequence.lower()
-
-        if seq.count("n") > 0:
+        if seq.count("n") > 0 or seq.count("N") > 0:
             return({"+": 0.0, "-": 0.0}) # reject if contains an N
 
-        con_setpos = {"a" : 0, "c": 1, "g": 2, "t": 3} # convert dict location to matrix location
+        #con_setpos = {"a" : 0, "c": 1, "g": 2, "t": 3} Defined above at the head of the module
+        
         result = {} # new list
-
         seq_data = {"+": seq, "-": rc(seq)}
         for key in seq_data: # new super small version:
-            score_list = [self.__matrix[i][con_setpos[letter]] for i, letter in enumerate(seq_data[key])]
-            unnormalised_score = sum(score_list)
+            unnormalised_score = sum([self.__matrix[i][con_setpos[letter]] for i, letter in enumerate(seq_data[key])])
             result[key] = (unnormalised_score - self.__minscore) / (self.__maxscore - self.__minscore)
 
         return(result)
@@ -272,14 +259,22 @@ class pwm:
         else:
             result = {"+": zeros(len(sequence)), "-": zeros(len(sequence))}
 
-        for p in xrange(len(sequence)-len(self)):
-            scores = self.score(sequence[p:p+len(self)])
+        scores = {}
 
-            if merge_strands:
-                result[p] = max([scores["+"], scores["-"]])
-            else:
-                result["+"][p] = scores["+"]
-                result["-"][p] = scores["-"]
+        for p in xrange(len(sequence)-len(self)):
+            seq = sequence[p:p+len(self)]
+            if "n" not in seq and "N" not in seq:
+                seq_data = {"+": seq, "-": rc(seq)}
+                for key in seq_data: # new super small version:
+                    unnormalised_score = sum([self.__matrix[i][con_setpos[letter]] for i, letter in enumerate(seq_data[key])])
+                    scores[key] = (unnormalised_score - self.__minscore) / (self.__maxscore - self.__minscore)
+                
+                
+                if merge_strands:
+                    result[p] = max([scores["+"], scores["-"]])
+                else:
+                    result["+"][p] = scores["+"]
+                    result["-"][p] = scores["-"]
 
         return(result)
 
@@ -334,7 +329,7 @@ class pwm:
             res = self.scan_sequence(item["seq"], False)
            
             if res:
-                seq_data = {"+": item["seq"], "-": rc(item["seq"])}
+                seq_data = item["seq"]
                 for strand in ("+", "-"):
                     for i, score in enumerate(res[strand]):
                         if score > threshold:
@@ -349,9 +344,9 @@ class pwm:
                                 
                             newi["strand"] = strand
                             if strand == "+":
-                                newi["seq"] = seq_data[strand][i:i+len(self)]
+                                newi["seq"] = seq_data[i:i+len(self)]
                             else:
-                                newi["seq"] = rc(seq_data[strand][i:i+len(self)])
+                                newi["seq"] = rc(seq_data[i:i+len(self)]) # seq was already rc'd above.
                             newi["score"] = score
                             newi["motifs"] = "Yes"
                             newl.linearData.append(newi)

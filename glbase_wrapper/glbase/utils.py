@@ -11,6 +11,9 @@ degenerate character N=[ATCG]
 
 import sys, os, numpy, string, csv, random, math
 import scipy.stats as stats
+from scipy.spatial.distance import pdist
+
+import config
 
 #from errors import AssertionError
 
@@ -421,7 +424,7 @@ def convertFASTAtoDict(filename):
         if line[:1] == ">": # fasta start block
             entry = {"seq": "", "name": "empty"} # make a new node
             # start recording
-            entry["name"] = line.replace(">", "")
+            entry["name"] = line.replace(">", "").strip()
             # add the old Node to the list
             if entry["name"] != "empty":
                 # convert the list to a tuple
@@ -842,12 +845,15 @@ def isPalindrome(seq):
 
 def bin_data(array_like, bin_size):
     """
-    Surprisingly not in Numpy...
+    This is an old alias, please use bin_sum_data or bin_mean_data
     """
-    newa = []
-    for i in xrange(0, len(array_like), bin_size):
-        newa.append(sum(array_like[i:i+bin_size]))
-    return(newa)
+    return([sum(array_like[i:i+bin_size]) for i in xrange(0, len(array_like), bin_size)])
+
+def bin_sum_data(array_like, bin_size):
+    return([sum(array_like[i:i+bin_size]) for i in xrange(0, len(array_like), bin_size)])
+    
+def bin_mean_data(array_like, bin_size):
+    return([(sum(array_like[i:i+bin_size]) / float(len(array_like[i:i+bin_size]))) for i in xrange(0, len(array_like), bin_size)])
 
 def scale_data(array_like, range=(0, 100)):
     """
@@ -883,3 +889,300 @@ def kde(val_list, range=(0,1), covariance=0.02, bins=50):
     kk = kde.evaluate(a) # resacle to get in integer range.
     
     return(numpy.array(kk, dtype=numpy.float64))
+
+# I think this is non-functional below:
+class pp:
+    reachability_distance = None
+    done = False
+
+def _core_distance(pt, epsilon, MinPts):
+    return()
+
+def _optics_update(N, p, Seeds, eps, Minpts):
+
+    coredist = core_distance(p, eps, MinPts)
+    
+    for o in N:
+        if (o is not processed):
+            new_reach_dist = max(coredist, dist(p,o))
+            
+            if not o.reachability_distance: # o is not in Seeds
+                o.reachability_distance = new_reach_dist
+                Seeds.insert(o, new_reach_dist)
+            else: # o in Seeds, check for improvement
+                if (new_reach_dist < o.reachability_distance):
+                    o.reachability_distance = new_reach_dist
+                    Seeds.move_up(o, new_reach_dist)
+
+def OPTICS(DB, eps, MinPts):
+    
+    #for p in DB:
+    #   p.reachability_distance = None
+    ordered = []
+       
+    for p in DB:
+        if not p.done:
+            N = getNeighbors(p, eps)
+            p.done = True
+            ordered.append(p)
+            Seeds = heapq([])
+            
+            if not core_distance(p, eps, Minpts):
+                _optics_update(N, p, Seeds, eps, Minpts)
+                for q in Seeds:
+                    Np = getNeighbors(q, eps)
+                    q.done = True
+                    ordered.append(q)
+                    if not core_distance(q, eps, Minpts):
+                        _optics_update(Np, q, Seeds, eps, Minpts)
+
+# The below code was taken and modified from sklearn.
+# It's mostly here for reference, I just use the sklearn kit.
+                     
+"""
+Sklearn was released under the BSD license, which is repeated here:
+
+New BSD License
+
+Copyright (c) 20072013 The scikit-learn developers.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+  a. Redistributions of source code must retain the above copyright notice,
+     this list of conditions and the following disclaimer.
+  b. Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in the
+     documentation and/or other materials provided with the distribution.
+  c. Neither the name of the Scikit-learn Developers  nor the names of
+     its contributors may be used to endorse or promote products
+     derived from this software without specific prior written
+     permission. 
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
+DAMAGE.
+
+"""
+def euclidean_distances(X, Y=None):
+    """
+    Considering the rows of X (and Y=X) as vectors, compute the
+    distance matrix between each pair of vectors.
+
+    For efficiency reasons, the euclidean distance between a pair of row
+    vector x and y is computed as::
+
+        dist(x, y) = sqrt(dot(x, x) - 2 * dot(x, y) + dot(y, y))
+
+    This formulation has two main advantages. First, it is computationally
+    efficient when dealing with sparse data. Second, if x varies but y
+    remains unchanged, then the right-most dot-product 'dot(y, y)' can be
+    pre-computed.
+    
+    APH: Removed support for Sparse matrices to simplify things a bit and squared returns
+
+    Parameters
+    ----------
+    X : {array-like, sparse matrix}, shape = [n_samples_1, n_features]
+
+    Y : {array-like, sparse matrix}, shape = [n_samples_2, n_features]
+
+    Y_norm_squared : array-like, shape = [n_samples_2], optional
+        Pre-computed dot-products of vectors in Y (e.g.,
+        ''(Y**2).sum(axis=1)'')
+
+    Returns
+    -------
+    distances : {array, sparse matrix}, shape = [n_samples_1, n_samples_2]
+
+    Examples
+    --------
+    >>> from sklearn.metrics.pairwise import euclidean_distances
+    >>> X = [[0, 1], [1, 1]]
+    >>> # distance between rows of X
+    >>> euclidean_distances(X, X)
+    array([[ 0.,  1.],
+           [ 1.,  0.]])
+    >>> # get distance to origin
+    >>> euclidean_distances(X, [[0, 0]])
+    array([[ 1.        ],
+           [ 1.41421356]])
+    """
+    # should not need X_norm_squared because if you could precompute that as
+    # well as Y, then you should just pre-compute the output and not even
+    # call this function.
+    #X, Y = check_pairwise_arrays(X, Y)
+    if Y is None:
+        X = Y = numpy.asarray(numpy.atleast_2d(X), dtype=numpy.float, order=None)
+    else: # make sure float;
+        X = numpy.asarray(numpy.atleast_2d(X), dtype=numpy.float, order=None)
+        Y = numpy.asarray(numpy.atleast_2d(Y), dtype=numpy.float, order=None)
+    
+    XX = numpy.sum(X * X, axis=1)[:, numpy.newaxis]
+
+    if X is Y:  # shortcut in the common case euclidean_distances(X, X)
+        YY = XX.T
+    else:
+        YY = numpy.sum(Y ** 2.0, axis=1)[numpy.newaxis, :]
+
+    distances = numpy.dot(X, Y.T) #safe_sparse_dot(X, Y.T, dense_output=True)
+    distances *= -2
+    distances += XX
+    distances += YY
+    numpy.maximum(distances, 0, distances)
+
+    if X is Y:
+        # Ensure that distances between vectors and themselves are set to 0.0.
+        # This may not be the case due to floating point rounding errors.
+        distances.flat[::distances.shape[0] + 1] = 0.0
+
+    return distances
+  
+def dbscan(X, eps=0.5, min_samples=5, metric='euclidean', random_state=None):
+    """Perform DBSCAN clustering from vector array or distance matrix.
+    
+    Parameters
+    ----------
+    X: array [n_samples, n_samples] or [n_samples, n_features]
+        Array of distances between samples, or a feature array.
+        The array is treated as a feature array unless the metric is given as
+        'precomputed'.
+    eps: float, optional
+        The maximum distance between two samples for them to be considered
+        as in the same neighborhood.
+    min_samples: int, optional
+        The number of samples in a neighborhood for a point to be considered
+        as a core point.
+    metric:     
+        Only euclidean in this variant.
+    random_state: numpy.RandomState, optional
+        The generator used to initialize the centers. Defaults to numpy.random.
+    
+    Returns
+    -------
+    core_samples: array [n_core_samples]
+        Indices of core samples.
+    
+    labels : array [n_samples]
+        Cluster labels for each point.  Noisy samples are given the label -1.
+        
+    """
+    X = numpy.asarray(X)
+    n = X.shape[0]
+    
+    # If index order not given, create random order.
+    random_state = numpy.random.mtrand._rand
+    index_order = numpy.arange(n)
+    random_state.shuffle(index_order)
+    D = pdist(X, metric="euclidean")
+    print D
+    D = euclidean_distances(X)
+    print D
+    print D.shape
+    print numpy.sum(D, axis=0)
+    print numpy.sum(D, axis=1)
+    print numpy.max(D)
+    print numpy.min(D)
+    print numpy.histogram(D)
+    
+    # Calculate neighborhood for all samples. This leaves the original point
+    # in, which needs to be considered later (i.e. point i is the
+    # neighborhood of point i. While True, its useless information)
+    neighborhoods = [numpy.where(x <= eps)[0] for x in D]
+    #print neighborhoods
+    
+    # Initially, all samples are noise.
+    labels = -numpy.ones(n)
+    
+    # A list of all core samples found.
+    core_samples = []
+    
+    # label_num is the label given to the new cluster
+    label_num = 0
+    
+    # Look at all samples and determine if they are core.
+    # If they are then build a new cluster from them.
+    for index in index_order:
+        if labels[index] != -1 or len(neighborhoods[index]) < min_samples:
+            # This point is already classified, or not enough for a core point.
+            continue
+        core_samples.append(index)
+        labels[index] = label_num
+        
+        # candidates for new core samples in the cluster.
+        candidates = [index]
+        while len(candidates) > 0:
+            new_candidates = []
+            
+            # A candidate is a core point in the current cluster that has
+            # not yet been used to expand the current cluster.
+            for c in candidates:
+                noise = numpy.where(labels[neighborhoods[c]] == -1)[0]
+                noise = neighborhoods[c][noise]
+                labels[noise] = label_num
+                for neighbor in noise:
+                
+                    # check if its a core point as well
+                    if len(neighborhoods[neighbor]) >= min_samples:
+                        # is new core point
+                        new_candidates.append(neighbor)
+                        core_samples.append(neighbor)
+                        
+            # Update candidates for next round of cluster expansion.
+            candidates = new_candidates
+            
+        # Current cluster finished.
+        # Next core point found will start a new cluster.
+        label_num += 1
+    return core_samples, labels
+
+# ---- End of sklearn code.
+
+def fold_change(c1, c2, log=2, pad=1e-6):
+    """
+    Calculate the fold-change of two values
+    
+    by default returns the log fold-change
+    """
+    try:
+        c1v = c1 + pad
+        c2v = c2 + pad
+        if c2v > c1v:
+            if log:
+                return(math.log((c2v/c1v), log))
+            else:
+                return((c2v/c1v))
+        else:
+            if log:
+                return(-math.log(c1v/c2v, log))
+            else:
+                return(-(c1v/c2v))
+                                            
+    except (OverflowError, ZeroDivisionError, ValueError):
+        if c2v > c1v:
+            config.log.error("(%.2f/%.2f) failed" % (c2v, c1v))
+        else:
+            config.log.error("(%.2f/%.2f) failed" % (c1v, c2v))
+        raise Exception("__fold_change() encountered an error, possibly the pad value is too small, or you are trying to apply fold-change to log transformed data")
+
+
+if __name__ == "__main__":
+    # small tester for euclidean_distance()
+    X = numpy.array([[0, 1], [1, 1]])
+    print euclidean_distances(X)
+    #array([[ 0.,  1.],
+    #       [ 1.,  0.]])
+    print euclidean_distances(X, numpy.array([[0.0, 0.0]]))
+    #array([[ 1.        ],
+    #       [ 1.41421356]])
+    
+    print fold_change(100, 50, log=2, pad=1e-6)

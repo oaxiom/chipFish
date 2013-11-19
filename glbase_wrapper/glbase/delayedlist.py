@@ -3,14 +3,13 @@ Think of me as a delayed version of geneList
 
 * this is the only special case of geneList (delayed)
 """
-import sys, os, time, copy
+import sys, os, time, copy, csv
 
 import config
 import utils
-from flags import *
+from data import *
 from array import array as qarray
 from draw import draw
-from taglist import taglist
 from genelist import genelist
 from history import historyContainer
 from errors import AssertionError, NotSupportedError, DelayedListError
@@ -120,7 +119,7 @@ class delayedlist(genelist):
 
         self._optimiseData() # reset the __iter__
 
-        return(genelist.overlap(self, genelist=gene_list, loc_key=kargs["loc_key"], delta=kargs["delta"], merge=True))
+        return(genelist.overlap(self, genelist=gene_list, loc_key=kargs["loc_key"], delta=delta, merge=True))
 
     def __len__(self):
         return(0) # send back a dummy length, even though it's meaningless.
@@ -144,20 +143,32 @@ class delayedlist(genelist):
         make the geneList behave like a normal iterator (list)
         """
         try:
-            for index, column in enumerate(self.__reader):
-                # format the data to look like a genuine entry.
-                #if self.format.has_key("debug") and self.format["debug"]:
-                #    print "%s:'%s'" % (index, column)
-                #    if isinstance(self.format["debug"], int) and index > self.format["debug"]: break # If an integer, collect that many items.
+            column = self.__reader.next() # get started
+            self.cindex += 1
+            
+            while column:
+                
+                d = None
+                while not d:
+                    if column: # list is empty, so omit.
+                        if "keepifxin" in self.format:
+                            if True in [self.format["keepifxin"] in i for i in column]:
+                                if (not (column[0] in typical_headers)):
+                                    d = self._processKey(self.format, column)
+                            else:
+                                d = None # not present, skip this line
 
-                # skiplines is implemented in _optimiseData() (i.e. open and reset the file).
-
-                d = {}
-                if column: # list is empty, so omit.
-                    if (not (column[0] in typical_headers)):
-                        d = self._processKey(self.format, column)
-                # endwith should be implemented here somewhere...
-                yield d
+                        else: # just do normally
+                            if (not (column[0] in typical_headers)):
+                                d = self._processKey(self.format, column)
+                    
+                    if not d: # d is bad, grab another
+                        column = self.__reader.next()
+                        self.cindex += 1
+                
+                yield d # d should be valid
+                column = self.__reader.next() # get the next item
+                self.cindex += 1
         except StopIteration:
             self._optimiseData()
             raise StopIteration
@@ -199,6 +210,7 @@ class delayedlist(genelist):
                         break
 
         self.linearData = self.__iter__()
+        self.cindex = 0
         return(True)
 
     def __str__(self):

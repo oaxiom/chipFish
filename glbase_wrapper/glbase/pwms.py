@@ -38,6 +38,8 @@ class pwms(_base_genelist):
             "uniprobe"
             "transfac"
             "jaspar_matrix_only"
+            "ACGT_rows"
+            "Jolma_csv"
 
             to add, but currently unsupported formats:
             "jaspar"
@@ -62,10 +64,51 @@ class pwms(_base_genelist):
             self.__load_jaspar_matrix_only(filename)
         elif format == "transfac":
             self.__load_transfac(filename)
+        elif format == "ACGT_rows":
+            self.__load_ACGT_rows(filename)
+        elif format == "Jolma_csv":
+            self.__load_jolma_csv(filename)
+        else: 
+            config.log.critical("'%s' format is unknown" % format)
         
         config.log.info("loaded '%s' with %s pwms" % (filename, len(self)))
 
         self._optimiseData()
+
+    def __load_jolma_csv(self, filename):
+        """
+        Load in a csv of Jolma's supp table S3
+        """
+        oh = open(filename, "rU")
+        
+        name = oh.readline().strip().split(",")[0]
+        
+        names = [name] # Jolma names are not unique
+        
+        while name:
+            A = [int(i) for i in oh.readline().strip().split(",")[1:] if i]
+            C = [int(i) for i in oh.readline().strip().split(",")[1:] if i]
+            G = [int(i) for i in oh.readline().strip().split(",")[1:] if i]
+            T = [int(i) for i in oh.readline().strip().split(",")[1:] if i]
+        
+            data = [A, C, G, T]
+                
+            pfm = array(data)
+            pfm = pfm.T
+        
+            self.linearData.append({"name": name, 
+                "pwm": pwm.pwm(name=name, pwm_matrix=pfm, isPFM=False)})
+            
+            oriname = oh.readline().strip().split(",")[0] # get the next name
+            name = oriname
+            n = 1
+            while name in names:
+                n += 1
+                name = "%s_%s" % (oriname, n)
+            names.append(name)
+        
+        oh.close()
+
 
     def __load_uniprobe(self, path):
         """
@@ -150,7 +193,48 @@ class pwms(_base_genelist):
             else:
                 done = True # no empty lines in the JASPAR format
                 
-
+    def __load_ACGT_rows(self, filename):
+        """
+        Load a ACGT in rows arrangement (e.g. output from fexcom):
+        
+            >ap2af_-1bp_gcm1f
+            22	678	612	21
+            27	1238	31	37
+            24	1261	11	37
+            378	498	4	453
+            294	430	592	17
+            419	373	522	19
+            518	12	776	27
+            22	46	1234	31
+            310	571	442	10
+            377	28	514	414
+            43	1078	85	127
+            32	1252	18	31
+            576	705	7	45
+            324	45	613	351
+            27	1218	76	12
+            1193	67	24	49
+            25	32	839	437
+            347	52	672	262
+        
+        """
+        
+        oh = open(filename, "rU")
+        
+        pwm_store = None
+        
+        for line in oh:
+            if line and line[0] != "#":
+                if line[0] == ">":
+                    if pwm_store: # save the finished pwm
+                        self.linearData.append({"name": name, "pwm": pwm.pwm(name=name, pwm_matrix=pwm_store, isPFM=False)})
+                    # setup a new pwm:
+                    pwm_store = []
+                    name = line.strip().replace(">", "")
+                else:
+                    pwm_store.append(line.strip().split())
+        oh.close()   
+                
     def __load_transfac(self, filename):
         """
         Load in transfac db. In this case transfac comes as a single file,

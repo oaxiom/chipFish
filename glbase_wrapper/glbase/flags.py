@@ -5,11 +5,6 @@ flags.py
 . This file is scheduled for deletion
 """
 
-import utils, csv, cPickle
-
-from helpers import strandSorter
-from data import *
-
 """
 valid accessory tags:
 
@@ -21,6 +16,4 @@ valid accessory tags:
 """
 
 # lists of format-specifiers.
-default = {"sniffer": 0} # the default, it loads your file based on the heading labels in the csv.
-sniffer = default # alternative name
-sniffer_tsv = {"sniffer": 0, "dialect": csv.excel_tab} # alternative name
+

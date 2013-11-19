@@ -1,6 +1,25 @@
 """
 track, part of glbase
 
+Brand new bucket reworking of tracks.
+
+This approach is currently about 30% faster than the old track (10 s versus 15 s). 
+And could potentially be expanded for PE reads.
+
+Additionally, this system will be more efficient for larger libraries.
+
+This approach should also win in organisms with only a few chromsomes and large numbers of reads (e.g. Drosophila)
+
+Finally, this approach still has a lot of room for optimisation, whereas track.py is mined out.
+For track.py 1/2 the time is spent in SQL and the other half in a very tight get() loop.
+
+Here a lot more time is spent in Python which could potentially be optimised.
+Then as seq depths get larger this approach will win.
+
+Unfortunately this approach has one fatal flaw at the moment, in that it takes about 3-10x as long
+to initially build the database. In fact on real world data and not simulated data it even seems to fail
+eventually (presumably as the CACHE_SIZE is filled, but it's not clear exactly why). 
+
 """
 
 from __future__ import division
@@ -17,38 +36,60 @@ import matplotlib.cm as cm
 import matplotlib.pyplot as plot
 import scipy.stats as stats
 from base_track import base_track
+import array as pyarray
 
 import numpy
-from numpy import array, zeros, set_printoptions, int32, append, linspace, argmax, amax, delete
+from numpy import array, zeros, set_printoptions, int32, append, linspace, argmax, amax, delete, integer
 
-TRACK_CACHE_SIZE = 10 # number of track segments to cache.
+TRACK_CACHE_SIZE = 10 # number of track segments to cache. (Deprecated?)
+
+"""
+This number below may become a significant problem later. 
+
+As the number of reads in each block can potentially be unlimited we can consume all RAM
+filling up a single block. In cases like that user would need to reduce the block sizes...
+"""
+CACHE_SIZE = 100000 # number of blocks per chrom before we start trimming
 
 class track(base_track):
     """
     track definition, used for things like sequence reads across the genome
-    """
-    def __init__(self, name=None, new=False, filename=None, **kargs):
-        """
-        **Arguments**
-            name (string)
-                name for the track (defaults to filename)
+    
+    **Arguments**
+        name (string)
+            name for the track (defaults to filename)
 
-            filename (string)
-                directory location of the track file.
-                only respected if dir_name is set.
+        filename (string)
+            directory location of the track file.
+            only respected if dir_name is set.
+        
+        new (Optional, default=False)
+            Use seqToTrk() in preference of this. But if you know what you are 
+            doing then this will generate a new (empty) db.
             
-            new (Optional, default=False)
-                Use seqToTrk() in preference of this. But if you know what you are 
-                doing then this will generate a new (empty) db.
+        paired_end (Optional, default=False)
+            This is a paired-end library.
+            
+            NOTE: PE support is experimental and incomplete. 
+            
+        bucket_size (Optional, default=1000)
+            The size of buckets to partition the data into
+            It is strongly recommended that you do not change this value.
 
-        """
+    """
+    def __init__(self, name=None, new=False, filename=None, bucket_size=1000, paired_end=False, **kargs):
         base_track.__init__(self, name, new, filename)
+        
+        self.__bucket_size=bucket_size # should be meta data
+        self.paired_end = paired_end # a PE library or not
+        self.cache = {}
         
         if new:
             self.__setup_tables(filename)
+            self.__next_id = 0 # a running unique id for each read
 
     def __repr__(self):
-        return("glbase.track")
+        return("glbase.track3 (experimental)")
 
     def __setup_tables(self, filename):
         """
@@ -58,22 +99,10 @@ class track(base_track):
         c = self._connection.cursor()
 
         c.execute("CREATE TABLE main (chromosome TEXT PRIMARY KEY, seq_reads INT)")
-
+        c.execute("CREATE TABLE bucket_ids (chromosome TEXT, buck_id INT)") # neither can be indexed as neither is unique...
+        
         self._connection.commit()
         c.close()
-
-    '''
-    # No plans to implement this atm.
-    def __get_bucket_id(self, chromosome, left, right):
-        """
-        return a list of table names (or bucketids) required for left and right
-        """
-        # work out which of the buckets is required:
-        left_buck = int((loc["left"]-1-delta)/config.bucket_size)*config.bucket_size
-        right_buck = int((loc["right"]+delta)/config.bucket_size)*config.bucket_size
-        buckets_reqd = range(left_buck, right_buck+config.bucket_size, config.bucket_size) # make sure to get the right spanning and left spanning sites
-        return(["%s_%s" % (chromsome, bid) for bid in buckets_reqd])
-    '''
 
     def __add_chromosome(self, chromosome):
         """
@@ -89,13 +118,38 @@ class track(base_track):
 
         c.execute("INSERT INTO main VALUES (?, ?)", (chromosome, 0)) # add chr to master table.
 
+        table_name = "buck_%s" % (str(chromosome),)
+        c.execute("CREATE TABLE %s (buck_id INT, set_data TEXT)" % table_name) # and corresponding bucket table
+        #c.execute("CREATE INDEX %s_idx ON %s(buck_id)" % (table_name, table_name))
+        
+        # Add a cache entry:
+        self.cache[chromosome] = {}
+        
+        c.close()
+        return(True)
+
+    def __add_bucket(self, chromosome, buck_id):
+        """
+        add a chromosome to the main table.
+        add a chromosome table.
+
+        returns True if succesfully created/already present.
+        """
+        c = self._connection.cursor()
+        # check bucket is not already present.
+        if self.__has_bucket(chromosome, buck_id):
+            return(True)
+
+        c.execute("INSERT INTO bucket_ids VALUES (?, ?)", (chromosome, buck_id)) # add chr to master table.
+
         # make the new chromsome table:
-        table_name = "chr_%s" % str(chromosome)
-        c.execute("CREATE TABLE %s (left INT, right INT, strand TEXT)" % (table_name, ))
-
-        # link new table to old table.
-        # how do I do that?!?!?
-
+        table_name = "buck_%s" % (str(chromosome),)
+        c.execute("INSERT INTO %s VALUES (?, ?)" % table_name, (buck_id, sqlite3.Binary(cPickle.dumps(set([]))))) # add in spoof data
+        
+        #print "added bucket", table_name, buck_id
+        # stick it on the cache
+        self.cache[chromosome][buck_id] = set([])
+        
         c.close()
         return(True)
 
@@ -115,7 +169,20 @@ class track(base_track):
             return(True)
         return(False)
 
-    def add_location(self, loc, strand="+", increment=1):
+    def __has_bucket(self, chromosome, bucket_id):
+        """
+        Test if the bucket exits
+        """
+        c = self._connection.cursor()
+
+        # Check if we have the master chrom table?
+        c.execute("SELECT * FROM bucket_ids WHERE chromosome=? AND buck_id=?", (chromosome, bucket_id))
+        result = c.fetchone()
+        if result:
+            return(True)
+        return(False)  
+
+    def add_location(self, loc, pe_loc=None, strand="+", pe_strand=None):
         """
         **Purpose**
             Add a location to the track.
@@ -125,7 +192,15 @@ class track(base_track):
         **Arguments**
             loc
 
+            pe_loc
+                Support for paired-end reads. Insert the location of the paired end
+                here.
+
             strand
+                strand of the read
+                
+            pe_strand 
+                strand of the paired-end.
 
             increment
 
@@ -135,23 +210,102 @@ class track(base_track):
         if not self.__has_chromosome(loc["chr"]):
             self.__add_chromosome(loc["chr"])
 
+        # convert strand to +, -
+        if strand in positive_strand_labels:
+            strand = "+"
+        elif strand in negative_strand_labels:
+            strand = "-"
+
         c = self._connection.cursor()
 
         # insert location into new array.
         table_name = "chr_%s" % str(loc["chr"])
 
-        # get the old number of seq_reads
-        c.execute("SELECT seq_reads FROM main WHERE chromosome=?", (loc["chr"], ))
-        current_seq_reads = c.fetchone()[0] # always returns a tuple
+        read = (self.__next_id, loc["chr"], loc["left"], loc["right"], strand)
+        buckets_reqd = self.__get_buck_ids(loc["left"], loc["right"])
 
-        c.execute("UPDATE main SET seq_reads=? WHERE chromosome=?", (current_seq_reads+1, loc["chr"]))
+        if buckets_reqd: # This could easily be done faster... patience, problems don't lie here ATM.
+            for buck in buckets_reqd:
+                if not self.__has_bucket(loc["chr"], buck):
+                    self.__add_bucket(loc["chr"], buck)
+                
+                buck_set = self.__get_buck(loc["chr"], buck)
+                buck_set.add(read)
+                
+                self.__update_buck(loc["chr"], buck, buck_set)
 
-        # add the location to the seq table:
-        c.execute("INSERT INTO %s VALUES (?, ?, ?)" % table_name, (loc["left"], loc["right"], strand))
+        self.__next_id += 1
+        self.__flush_cache()
+        c.close()
+        return(True)
 
+    def __get_buck(self, chrom, bucket_id):
+        """
+        get the data within chrom/bucket_id
+        
+        Does not test if the bucket exists...
+        """
+        # see if I'm on the cache first
+        if bucket_id in self.cache[chrom]:
+            return(self.cache[chrom][bucket_id])
+        
+        # Okay, get from db:
+        c = self._connection.cursor()
+        table_name = "buck_%s" % str(chrom)
+        c.execute("SELECT set_data FROM %s WHERE buck_id=?" % table_name, (bucket_id, ))
+        result = c.fetchone()
         c.close()
 
-    def get(self, loc, resolution=1, read_extend=0, kde_smooth=False, 
+        #print "got:", chrom, bucket_id
+
+        # stick it on the cache
+        self.cache[chrom][bucket_id] = cPickle.loads(str(result[0]))
+
+        if result:
+            return(self.cache[chrom][bucket_id])
+        raise Exception, "No Block!"
+
+    def __update_buck(self, chrom, buck_id, buck_set):
+        """
+        Update the bucket with a new set
+        """
+        #if buck_id in self.cache[chrom]: # Must be on cache as get_buck was run
+        self.cache[chrom][buck_id] = buck_set
+
+    def __commit_buck(self, chrom, buck_id, buck_set):
+        """
+        Update the bucket with a new set
+        """
+        data_to_put = sqlite3.Binary(cPickle.dumps(buck_set, 1))
+        
+        c = self._connection.cursor()
+        table_name = "buck_%s" % str(chrom)
+        c.execute("UPDATE %s SET set_data=? WHERE buck_id=?" % table_name, 
+                (data_to_put, buck_id))
+        c.close()
+
+    def __flush_cache(self, cache_size=CACHE_SIZE):
+        """
+        Clean out the cache
+        
+        cache_size is items per chrom.
+        """
+        for chrom in self.cache:
+            while len(self.cache[chrom]) > cache_size:
+                item = self.cache[chrom].popitem() # get a random block
+                self.__commit_buck(chrom, item[0], item[1])
+    
+    def __get_buck_ids(self, left, right):
+        """
+        return a list of all the bucket_ids this read spans
+        """
+        left_buck = int((left-1)/self.__bucket_size)*self.__bucket_size
+        right_buck = int((right)/self.__bucket_size)*self.__bucket_size
+        buckets_reqd = range(left_buck, right_buck+self.__bucket_size, self.__bucket_size) # make sure to get the right spanning and left spanning sites
+
+        return(buckets_reqd)
+
+    def get(self, loc, resolution=None, read_extend=0, kde_smooth=False, 
         view_wid=0, **kargs):
         """
         **Purpose**
@@ -181,43 +335,57 @@ class track(base_track):
             an 'numpy.array([0, 1, 2 ... n])' contiginous array
             or a tuple containing two arrays, one for each strand.
         """
-           
-        extended_loc = location(loc=str(loc)).expand(read_extend)
-        locs_required = [extended_loc] # make sure to include the read_extend, but don't modify the location to get.
+        if not isinstance(loc, location):
+            loc = location(loc=loc)
+        extended_loc = loc.expand(read_extend)
 
-        # get the reads only in the ranges required.
-        # at the moment this is not implemented.
-        reads = []
-        for l in locs_required:
-            reads += self.get_reads(l)
-
+        result = self.get_reads(extended_loc)
+        
         if kde_smooth:
             return(self.__kde_smooth(loc, reads, resolution, 0, view_wid, read_extend))
 
         # make a single array
-        a = zeros(int( (loc["right"]-loc["left"]+resolution)/resolution ), dtype=int32)
+        #a = zeros(int( (loc["right"]-loc["left"]+resolution)/resolution ), dtype=integer)
+        if resolution:
+            a = [0] * int( (loc["right"]-loc["left"]+resolution)/resolution ) # Fast list allocation
+        else: 
+            a = [0] * (loc["right"]-loc["left"]+1) # Fast list allocation
+            #a = pyarray.array('l', a)
+        # Python lists are much faster for this
 
-        # Bound the resolution to 1bp if int(resolution) reports <1
-        min_res = int(resolution)
-        if min_res == 0:
-            min_res = 1
-
-        for r in self.c:
-            if r[2] in positive_strand_labels:
-                read_left = r[0]
-                read_right = r[1] + read_extend + 1 # coords are open
-            elif r[2] in negative_strand_labels:
-                read_left = r[0] - read_extend
-                read_right = r[1] + 1 # coords are open 
-
-            rel_array_left = int((read_left - loc["left"]) / resolution)
-            rel_array_right = int((read_right - loc["left"]) / resolution)
-
+        loc_left = loc["left"]
+        loc_right = loc["right"]
+        len_a = len(a)
+        
+        for r in result:
+            id, chrom, read_left, read_right, strand = r
+            
+            if strand == "+":
+                read_right += (read_extend + 1) # coords are open
+            elif strand == "-" :
+                read_left -= read_extend
+                read_right += 1 # coords are open 
+            
+            if resolution:
+                rel_array_left = (read_left - loc_left) // resolution
+                rel_array_right = (read_right - loc_left) // resolution  
+            else:
+                rel_array_left = (read_left - loc_left)
+                rel_array_right = (read_right - loc_left)          
+            
+            if rel_array_left <= 0:
+                rel_array_left = 0
+            if rel_array_right > len_a:
+                rel_array_right = len_a
+            
+            #a[rel_array_left:rel_array_right] += 1 # Numpy only
+            # The below is a very tiny amount faster
+            
             for array_relative_location in xrange(rel_array_left, rel_array_right, 1):
-                if array_relative_location >= 0 and array_relative_location < len(a): # within array
-                    a[array_relative_location] += 1
+                a[array_relative_location] += 1
+            
+        return(numpy.array(a))
 
-        return(a)
 
     def __kde_smooth(self, loc, reads, resolution, bandwidth, view_wid, read_shift=100):
         """
@@ -244,7 +412,7 @@ class track(base_track):
         kde._compute_covariance()
 
         kk = kde.evaluate(a) * 1000000 # resacle to get in integer range.
-        res = array(kk, dtype=int32)
+        res = array(kk, dtype=integer)
         
         return(res)
                 
@@ -273,7 +441,7 @@ class track(base_track):
                 size of the DNA shear.
 
         **Returns**
-            an 'numpy.array([0, 1, 2 ... n], dtype=int32)' contiginous array of integers
+            an 'numpy.array([0, 1, 2 ... n], dtype=integer)' contiginous array of integers
             or a tuple containing two arrays, one for each strand.
         """
         if strand: 
@@ -293,7 +461,7 @@ class track(base_track):
                 right_most = i[1]+read_extend
 
         # make an array.
-        a = zeros(int(right_most+int(resolution), int(resolution)), dtype=int32)
+        a = zeros(int(right_most+int(resolution), int(resolution)), dtype=integer)
 
         for r in reads:
             # read_extend
@@ -337,20 +505,36 @@ class track(base_track):
         if not self._c:
             self._c = self._connection.cursor()
 
-        if len(loc["chr"]) < 30:
+        # Should test for chrom here?
+
+        if len(loc["chr"]) < 30: # small security measure.
             table_name = "chr_%s" % loc["chr"]
 
-        # ~4.11 s 946 reads
-        #self._c.execute("SELECT * FROM %s WHERE (?>=left AND ?<=right) OR (?>=left AND ?<=right) OR (left<=? AND right>=?) OR (?<=left AND ?>=right)" % table_name,
-        #    (loc["left"], loc["left"], loc["right"], loc["right"], loc["left"], loc["right"], loc["left"], loc["right"]))
-            
-        # Is it faster to just get all the nearby reads and sort them out in Python?
-        self._c.execute("SELECT * FROM %s WHERE (?>=left AND ?<=right) OR (?>=left AND ?<=right)" % table_name,
-            (loc["left"], loc["left"], loc["right"], loc["right"]))
-        
-        #result = self._c.fetchall()
+        reads = set() 
 
-        #return(result)
+        # bucket_ids I need to interrogate
+        bucks_reqd = self.__get_buck_ids(loc["left"], loc["right"])
+        for bucket_id in bucks_reqd:
+            table_name = "buck_%s" % loc["chr"]
+            #result = self._connection.execute("SELECT set_data FROM %s WHERE buck_id=?" % table_name, (buck,)) 
+            
+            if self.__has_bucket(loc["chr"], bucket_id):
+                self._c.execute("SELECT set_data FROM %s WHERE buck_id=? LIMIT 1" % table_name, (bucket_id, ))
+                result = cPickle.loads(str(self._c.fetchone()[0]))
+                if result:
+                    reads |= result
+
+        result = []
+
+        for r in reads: # Now they are unique, with no overlapping reads.
+            # retrieve only the overlapping reads
+            # test here to avoid method-call overhead:
+            if loc["right"] >= r[2] and loc["left"] <= r[3]:
+            #if loc.qcollide(location(chr=loc["chr"], left=r[2], right=r[3])):
+                result.append(r)
+                #print loc, r, loc.qdistance(location(chr=loc["chr"], left=r[0], right=r[1]))
+                
+        return(result)
 
     def get_read_count(self, loc):
         """
@@ -397,6 +581,23 @@ class track(base_track):
         r = [i[0] for i in self._c.fetchall()]
         return(r)
 
+    def finalise(self):
+        """
+        finalise the database (shrink unused edit space)
+        dump useless bits etc.
+        You must call this! to finalise the db.
+        Or get() will not work!
+        This copies the cache onto disk and closes the db.
+        """
+        # do a commit
+        self.__flush_cache(0) # empty
+        self.meta_data["num_tags"] = self.__next_id
+        self._save_meta_data()
+        self._connection.commit()
+        self._connection.execute("VACUUM")
+        self._connection.execute("ANALYZE")
+        self._connection.commit()
+
     def _debug__print_all_tables(self):
         c = self._connection.cursor()
         c.execute("SELECT * FROM main")
@@ -438,7 +639,9 @@ class track(base_track):
                 the name of the image file to save the pileup graph to.
                 
             heatmap_filename (Optional)
-                draw a heatmap, where each row is a single gene. And red is the tag density
+                draw a heatmap, where each row is a single gene. And red is the tag density.
+                Please see heatmap() for a better, more customizable means of drawing 
+                heatmaps of tags
             
             raw_tag_filename (Optional)
                 Save a tsv file that contains the heatmap values for each row of the genelist.
@@ -458,7 +661,7 @@ class track(base_track):
                 Use KDE versions of the tracks instead (Experimental)
                 
             simple_cleanup (False)
-                remove rows from the pileup that have < simple_cleanup tag counts
+                remove rows from the pileup where sum(tag_count) < simple_cleanup
                 
             stranded (Optional, default=False)
                 build a stranded pileup, with + reads in blue and - reads in red
@@ -564,6 +767,9 @@ class track(base_track):
         sampled = False
         binned_data = None
         setup_bins = False
+        
+        if not simple_cleanup:
+            simple_cleanup = 0
 
         p = progressbar(len(genelist))
         for i, g in enumerate(genelist):
@@ -578,7 +784,7 @@ class track(base_track):
                 # For the reverse strand all I have to do is flip the array.
                 if g["strand"] in negative_strand_labels:
                     a = a[::-1]
-            
+
             if sum(a) > simple_cleanup: # Only keep if tag count is > simple_cleanup
                 if not sampled: # numpy __nonzero__ retardedness
                     pileup = a
@@ -616,64 +822,166 @@ class track(base_track):
             other_args["vmin"] = kargs["vmin"]
 
         # spin this off into a .heatmap() method?
-        if heatmap_filename or raw_tag_filename:
-            binned_data = numpy.delete(binned_data, numpy.s_[-1:], 1) # kill the rightmost empty col.
-            
-            if raw_tag_filename:
-                binned_data = numpy.delete(binned_data, numpy.s_[-1:], 1)
-                oh = open(raw_tag_filename, "w")
-                writer = csv.writer(oh, dialect=csv.excel_tab)
-                writer.writerows(binned_data)
-                oh.close()
-                config.log.info("saved raw_tag_file to '%s'" % raw_tag_filename)
+        if not setup_bins:
+            config.log.info("No tags found, heatmap_filename or raw_tag_filename not used")
+        else:
+            if heatmap_filename or raw_tag_filename:
+                print binned_data
+                binned_data = numpy.delete(binned_data, numpy.s_[-1:], 1) # kill the rightmost empty col.
                 
-            if heatmap_filename:
-                if other_args: 
-                    real_filename = self._draw._simple_heatmap(data=binned_data, filename=heatmap_filename, 
-                        dpi=150, figsize=(6, 24), aspect="long", **other_args)
-                else:
-                    real_filename = self._draw._simple_heatmap(data=binned_data, filename=heatmap_filename, 
-                        dpi=150, figsize=(6, 24), aspect="long")
-                config.log.info("saved heatmap to '%s'" % real_filename)
+                if raw_tag_filename:
+                    print binned_data
+                    binned_data = numpy.delete(binned_data, numpy.s_[-1:], 1)
+                    oh = open(raw_tag_filename, "w")
+                    writer = csv.writer(oh, dialect=csv.excel_tab)
+                    print binned_data
+                    writer.writerows(binned_data)
+                    oh.close()
+                    config.log.info("saved raw_tag_file to '%s'" % raw_tag_filename)
+                    
+                if heatmap_filename:
+                    if other_args: 
+                        real_filename = self._draw._simple_heatmap(data=binned_data, filename=heatmap_filename, 
+                            dpi=150, figsize=(6, 24), aspect="long", **other_args)
+                    else:
+                        real_filename = self._draw._simple_heatmap(data=binned_data, filename=heatmap_filename, 
+                            dpi=150, figsize=(6, 24), aspect="long")
+                    config.log.info("saved heatmap to '%s'" % real_filename)
 
         return(pileup)
 
-    def finalise(self):
+    def heatmap(self, filename=None, genelist=None, distance=1000, read_extend=200, log=2, 
+        bins=20, sort_by_intensity=True, **kargs):
         """
-        finalise the database (shrink unused edit space)
-        dump useless bits etc.
-        You must call this! to finalise the db.
-        Or get() will not work!
-        This copies the cache onto disk and closes the db.
+        **Purpose**
+            Draw a heatmap of the seq tag density drawn from a genelist with a "loc" key.
+            
+        **Arguments**
+            filename (Required)
+                filename to save the heatmap into
+                
+            genelist (Required)
+                a genelist with a 'loc' key.
+                
+            distance (Optional, default=1000)
+                Number of base pairs around the location to extend the search
+                
+            bins (Optional, default=20)
+                Number of bins to use. (i.e. the number of columns)
+                
+            read_extend (Optional, default=200)
+                number of base pairs to extend the sequence tag by. 
+                
+            log (Optional, default=2)
+                log transform the data, optional, the default is to transform by log base 2.
+                Note that this parameter only supports "e", 2, and 10 for bases for log
+            
+            sort_by_intensity (Optional, default=True)
+                sort the heatmap so that the most intense is at the top and the least at 
+                the bottom of the heatmap.
+                
+        **Results**
+            file in filename and the heatmap table
         """
-        # do a commit
-        self._save_meta_data()
-        self._connection.commit()
-        self._connection.execute("VACUUM")
-        self._connection.commit()
+        assert filename, "must specifty a filename"
+        assert genelist, "must provide a genelist"
+        assert "loc" in genelist.keys(), "appears genelist has no 'loc' key"
+        assert "left" in genelist.linearData[0]["loc"].keys(), "appears the loc key data is malformed"
+        assert log in ("e", math.e, 2, 10), "this 'log' base not supported"
+        
+        table = []
+        bin_size = int((distance*2) / bins)
+        
+        for item in genelist.linearData:
+            l = item["loc"].pointify().expand(distance)
+            
+            row = self.get(l, read_extend=read_extend)
+       
+            # bin the data
+            row = numpy.array(utils.bin_data(row, bin_size))
+            
+            table.append(row)            
+        
+        # sort the data by intensity
+        # no convenient numpy. So have to do myself.
+        mag_tab = []
+        for index, row in enumerate(table):
+            mag_tab.append({"n": index, "sum": row.max()})
+        
+        if sort_by_intensity:
+            mag_tab = sorted(mag_tab, key=itemgetter("sum"))
+        
+        data = numpy.array(table)+1
+        
+        newt = []
+        for item in mag_tab:
+            newt.append(data[item["n"],])
+        data = numpy.array(newt)
+        
+        if log:
+            if log == "e" or log == math.e:
+                data = numpy.log(data)-1
+            elif log == 2:
+                data = numpy.log2(data)-1
+            elif log == 10:
+                data = numpy.log10(data)-1
+               
+        # draw heatmap
+        
+        if not self._draw:
+            self._draw = draw()
+            
+        filename = self._draw.heatmap2(data=data, filename=filename, bracket=[1, data.max()], **kargs)
+        
+        config.log.info("Saved pileup tag density to '%s'" % filename)
+        return({"data": data})
+
+def build():
+    """
+    temp func for profiling
+    """
+    t = track(filename="testnew.trk3", name="test", new=True)
+    for n in xrange(0, 10000): #test = 10000
+        l = random.randint(0, 100000)
+        t.add_location(location(chr="1", left=l, right=l+35), strand="+")
+    t.finalise()
 
 if __name__ == "__main__":
-    import random
+    """
+    track .py:   1.0 s and 14 s
+    tracknew.py: 2.5s and 36 s
+    track3.py:   2.9s and 9.0s !
+    """
+
+    import cProfile, pstats    
+    import random, time
     from location import location
     from genelist import genelist
     
-    t = track(filename="test.trk2", name="test", new=True)
-    for n in xrange(0, 100000):
-        l = random.randint(0, 10000000)
-        t.add_location(location(chr="1", left=l, right=l+35), "+")
-    t.finalise()
+    s = time.time()
+    print "Building...",
+    cProfile.run("build()", "profile.pro")
+    p = pstats.Stats("profile.pro")
+    p.strip_dirs().sort_stats("time").print_stats()
+
+    e = time.time()
+    print e-s, "s"
     
+    s = time.time()
+    print "Fake bed..."
     # fake a bed
     newb = []
-    for n in xrange(0, 100):
-        l = random.randint(0, 10000000)
-        newb.append({"loc": location(chr="1", left=l, right=l+35), "strand": "+"})
+    for n in xrange(0, 1000):
+        l = random.randint(1000, 100000) # 1000 is for the window size. -ve locs are real bad.
+        newb.append({"loc": location(chr="1", left=l, right=l+200), "strand": "+"})
     bed = genelist()
     bed.load_list(newb)
+    e = time.time()
+    print e-s, "s"
     
-    t = track(filename="test.trk2")
-                
-    import cProfile, pstats
-    cProfile.run("t.pileup(genelist=bed, filename='test.png', bin_size=10, window_size=1000, raw_tag_filename='Sox2Oct4_P300.tsv')", "profile.pro")
+    t = track(filename="testnew.trk3")
+    
+    print "Pileup..."
+    #cProfile.run("t.pileup(genelist=bed, filename='test.png', bin_size=10, window_size=1000)", "profile.pro")
     p = pstats.Stats("profile.pro")
     p.strip_dirs().sort_stats("time").print_stats()

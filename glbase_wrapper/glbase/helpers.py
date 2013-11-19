@@ -40,7 +40,6 @@ def glload(filename):
     except cPickle.UnpicklingError:
         raise BadBinaryFileFormatError, filename
         
-    config.log.info("Loaded '%s' binary file with '%s' items" % (filename, len(newl)))
     # Recalculate the _optimiseData for old lists, and new features
     try:
         if newl.qkeyfind:
@@ -49,7 +48,8 @@ def glload(filename):
             pass
     except Exception:
         newl._optimiseData()
-        
+
+    config.log.info("Loaded '%s' binary file with %s items" % (filename, len(newl)))   
     return(newl)
 
 def change_drawing_mode(mode):
@@ -152,6 +152,9 @@ def XUp(data, names, normed = None, **kargs):
         return(False)
 
 # For formatting the CSV loading.
+
+def lst_find(lst, predicate): # I need a helper function to find the item
+    return (i for i, j in enumerate(lst) if predicate(j)).next()
 
 def strandSorter(chr, left, right, strand):
     """

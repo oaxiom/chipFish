@@ -11,11 +11,11 @@ import os, logging, subprocess
 
 # -------------- Versioning data
 
-RELEASE = True
+RELEASE = False
 
 if RELEASE:
     # These will be finalised when (if?) I ever get around to releasing glbase
-    VERSION = "1.411 - chipFish"
+    VERSION = "1.380"
     DATE = ""
 else:
     try:
@@ -33,11 +33,13 @@ version = VERSION # this is the valid one I want to use in future.
 
 SILENT = False # set this to True to silence all glbase output. Only works at startup
 DEBUG = True
+do_logging = True
 
-# flags for the availability of three core libraries. [Deprecated now?]
-MATPLOTLIB_AVAIL = False
-NUMPY_AVAIL = False
-SCIPY_AVAIL = False
+# flags for the availability of three core libraries. 
+MATPLOTLIB_AVAIL = False # required
+NUMPY_AVAIL = False # required
+SCIPY_AVAIL = False # required
+SKLEARN_AVAIL = False # optional
 
 # Some simple options for printing genelists
 NUM_ITEMS_TO_PRINT = 3 # number of items to print by default.
@@ -93,6 +95,15 @@ info = log.info
 warning = log.warning
 debug = log.debug
 error = log.error
+
+def silence_log():
+    do_logging = False
+    # by pointing to empty lambdas:
+    log.info = lambda x:x
+    log.warning = lambda x:x
+    log.error = lambda x:x
+    log.debug = lambda x:x
+    # Keep critical    
 
 if SILENT:
     log.setLevel(logging.CRITICAL) # not acutally silenced...

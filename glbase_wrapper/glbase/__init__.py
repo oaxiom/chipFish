@@ -8,7 +8,7 @@ Requires:
 * scipy
 """
 
-import sys, os
+import sys
 
 #-----------------------------------------------------------------------
 # Load all of the global configuration options.
@@ -38,16 +38,22 @@ except Exception:
 
 try:
     import matplotlib
+    matplotlib.use("Agg") # cluster friendly!
     config.MATPLOTLIB_AVAIL = True
 except Exception:
     raise LibraryNotFoundError, "Fatal - matplotlib not available or not installed"
+
+try:
+    import sklearn
+    config.SKLEARN_AVAIL = True
+except Exception:
+    pass # pass silently as sklearn is currently optional.
 
 # ----------------------------------------------------------------------
 # Now import the rest of my libraries - assumes here they are available.
 # If I can get config and errors then these are probably available too.
 
-from flags import *
-from helpers import *
+from helpers import * # naughty, brings in data.py, cPickle, math, utils, config, sys, os, extra naughty as I probably don't need all that lot anyway now.
 from location import location
 from genelist import genelist
 from expression import expression
@@ -65,23 +71,33 @@ from region import region
 from realtime import realtime
 from expression import expression
 from logos import logo
-from draw import draw # draw is available?
+from draw import draw
 from format_container import fc
+from fastq import fastq
+import gldata
 import utils
 import format
+import cmaps
 
 from tools.seqToTrk import seqToTrk
 from tools.wigstep_to_flattrack import wigstep_to_flat
 from tools.gerp_to_flattrack import gerp_to_flat
+from tools.bigwig_to_flattrack import bigwig_to_flat
+from tools.rnaseq import rnaseqqc
 
-config.log.info("glbase - version: %s %s" % (config.version, config.DATE))
-config.log.info("The working directory is: '%s'" % (sys.path[0]))
+def version():
+    config.log.info("glbase - version: %s %s" % (config.version, config.DATE))
+    config.log.info("The working directory is: '%s'" % (os.getcwd()))
 
 # export all of the libraries, methods and helpers.
-__all__ = ["genelist", "flags", "expression", "genome", "format",
-            "utils", "glload", "seqToTrk", "logo", "delayedlist",
-            "glglob", "motif", "track", "flat_track", "wigstep_to_flat", 
+__all__ = ["genelist", "fastq", "expression", "genome", "track", "flat_track", "delayedlist", # primary objects
+            "location", "pwm", "pwms", #accesory objects 
+            "flags",  "format",
+            "utils", "glload", "seqToTrk", "logo", 
+            "glglob", "motif",  "wigstep_to_flat", "bigwig_to_flat",
+            "rnaseqqc", "gldata",
             "gerp_to_flat", "draw", "fc",
             "progressbar", "ecrbase", "region", "realtime", "tfbs_iter",
-            "location", "pwm", "pwms", "expression", "glload", "strandSorter"] + dir(helpers)
+            "strandSorter",
+            "cmaps"] + dir(helpers)
             # in future I want to get rid of dir() and control what gets exported.

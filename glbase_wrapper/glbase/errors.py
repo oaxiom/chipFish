@@ -103,6 +103,7 @@ class UnRecognisedCSVFormatError(Exception):
         """
         oh = open(file_handle, "rU")
         config.log.error("csv/tsv file did not pass the csv parser")
+        config.log.error("Message: %s" % message)
         print "-----------------------"
         print "CSV Diagnostic:"
         if format.has_key("skiplines"): # skip the lines.
