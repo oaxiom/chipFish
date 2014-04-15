@@ -2,7 +2,7 @@
 This is a part of chipFish, it is a series of headers overriding the
 vanilla glbase.
 
-(c) 2009-2012 A.Hutchins.
+(c) 2009-2014 A.Hutchins.
 
 Introduction
 ------------
@@ -19,5 +19,5 @@ the current writing), below are the current definitions that are defined
 GUI Specifications:
 -------------------
 
-This has been removed form chipFish
+This has been removed from chipFish
 

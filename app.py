@@ -128,18 +128,17 @@ class app():
                                 self.draw.bindTrack(flat_track(filename=os.path.join(path, name), bin_format="f"), track_type="graph", options=options)
                             elif mode == "kde_track":
                                 self.draw.bindTrack(track(filename=os.path.join(path, name)), options=options, track_type="kde_graph")
-                            elif mode=="bed":
+                            elif mode == "bed":
                                 self.draw.bindTrack(genelist(filename=os.path.join(path, name), format=format.bed), options=options)
-                            elif mode=="macs_bed":
+                            elif mode == "macs_bed":
                                 f = format.minimal_bed
                                 f["skiplines"] = 1 # Changes in recent version of macs bed.
                                 self.draw.bindTrack(genelist(filename=os.path.join(path, name), format=f), options=options)
-                            elif mode=="genome": # must be a glb
+                            elif mode == "genome": # must be a glb
                                 # First see if I can get it out of the pre-packaged geneomes:
                                 try:
                                     g = genomes()
                                     if name in g:
-                                        print g.get_genome(name)
                                         self.draw.bindTrack(g.get_genome(name))
                                 except AssertionError:
                                     # Okay, that did'nt work. see If I can get a file in this dir:
