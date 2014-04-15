@@ -1,7 +1,7 @@
 """
 A web interface for chipfish.
 
-Copyright 2011-2012 oAxiom
+Copyright 2011-2014 Andrew Hutchins
 
 This is the abandonment of the GUI
 
@@ -23,17 +23,9 @@ if len(sys.argv) < 1:
     print "serve.py <track_list_file.txt>"
     quit()
 
-cf = app()
+cf = app() # Startup chipFish
 cf.startup(sys.argv[1])
 
-"""
-
-Adapted from SimpleHTTPRequiestHandler
-
-(I don't claim copyright on everything below).
-It really needs to be cleaned out and a better server system put in.
-
-"""
 __version__ = "0.1"
 
 __all__ = ["HTTPRequestHandler"]
@@ -45,36 +37,41 @@ import urllib
 import cgi
 import shutil
 import mimetypes
+
 try:
     from cStringIO import StringIO
 except ImportError:
     from StringIO import StringIO
 
 class chipfishHTTPServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
-    """HTTP request handler with GET and HEAD commands.
+    """
+    HTTP request handler with GET and HEAD commands.
 
     The GET and HEAD requests are identical except that the HEAD
     request omits the actual contents of the file.
-
     """
-
     server_version = "chipfishHTTPServer/" + __version__
 
     def do_GET(self):
-        """Serve a GET request."""
+        """
+        Serve a GET request.
+        """
         f = self.send_head()
         if f:
             self.copyfile(f, self.wfile)
             f.close()
 
     def do_HEAD(self):
-        """Serve a HEAD request."""
+        """
+        Serve a HEAD request.
+        """
         f = self.send_head()
         if f:
             f.close()
 
     def send_head(self):
-        """Common code for GET and HEAD commands.
+        """
+        Common code for GET and HEAD commands.
 
         This sends the response code and MIME headers.
 
@@ -85,6 +82,8 @@ class chipfishHTTPServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
         """
         path, query = self.translate_get(self.path)
+
+        print path, query
 
         if query:
             if "loc" in query and query["loc"]:
@@ -107,8 +106,7 @@ class chipfishHTTPServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     path = index
                     break
             else: # No index, serve a directory listing
-                #pass # Disable directory listing. (Pass a 404?)
-                path = "htdocs/index.html"
+                self.send_error(404, "File not found")
 
         ctype = self.guess_type(path)
         try:
@@ -132,7 +130,7 @@ class chipfishHTTPServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         assert loc, "no location!"
 
         cf.draw.setLocation(loc=location(loc=loc))
-        cf.draw.exportImage("htdocs/tmp/last_image.png")
+        cf.draw.exportImage(os.path.join(sys.path[0], "htdocs/tmp/last_image.png"))
 
     def translate_get(self, get):
         """Translate a /-separated PATH to the local filename syntax.
@@ -213,11 +211,13 @@ class chipfishHTTPServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         '.h': 'text/plain',
         })
 
-
-def serve(HandlerClass = chipfishHTTPServerHandler, ServerClass = BaseHTTPServer.HTTPServer):
+def serve(handler_class=chipfishHTTPServerHandler, server_class=BaseHTTPServer.HTTPServer):
     # Hack the port.
     sys.argv[1] = 8080
-    BaseHTTPServer.test(HandlerClass, ServerClass)
+    
+    server_address = ('127.0.0.1', 8080)
+    httpd = server_class(server_address, handler_class)
+    httpd.serve_forever()
 
 if __name__ == '__main__':
     serve()
