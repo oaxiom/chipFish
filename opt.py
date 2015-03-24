@@ -120,7 +120,7 @@ class track:
         "spot": 30,
         "genome": 50} # height's of the tracks in pixels.
     spot_pixel_radius = 4 # Size of the spot circle
-    spot_default_colour = (0.8, 0.1, 0.1) # The colour of the spot for spot tracks
+    spot_default_colour = (0.1, 0.1, 0.1) # The colour of the spot for spot tracks
     spot_filled = True # fill the spot circle?
     spot_shape = "circle" # supported = circle, triangle
     font_scale_size = 24 # Size of the font on the tracks
@@ -130,5 +130,5 @@ class track:
     draw_scales = True
     scale_bar_font_size = 14
     label_fontsize = 22
-    min_scale = 20 # The minimum x axis value for tracks. 
-    lock_scales = True # Lock all scales on the Tracks together.
+    min_scale = 2 # The minimum x axis value for tracks. 
+    lock_scales = False # Lock all scales on the Tracks together.
