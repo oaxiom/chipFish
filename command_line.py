@@ -13,7 +13,6 @@ from glbase_wrapper import location
 
 a = app()
 a.startup(os.path.expanduser("~/Projects/AP2aGCM/trks/track_list.txt"))
-
 oh = open(os.path.expanduser("~/Projects/AP2aGCM/trks/For raw signal.txt"), "rU")
 
 for lin in oh:

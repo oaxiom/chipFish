@@ -183,7 +183,7 @@ class track(base_track):
         result = self.get_reads(extended_loc, strand=strand)
         
         if kde_smooth:
-            return(self.__kde_smooth(loc, reads, resolution, 0, view_wid, read_extend))
+            return(self.__kde_smooth(loc, result, resolution, 0, view_wid, read_extend))
 
         loc_left = loc["left"]
         loc_right = loc["right"]
@@ -243,7 +243,7 @@ class track(base_track):
         kde._compute_covariance()
 
         kk = kde.evaluate(a) * 1000000 # resacle to get in integer range.
-        res = array(kk, dtype=integer)
+        res = array(kk)
         
         return(res)
     

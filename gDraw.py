@@ -114,7 +114,8 @@ class gDraw:
                     resolution=self.bps_per_pixel, **track["options"])
                     
             elif track["type"] == "spot":
-                item["array"] = track["data"].get_data("spot", location(loc=self.curr_loc))
+                print track["options"]
+                item["array"] = track["data"].get_data("spot", location(loc=self.curr_loc), **track["options"])
                 
             elif track["type"] == "graph_split_strand":
                 item["array"] = track["data"].get_data("graph", location(loc=self.curr_loc),
@@ -474,9 +475,11 @@ class gDraw:
         if clamp:
             for i, v in enumerate(data):
                 if v > clamp-1.0:
-                    data[i] = v
+                    data[i] = v-clamp
                 else:
-                    data[i] = clamp
+                    data[i] = 0
+        else:
+            clamp = 0 # I need a clamp int later even if clamp=None
 
         track_max = max(data)
         track_min = min(data)
@@ -531,11 +534,11 @@ class gDraw:
             
         if opt.track.draw_scales:
             self.__drawText(self.w - 10, loc[1] - 5, opt.graphics.font, 
-                int(track_min), 
+                int(track_min+clamp), 
                 size=opt.track.scale_bar_font_size, align="right", colour=(0,0,0))
             self.__drawText(self.w - 10, loc[1] - opt.track.height_px["graph"] + opt.track.scale_bar_font_size + 5, 
                 opt.graphics.font, 
-                int(max(min_scaling, track_max)), 
+                int(max(min_scaling, track_max)+clamp), 
                 size=opt.track.scale_bar_font_size, align="right", colour=(0,0,0))
 
         return(colbox)# collision box dimensions
