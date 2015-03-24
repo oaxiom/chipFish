@@ -1,5 +1,5 @@
 
-import sys, os 
+import sys, os, copy
 
 import opt, gDraw
 
@@ -122,11 +122,12 @@ class app():
                             # 
                             path = os.path.normpath(os.path.join(track_path, tail))
                             name = head
-                            print path, name
+                            #print path, name
                             
                         if name:
+                            options = copy.deepcopy(options)
                             options.update(track_opts)
-                            
+                                                        
                             if mode == "track":
                                 self.draw.bindTrack(track(filename=os.path.join(path, name)), options=options)
                             elif mode == "split_track":

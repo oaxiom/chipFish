@@ -94,6 +94,7 @@ class gDraw:
         draw_data = []
         # collect the data for the tracks and draw them on the screen.
         for track in self.tracks:
+            #print track
             # basic data:
             item = {"type": track["type"],
                 "track_location": track["track_location"],
@@ -472,8 +473,7 @@ class gDraw:
 
         data = numpy.array(data, dtype=numpy.float32)
 
-        # scale by norm_factor first (if present)
-        print track_data, norm_factor
+        # scale by norm_factor first 
         data *= norm_factor
 
         if clamp:
@@ -594,8 +594,8 @@ class gDraw:
             new_f_array = track_data["array"]["+"]
             new_r_array = track_data["array"]["-"]
 
-        print new_f_array
-        print track_data["array"]
+        #print new_f_array
+        #print track_data["array"]
 
         colbox = self.__drawTrackBackground(track_data["track_location"], "graph")
 
