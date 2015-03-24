@@ -57,12 +57,10 @@ class track(glbase.track):
             trk = self.get(loc, resolution=resolution, **kargs) 
         
         if norm_factor:
-            print "Did norm_factor", norm_factor
             trk *= norm_factor
             
         if norm_by_lib_size:
-            trk /= self.get_total_num_reads() 
-            trk *= 100000000 # Quick hack to get it back to ints.
+            trk /= (self.get_total_num_reads() / 100000000.0)# Quick hack to get it back to ints.
             
         return(trk)
 
