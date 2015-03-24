@@ -59,7 +59,7 @@ class app():
                     else:
                         res[i.split("=")[0]] = int(i.split("=")[1])
                 except ValueError:
-                    res[i.split("=")[0]] = i.split("=")[1]
+                    res[i.split("=")[0]] = i.split("=")[1] # String literal
         
         return(res)
 
@@ -110,7 +110,12 @@ class app():
                         options = self.__do_options(line.split(":")[-1], mode)
                     elif mode:
                         path = track_path
-                        name = line.strip()
+                        tt = line.strip().split()
+                        name = tt[0]
+                        track_opts = {}
+                        if len(tt) > 1:
+                            track_opts = self.__do_options(tt[1], mode)
+                            
                         if "abs_path" in options and options["abs_path"] == "True":
                             tail, head = os.path.split(name)
                             # The path will be relative to the path, not relative to chipFish. Which could be anywhere
@@ -120,6 +125,8 @@ class app():
                             print path, name
                             
                         if name:
+                            options.update(track_opts)
+                            
                             if mode == "track":
                                 self.draw.bindTrack(track(filename=os.path.join(path, name)), options=options)
                             elif mode == "split_track":

@@ -437,7 +437,7 @@ class gDraw:
         return( (0, base_loc[1]-opt.track.height_px[track_type], self.w, opt.track.height_px[track_type]-2) )
 
     def __drawTrackGraph(self, track_data, scaled=True, min_scaling=opt.track.min_scale, clamp=1, 
-        sliding_window_smoothing=False,
+        sliding_window_smoothing=False, norm_factor=1.0,
         no_scaling=False, colour=None, name=None, **kargs):
         """
         **Arguments**
@@ -471,6 +471,10 @@ class gDraw:
             data = utils.sliding_window(data, len(data)/80) # This would work better with tag-shifted rather than the whole data.
 
         data = numpy.array(data, dtype=numpy.float32)
+
+        # scale by norm_factor first (if present)
+        print track_data, norm_factor
+        data *= norm_factor
 
         if clamp:
             for i, v in enumerate(data):
