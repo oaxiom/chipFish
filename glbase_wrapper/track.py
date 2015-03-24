@@ -24,7 +24,7 @@ class track(glbase.track):
     _default_draw_type = "graph"
     _available_draw_types = ("graph", "graph_split_strand", "bar", "kde_graph")
 
-    def get_data(self, type, loc, strand=None, resolution=1, norm_by_lib_size=False, **kargs):
+    def get_data(self, type, loc, strand=None, resolution=1, norm_by_lib_size=False, norm_factor=1.0, **kargs):
         """
         **Purpose**
             get data from the track.
@@ -45,19 +45,26 @@ class track(glbase.track):
         **Results**
             returns a Numpy array, or a dictionary.
         """
-        if type in self._available_draw_types:
-            if norm_by_lib_size:
-                trk = self.get(loc, resolution=resolution, **kargs) * 100000000 # Quick hack to get it back to ints.
-                return(trk / self.get_total_num_reads())
-            if type == "kde_graph":
-                return(self.get(loc, resolution=resolution, kde_smooth=True, **kargs))
-            else:
-                if not strand:
-                    return(self.get(loc, resolution=resolution, **kargs))
-                else:
-                    return({"+": self.get(loc, resolution=resolution, strand="+", **kargs),
-                        "-": self.get(loc, resolution=resolution, strand="-", **kargs)})
-        raise AssertionError, "draw mode not available"
+        if type not in self._available_draw_types:
+            raise AssertionError, "draw mode not available"
+
+        if type == "kde_graph":
+            return(self.get(loc, resolution=resolution, kde_smooth=True, **kargs))
+        elif type == 'graph_split_strand':
+            return({"+": self.get(loc, resolution=resolution, strand="+", **kargs),
+                "-": self.get(loc, resolution=resolution, strand="-", **kargs)})
+        else:
+            trk = self.get(loc, resolution=resolution, **kargs) 
+        
+        if norm_factor:
+            print "Did norm_factor", norm_factor
+            trk *= norm_factor
+            
+        if norm_by_lib_size:
+            trk /= self.get_total_num_reads() 
+            trk *= 100000000 # Quick hack to get it back to ints.
+            
+        return(trk)
 
     # gui stuff.
     # available for the gui on this class
