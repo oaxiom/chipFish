@@ -206,6 +206,9 @@ class gDraw:
         %s
         """ % valid_track_draw_types
         # if no track_type try to guess from the track object
+        if options and 'track_type' in options:
+            track_type = options['track_type']
+            
         if not track_type:
             track_type = track._default_draw_type
 
@@ -438,8 +441,7 @@ class gDraw:
         return( (0, base_loc[1]-opt.track.height_px[track_type], self.w, opt.track.height_px[track_type]-2) )
 
     def __drawTrackGraph(self, track_data, scaled=True, min_scaling=opt.track.min_scale, clamp=1, 
-        sliding_window_smoothing=False, 
-        no_scaling=False, colour=None, name=None, **kargs):
+        sliding_window_smoothing=False, no_scaling=False, colour=None, name=None, **kargs):
         """
         **Arguments**
             track_data
@@ -690,6 +692,57 @@ class gDraw:
         self.__drawText(0, sc[1]-17 , opt.graphics.font, track_data["name"])
         return(colbox)
 
+    def __drawTrackBar(self, track_data, min_scale=1, **kargs):
+        """
+        draw a 'bar' format track
+
+        **Arguments**
+            track_data
+                must be some kind of array/iterable, with a nbp:1px resolution.
+
+        """
+        track_max = max(track_data["array"]) # bartrack must be normalised
+        if track_max < min_scale:
+            track_max = min_scale
+        new_array = track_data["array"]
+
+        posLeft = self.__realToLocal(self.lbp, track_data["track_location"])
+        posRight = self.__realToLocal(self.rbp, track_data["track_location"])
+
+        colbox = self.__drawTrackBackground(track_data["track_location"], "bar")
+
+        self.ctx.set_line_width(10)
+
+        currValue = new_array[0]
+        col = 1.0 - (currValue / track_max)
+        self.__setPenColour( (col,col,col) )
+        self.ctx.move_to(posLeft[0], posLeft[1]-9) # start x,y
+
+        for index, value in enumerate(new_array):
+            fraction_along_array = index / len(new_array)
+
+            if value != currValue:
+                # move to the new position-1 and complete the line
+                self.ctx.line_to(index, posLeft[1]-9)
+                self.ctx.stroke()
+
+                #change the colour to the new value:
+                col = 1.0 - (value / track_max)
+                self.__setPenColour( (col,col,col) )
+
+                # move to the new start of the lien:
+                self.ctx.move_to(index, posLeft[1]-9)
+
+                # update the currValue
+                currValue = value
+                #print index, col, len(new_array)
+
+        self.ctx.line_to(posRight[0], posRight[1]-9)
+        self.ctx.stroke()
+
+        self.__drawText(0, posRight[1]-17 , opt.graphics.font, track_data["name"])
+        return(colbox)
+
     def __drawText(self, x, y, font, text, size=opt.graphics.default_font_size, colour=(0,0,0), style=None, align="left"):
         """
         (Internal - helper)
@@ -824,56 +877,7 @@ class gDraw:
 
         return(True)
 
-    def __drawTrackBar(self, track_data, min_scale=1):
-        """
-        draw a 'bar' format track
 
-        **Arguments**
-            track_data
-                must be some kind of array/iterable, with a nbp:1px resolution.
-
-        """
-        track_max = max(track_data["array"]) # bartrack must be normalised
-        if track_max < min_scale:
-            track_max = min_scale
-        new_array = track_data["array"]
-
-        posLeft = self.__realToLocal(self.lbp, track_data["track_location"])
-        posRight = self.__realToLocal(self.rbp, track_data["track_location"])
-
-        colbox = self.__drawTrackBackground(track_data["track_location"], "bar")
-
-        self.ctx.set_line_width(10)
-
-        currValue = new_array[0]
-        col = 1.0 - (currValue / track_max)
-        self.__setPenColour( (col,col,col) )
-        self.ctx.move_to(posLeft[0], posLeft[1]-9) # start x,y
-
-        for index, value in enumerate(new_array):
-            fraction_along_array = index / len(new_array)
-
-            if value != currValue:
-                # move to the new position-1 and complete the line
-                self.ctx.line_to(index, posLeft[1]-9)
-                self.ctx.stroke()
-
-                #change the colour to the new value:
-                col = 1.0 - (value / track_max)
-                self.__setPenColour( (col,col,col) )
-
-                # move to the new start of the lien:
-                self.ctx.move_to(index, posLeft[1]-9)
-
-                # update the currValue
-                currValue = value
-                #print index, col, len(new_array)
-
-        self.ctx.line_to(posRight[0], posRight[1]-9)
-        self.ctx.stroke()
-
-        self.__drawText(0, posRight[1]-17 , opt.graphics.font, track_data["name"])
-        return(colbox)
 
     def __setPenColour(self, colour):
         """
