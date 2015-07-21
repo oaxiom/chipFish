@@ -44,12 +44,25 @@ def glload(filename):
     try:
         if newl.qkeyfind:
             pass
-        if newl.buckets: # added in 0.381
-            pass
+        if "loc" in newl[0].keys() or "tss_loc" in newl[0].keys(): # buckets are only present if a loc key is available.
+            if newl.buckets: # added in 0.381, only in objects with tss_loc or loc key.
+                pass
     except Exception:
+        config.log.warning("Old glb format, will rebuild buckets and/or qkeyfind, consider resaving")
         newl._optimiseData()
+        
+    # Old style condition annotations
+    #if "expression" in newl.__repr__():
+    #    try: 
+    #        ll = len(newl._conditions)
+    #    except AttributeError: 
+    #        newl._conditions = newl.conditions
 
-    config.log.info("Loaded '%s' binary file with %s items" % (filename, len(newl)))   
+    try:
+        cons = len(newl._conditions) # expression-like object
+        config.log.info("Loaded '%s' binary file with %s items, %s conditions" % (filename, len(newl), cons))
+    except AttributeError:
+        config.log.info("Loaded '%s' binary file with %s items" % (filename, len(newl)))   
     return(newl)
 
 def change_drawing_mode(mode):

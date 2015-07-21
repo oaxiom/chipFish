@@ -61,7 +61,7 @@ def seqToTrk(infilename=None, outfilename=None, name=None, stranded=True, format
 
     s = time.time()
     for file in infilename:
-        config.log.info("Started %s -> %s" % (file, outfilename))
+        #config.log.info("Started %s -> %s" % (file, outfilename)) # Don't need as the delayedlist binding will put some output
         seqfile = delayedlist(filename=os.path.realpath(file), format=format)
         for item in seqfile:
             if "strand" in item and stranded:
@@ -90,7 +90,7 @@ def seqToTrk(infilename=None, outfilename=None, name=None, stranded=True, format
 
     config.log.info("Finalise library. Contains '%s' tags" % total)
     t.finalise()
-    config.log.info("Took: %s seconds" % (e-s))
+    config.log.info("Took: %.1f seconds" % (e-s))
     return(True)
 
 if __name__ == "__main__":

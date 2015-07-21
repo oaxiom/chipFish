@@ -229,7 +229,8 @@ class genome(genelist):
                 #print location["left"], location["right"], item["loc"]["left"], item["loc"]["right"]
                 if utils.qcollide(loc["left"], loc["right"], item["loc"]["left"], item["loc"]["right"]):
                     # make a suitable draw object
-                    item["type"] = "gene" # set the type flag for gDraw
+                    if 'type' not in item:
+                        item["type"] = "gene" # set the type flag for gDraw
                     ret.append(item)
         return(ret)
 
@@ -333,7 +334,8 @@ class genome(genelist):
         """
         
         # This is old and ugly code. 
-        # But it works and has been pretty extensively tested.
+        # But it works and has been pretty extensively tested and is 'fast enough'.
+        # So don't go messing with it unless you have a very good reason.
         
         valid_args = ["coords", "strand", "mask"]
         for key in kargs:
@@ -361,6 +363,7 @@ class genome(genelist):
             return(None)
 
         seekloc = (left + (left / self.seq_data[chrom]["linelength"]))-1 # the division by 50 is due to the presence of newlines every 50 characters.
+        #print chrom, self.seq[chrom], seekloc, self.seq_data[chrom]["offset"], loc
         self.seq[chrom].seek(seekloc+self.seq_data[chrom]["offset"]) # move to the start location.
 
         delta = (right - left)+1
@@ -385,7 +388,8 @@ class genome(genelist):
 
         return(ret)
 
-    def getSequences(self, genelist=None, loc_key=None, replace_loc_key=True, **kargs):
+    def getSequences(self, genelist=None, loc_key='loc', replace_loc_key=True, strand_key=False, 
+        mask=False, pointify=False, delta=False, **kargs):
         """
         **Purpose**
 
@@ -440,7 +444,7 @@ class genome(genelist):
             use the upper and lower case of the fasta files to 'mask'
             the sequence. This will turn acgt to NNNN.
 
-            This is not a proper repat masker and relies on your genome
+            This is not a proper repeat masker and relies on your genome
             being repeat masked. For human and mouse this is usually true,
             but for other genomes has not been tested.
 
@@ -461,23 +465,15 @@ class genome(genelist):
 
         newl = []
 
-        strand_key = False
-        if "strand_key" in kargs:
-            strand_key = kargs["strand_key"]
-
-        mask = False
-        if "mask" in kargs and kargs["mask"]:
-            mask = True
-
         p = progressbar(len(genelist))
         for index, item in enumerate(genelist): 
             newloc = item[loc_key]
 
-            if "pointify" in kargs and kargs["pointify"]:
+            if pointify:
                 newloc = newloc.pointify()
 
-            if "delta" in kargs:
-                newloc = newloc.expand(kargs["delta"])
+            if delta:
+                newloc = newloc.expand(delta)
 
             if "deltaleft" in kargs and kargs["deltaleft"]:
                 if "strand" in kargs and kargs["strand"]:
@@ -520,7 +516,6 @@ class genome(genelist):
 
         if len(newl) > 0:
             config.log.info("Got sequences for '%s'" % self.name)
-            newgl._history.append("Added DNA sequence")
         else:
             config.log.warning("No sequences found!")
         return(newgl)

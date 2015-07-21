@@ -1,28 +1,23 @@
 """
 **Purpose**
-    An all-purpose container for transcript expression data.
+    An all-purpose container for transcript/gene expression data.
 
-**to do**
+**To do**
 
-* often the reader will choke on an array... [partially fixed?]
-* scipy.cluster relies of recursion to perform the clustering.
-    On large sized arrays it chokes horribly.
 """
 
-import sys, os, csv, string, math, copy
+import sys, os, csv, string, math, copy, heapq, itertools
 
 from operator import itemgetter
 
 import numpy, scipy
-from numpy import array, arange, meshgrid, zeros, linspace, mean, object_, std
+from numpy import array, arange, meshgrid, zeros, linspace, mean, object_, std # this should be deprecated
 from scipy.cluster.hierarchy import distance, linkage, dendrogram
 from scipy.cluster.vq import vq, kmeans, whiten, kmeans2
 from scipy.spatial.distance import pdist
 import matplotlib.pyplot as plot
 from pylab import bivariate_normal, griddata # comes from where?
 import matplotlib.cm as cm
-from scipy.stats import ttest_ind, pearsonr
-from scipy import stats
 
 import config, utils
 from flags import *
@@ -33,6 +28,17 @@ from errors import AssertionError, ArgumentError
 from genelist import genelist
 from location import location
 from pca import pca
+from stats import stats
+
+if config.NETWORKX_AVAIL:
+    from network import network
+    from mdsquish import mdsquish
+    if config.PYDOT_AVAIL:
+        from bayes import bayes # Actually requires graphviz, but will probably port it later.
+
+if config.SKLEARN_AVAIL:
+    from som import SOM
+    from somde import somde
 
 class expression(base_expression):
     def __init__(self, loadable_list=None, filename=None, format=None, expn=None, **kargs):
@@ -40,19 +46,18 @@ class expression(base_expression):
         **Purpose**
             The base container for expression data.
 
-            Please not though that:
-            Expression analysis in glbase requires normalised
-            and easily manipulatable data. Examples for normalisation are
-            genespring output, or output from R and PMA, Cufflinks RSEM etc...
+            Please note that:
+            Expression analysis in glbase requires easily manipulatable data. 
+            Examples for normalisation are
+            genespring output, or output from R and PMA, Cufflinks, RSEM,
+            EDASeq, DESeq, etc...
 
         **Arguments**
-
             filename (Required, one of loadable_list or filename)
 
                 the filename of the microarray to load.
 
             loadable_list (Required, one of loadable_list or filename)
-            
                 a genelist-like object I can use to construct the list from. If you use this then
                 expn should be a list of keys to extract the expression data from.
                 
@@ -101,8 +106,6 @@ class expression(base_expression):
             base_expression.__init__(self, loadable_list=loadable_list, expn=expn, **kargs)
         else:
             base_expression.__init__(self, filename=filename, expn=expn, format=format, **kargs)
-            
-        self.pca = None # Store for PCA object
 
     def __repr__(self):
         return("glbase.expression")
@@ -119,6 +122,92 @@ class expression(base_expression):
             return(self.getDataForCondition(index))
         return(base_expression.__getitem__(self, index)) # otherwise inherit
 
+    def __getattr__(self, name):
+        """
+        
+        Confers this idiom:
+        
+        expn.network.genes(...)
+        
+        """
+        
+        # These work and do not reinit as it works like this:
+        # expn.bayes.learn() 
+        #       First call of bayes, call __getattr__() and self.bayes = bayes() then call learn learn()
+        # expn.bayes.run() 
+        #       second call of bayes, self.bayes is already an attrib, so it will do self.bayes.run()
+        #       with not new init.
+        
+        if name == "network":
+            assert config.NETWORKX_AVAIL, "Asking for a network object but networkx is not available"
+            self.network = network(self)
+            return(self.network)
+        elif name == "pca":
+            return(self.get_pca())
+        elif name == "stats":
+            self.stats = stats(self)
+            return(self.stats)
+        elif name == "mdsquish":
+            assert config.NETWORKX_AVAIL, "Asking for mdsquish but networkx is not available"
+            self.mdsquish = mdsquish(self)
+            return(self.mdsquish)
+        elif name == "som":
+            assert config.SKLEARN_AVAIL, "Asking for som but sklearn not available"
+            sq = math.ceil(math.sqrt(len(self)))
+            self.som = SOM(parent=self, name=self.name)
+            return(self.som)
+        elif name == 'somde': 
+            assert config.SKLEARN_AVAIL, "Asking for somde but sklearn not available"
+            sq = math.ceil(math.sqrt(len(self)))
+            self.somde = somde(parent=self, name=self.name)
+            return(self.somde)   
+        elif name == "bayes":
+            assert config.NETWORKX_AVAIL, "Asking for a bayes object but networkx/graphviz is not available"
+            assert config.PYDOT_AVAIL, "Asking for a bayes object but pydot is not available"
+            self.bayes = bayes(self)
+            return(self.bayes)
+        
+        raise AttributeError, "'%s' object has no attribute '%s'" % (self.__repr__(), name)
+
+    def get_pca(self, rowwise=False, label_key=None, **kargs):
+        """
+        **Purpose**
+            Get the pca object for this expression data. For performing principal 
+            component analysis (PCA) on the expression data set.
+            
+            A typical workflow for PCA of expression data would go something like:
+            
+            expn = expression(filename="...", ...)
+            pca = expn.get_pca()
+            print pca.max() # maximum number of PCs.
+            pca.loading(filename="...") # PC loading bar chart.
+            pca.plot(1,2, filename="...") # PC 
+            
+        **Arguments**
+            whiten (Optional, default=False)
+                'Normalise' the data. Each feature is divided by its standard deviation 
+                across all observations to give it unit variance
+                    
+            mean_subtraction (Optional, default=False)
+                subtract the mean from the matrix.
+                
+            rowwise (Optional, default=False)
+                Perform PCA on the rows (probably genes), instead of on the conditions (the default)
+                
+            label_key (Optional, Required if rowwise=True)
+                The key to use in the genelist to use as a label on plots, etc. 
+                
+                Ignored if rowwise=False
+            
+        **Returns**
+            A 'pca' object.
+            See the documentation for pca for more details. 
+            
+            You can get the pca object again in expn.pca
+        """
+        self.pca = pca(self, rowwise=rowwise, label_key=label_key, **kargs)
+        return(self.pca)
+
     def sort_sum_expression(self):
         """
         sort by the sum of conditions
@@ -127,7 +216,53 @@ class expression(base_expression):
             None
             
         """
-        self.linearData = sorted(self.linearData, cmp=lambda x, y: cmp(sum(x["conditions"]), sum(y["conditions"]))) # the original sort() was overridden.
+        self.linearData = sorted(self.linearData, cmp=lambda x, y: cmp(sum(x["conditions"]), sum(y["conditions"]))) 
+        self._optimiseData()
+        return(True)
+
+    def sort_column_sum_expression(self):
+        """
+        sort the conditions, left to right based on the sum of the column expression
+
+        Like all sort_* methods this function is IN PLACE
+
+        **Arguments**
+            None
+        
+        **Returns**
+            None
+        """        
+        col_sums = numpy.sum(self.numpy_array_all_data, axis=0)
+        
+        new_condition_order = zip(self._conditions, col_sums)
+        new_condition_order = sorted(new_condition_order, key=itemgetter(1))
+        new_condition_order = [i[0] for i in new_condition_order]
+                
+        # Use an in-place variant of sliceConditions:
+        newtab = []
+        for name in new_condition_order:
+            newtab.append(self.serialisedArrayDataDict[name])
+
+        self._conditions = new_condition_order # Must update here for err rearrangement
+               
+        if "err" in self.linearData[0]:
+            # Make an err version of serialisedArrayDataDict    
+            errs = numpy.copy([i["err"] for i in self.linearData]) 
+            
+            err_tab = None
+            for name in new_condition_order:
+                idx = self._conditions.index(name)
+                err_col = errs[:,idx]
+                if err_tab is None:
+                    err_tab = err_col
+                else:
+                    err_tab = numpy.vstack((err_tab, err_col))
+                
+            for index, item in enumerate(self.linearData):
+                item["err"] = list(err_tab[:,index])
+         
+        self.numpy_array_all_data = numpy.array(newtab).T
+        self._load_numpy_back_into_linearData() # _conditions must be up to date
         self._optimiseData()
         return(True)
 
@@ -169,25 +304,43 @@ class expression(base_expression):
         self._optimiseData()
         return(True)
 
+    def sort_conditions(self, reverse=False):
+        """
+        **Purpose**
+            Sort the Condition Names
+           
+            NOTE: In place method
+           
+        **Arguments**
+            reverse (Optional, default=False)
+                reverse the order of the 
+        """
+        neworder = self.getConditionNames() # gives me a copy now.
+        neworder = sorted(neworder, key=lambda s: s.lower())
+        if reverse:
+            neworder.reverse()
+        
+        copymask = [] # work out a mask to extract the correct array columns.
+        for name in neworder:
+            for i, c in enumerate(self._conditions):
+                if c == name:
+                    copymask.append(i)
+                    break
+
+        for index, item in enumerate(self.linearData):
+            item["conditions"] = [item["conditions"][c] for c in copymask]
+            if "err" in item:
+                item["err"] = [item["err"][c] for c in copymask]                   
+        
+        self._conditions = neworder
+        self._optimiseData()
+        return(None)  
+
     def findGene(self, **kargs):
         """
-        # valid keys are in do
-        accepts things like:
-        findGene(refseq="123344", symbol="Pou5f1")
-        (Obselete?)
+        Deprecated method
         """
-        ret = []
-        do = frozenset(["refseq", "entrez", "symbol", "coords"])
-
-        for key, value in kargs.iteritems():
-            if key == "loc":
-                ret.append(self._findByCoords(key, value))
-            else:
-                try:
-                    ret.append(self._findDataByKeyGreedy(key, value))
-                except KeyError:
-                    print "Warning: key is not present in array"
-        return(ret)
+        raise AssertioError, "findGene() is deprecated, see getRowsByKey()"
 
     # ----------- overrides/extensions ---------------------------------
 
@@ -209,11 +362,13 @@ class expression(base_expression):
             
             strip_expn (Optional, default=False)
                 If True then remove the expression and err keys (if present).
+                
+                This will return a genelist
         
         **Returns**
             A new expression object or if strip_expn=True then a genelist
         """
-        assert isinstance(return_keys, list), "return_keys must be a list"
+        assert isinstance(return_keys, list), "getColumns: return_keys must be a list"
 
         if strip_expn:
             newl = genelist()
@@ -223,7 +378,7 @@ class expression(base_expression):
             newl.linearData = []
             if not "conditions" in return_keys and "conditions" in self.linearData[0]:
                 return_keys.append("conditions")
-            if not "err" in return_keys and "err" in self.linearData[0]:
+            if "err" not in return_keys and "err" in self.linearData[0]:
                 return_keys.append("err")           
 
         for item in self.linearData:
@@ -234,7 +389,7 @@ class expression(base_expression):
             newl.linearData.append(newd)
         newl._optimiseData()
         
-        config.log.info("getColumns(): got only the columns: %s" % ", ".join(return_keys))
+        config.log.info("getColumns: got only the columns: %s" % ", ".join(return_keys))
         return(newl)
 
     def strip_errs(self):
@@ -252,10 +407,53 @@ class expression(base_expression):
         **Returns**
             None
         """
+        if "err" not in self.linearData[0]: # No errors to strip, silently fail
+            config.log.warning("strip_errs: Tried to remove error data, but no error data found")
+            return(None)
+            
         for item in self.linearData:
             del item["err"]
         self._optimiseData() # I think this does nothing at the moment, but just in case I ever fix err key handling
         return(None)
+
+    def merge(self, key=None, *tables):
+        """
+        **Purpose**
+            Merge a bunch of expression tables by key
+            
+            This is basically a hstack for the expression data. This is required because map() can have some
+            undesired effects in its treatment of expression objects.
+            
+            This method though has the disadvantage that your lists must be identical to begin with.
+        
+        **Arguments**
+            tables (Required)
+                A list of expression-objects to merge
+
+            key (Required)
+                The key to base the merge on
+        
+        **Returns**
+            A new expression object. Only 'self' key's are maintained
+        """
+        assert key, "merge: You must specify a key"
+        lls = [len(i) for i in tables]
+        assert len(set(lls)) == 1, "merge: the expression objects are different sizes"
+        
+        newgl = self.deepcopy()
+        newgl._conditions = sum([gl._conditions for gl in tables], self._conditions)
+        
+        for item in newgl:
+            others = [i._findDataByKeyLazy(key=key, value=item[key]) for i in tables]
+            if None in others:
+                raise AssertionError, "merge() %s:%s not found in table" % (key, item[key])
+            others = [i["conditions"] for i in others]
+            item["conditions"] = sum(others, item["conditions"])
+            if "err" in item:
+                item["err"] = sum(others, item["err"])
+        
+        newgl._optimiseData()
+        return(newgl)       
 
     def sliceConditions(self, conditions=None, **kargs):
         """
@@ -274,7 +472,6 @@ class expression(base_expression):
             will now give you an expression set with two 'cond1' conditions
 
         **Arguments**
-
             conditions (Required)
                 A list, or other iterable of condition names to extract
                 from the expression-data. Every condition name must be present
@@ -286,38 +483,40 @@ class expression(base_expression):
             but containing only the expression-data conditions specified in
             the 'conditions' argument.
         """
-        valig_args = ["conditions"]
-        for k in kargs:
-            if k not in valig_args:
-                raise ArgumentError, (self.sliceConditions, k)
-
-        assert conditions, "You must specify a list of conditions to keep"
-        assert isinstance(conditions, list) or isinstance(conditions, set), "You must specify a list or set of conditions to keep"
+        assert conditions, "sliceConditions: You must specify a list of conditions to keep"
+        assert isinstance(conditions, list) or isinstance(conditions, set), "sliceConditions: You must specify a list or set of conditions to keep"
         for item in conditions:
-            assert item in self._conditions, "'%s' condition not found in this expression-data" % item
+            assert item in self._conditions, "sliceConditions: '%s' condition not found in this expression data" % item
 
-        newgl = self.shallowcopy()
-        newgl.linearData = []
+        newgl = self.deepcopy()
 
-        copymask = [] # work out a mask to extract the correct array columns.
+        newtab = []
         for name in conditions:
-            for i, c in enumerate(self._conditions):
-                if c == name:
-                    copymask.append(i)
-                    break
-
-        for index, item in enumerate(self.linearData):
-            newi = copy.deepcopy(item) # safe copy available
-            newi["conditions"] = [copy.deepcopy(item["conditions"][c]) for c in copymask]
-            if "err" in item:
-                newi["err"] = [copy.deepcopy(item["err"][c]) for c in copymask]                   
+            newtab.append(newgl.serialisedArrayDataDict[name])
+               
+        if "err" in self.linearData[0]:
+            # Make an err version of serialisedArrayDataDict    
+            errs = numpy.copy([i["err"] for i in self.linearData]) 
             
-            newgl.linearData.append(newi)
-            
-        newgl._history.append("sliced conditions, kept %s" % "".join(conditions))
+            err_tab = None
+            for name in conditions:
+                idx = newgl._conditions.index(name)
+                err_col = errs[:,idx]
+                if err_tab is None:
+                    err_tab = err_col
+                else:
+                    err_tab = numpy.vstack((err_tab, err_col))
+                
+            for index, item in enumerate(newgl.linearData):
+                item["err"] = list(err_tab[:,index])
+         
         newgl._conditions = conditions
+        newgl.numpy_array_all_data = numpy.array(newtab).T
+        newgl._load_numpy_back_into_linearData() # _conditions must be up to date
+        
         newgl._optimiseData()
-        config.log.info("sliceConditions(): sliced for %s conditions" % (len(newgl[0]["conditions"]),))
+        
+        config.log.info("sliceConditions: sliced for %s conditions" % (len(newgl[0]["conditions"]),))
         return(newgl)
 
     def getDataForCondition(self, condition_name):
@@ -326,9 +525,11 @@ class expression(base_expression):
             get all of the expression-data data for a particular condition
             name, returns a list of all the values.
             The list remains in the same order as the overall list,
+            
+            This method returns a view of the data (not a copy)
         """
         #print self.serialisedArrayDataDict.keys()
-        assert condition_name in self.getConditionNames(), "No condition named '%s' in this expression object" % condition_name
+        assert condition_name in self.getConditionNames(), "getDataForCondition: No condition named '%s' in this expression object" % condition_name
 
         return(self.serialisedArrayDataDict[condition_name])
 
@@ -336,15 +537,136 @@ class expression(base_expression):
         """
         **Purpose**
             Return the entire expression table. Note that rows and columns are not labelled.
-            Will return a numpy list
+            Will return a numpy array
             
         **Arguments**
             None
         """
-        ll = []
-        for item in self.linearData:
-            ll.append(item["conditions"])
-        return(numpy.array(ll))        
+        return(numpy.copy(self.numpy_array_all_data))        
+
+    def subtract_mean(self):
+        """
+        **Purpose**
+            Moves the expression values to their (column) mean. Now they will vary around zero.
+                
+        """        
+        self.numpy_array_all_data -= numpy.mean(self.numpy_array_all_data, axis=0)
+        self._load_numpy_back_into_linearData()
+        
+    def whiten(self):
+        """
+        **Purpose**
+            whiten the expression values.
+            
+            i.e. move them all to unit variance (i.e. 0..1)
+        """
+        self.numpy_array_all_data = scipy.cluster.vq.whiten(self.numpy_array_all_data)
+        self._load_numpy_back_into_linearData()
+
+    def convert_to_Z_score(self):
+        """
+        **Purpose**
+            Convert the expression to a rwo-wise Z-score
+        """
+        expn = self.numpy_array_all_data.T   
+        m = numpy.mean(expn, axis=0)
+        s = numpy.std(expn, axis=0) 
+        z = (expn - m) / s
+        self.numpy_array_all_data = z.T
+        self._load_numpy_back_into_linearData()
+
+    def normalize(self):
+        """
+        **Purpose**
+            Normalise the numerical data between 0 .. 1
+
+        **Returns**
+            None
+            THIS IS AN IN-PLACE CONVERSION
+        """
+        mins = numpy.min(self.numpy_array_all_data)
+        maxs = numpy.max(self.numpy_array_all_data)
+        rng = maxs - mins
+        
+        self.numpy_array_all_data = (self.numpy_array_all_data - mins) / rng
+        self._load_numpy_back_into_linearData()
+
+    def normalize_columns(self):
+        """
+        **Purpose**
+            column based normalization of data
+            
+        **Returns**
+            None
+            THIS IS AN IN-PLACE CONVERSION
+        """
+        mins = numpy.min(self.numpy_array_all_data, axis=0)
+        maxs = numpy.max(self.numpy_array_all_data, axis=0)
+        rng = maxs - mins
+        
+        self.numpy_array_all_data = 1.0 - (((1.0 - -1.0) * (maxs - self.numpy_array_all_data)) / rng)
+        self._load_numpy_back_into_linearData()
+
+    def normalize_rows(self):
+        """
+        **Purpose**
+            Perform row normalisation such that max = 1.0 and min = 0.0
+        
+        **Purpose**
+            row based normalization of data
+            
+        **Returns**
+            None
+            THIS IS AN IN-PLACE CONVERSION
+        """       
+        #for row in xrange(data.shape[0]): # from heatmap()
+        #    mi = min(data[row,:])
+        #    ma = max(data[row,:])
+        #    data[row,:] = (data[row,:]-mi) / (ma-mi)
+
+        ma = numpy.max(numpy.abs(self.numpy_array_all_data), axis=1)
+        mi = numpy.min(numpy.abs(self.numpy_array_all_data), axis=1)
+        d = ma - mi
+
+        self.numpy_array_all_data = numpy.apply_along_axis(lambda a: (a-mi)/d, 0, self.numpy_array_all_data)#, self.numpy_array_all_data-mi
+        #self.numpy_array_all_data = numpy.apply_along_axis(lambda a: a / , 0, self.numpy_array_all_data
+
+        #self.numpy_array_all_data = (self.numpy_array_all_data-mi) / (ma-mi)
+
+        self._load_numpy_back_into_linearData()
+        return(None)
+
+    def digitize(self, number_of_steps, min=None, max=None):
+        """
+        **purpose**
+            Digitize the data into the supplied <number_of_steps>.
+            
+            This will convert all of the expression values from 0 .. number_of_steps bins.
+            
+            If min and max are specified, these values will be used in place of guessing from the min and max of the data.
+        
+        **Returns**
+            None
+            THIS IS AN IN-PLACE CONVERSION
+        """
+        if min:
+            mins = min
+        else:
+            mins = self.numpy_array_all_data.min()
+        
+        if max:
+            maxs = max
+        else:
+            maxs = self.numpy_array_all_data.max()
+            
+        rng = maxs - mins
+        
+        self.numpy_array_all_data -= mins
+        self.numpy_array_all_data /= rng
+        self.numpy_array_all_data *= number_of_steps
+        self.numpy_array_all_data = numpy.ceil(self.numpy_array_all_data) # always move up as the zeros have already been set
+        
+        self._load_numpy_back_into_linearData()
 
     def coerce(self, new_type):
         """
@@ -361,24 +683,21 @@ class expression(base_expression):
             None
             THIS IS AN IN-PLACE CONVERSION
         """
-        for item in self.linearData:
-            item["conditions"] = [new_type(i) for i in item["conditions"]]
+        if new_type == int:
+            self.numpy_array_all_data = self.numpy_array_all_data.astype(numpy.int32)
+            self._load_numpy_back_into_linearData()
+        else:
+            for item in self.linearData:
+                item["conditions"] = [new_type(i) for i in item["conditions"]]
         return(None)
-
-    def drawHeatmap(self, filename=None, row_label_key="name", **kargs):
-        """
-        Obselete alias for heatmap()
-        """
-        return(self.heatmap(filename=filename, row_label_key=row_label_key, **kargs))
     
-    def heatmap(self, filename=None, row_label_key="name", **kargs):
+    def heatmap(self, filename=None, row_label_key="name", row_colour_threshold=None, **kargs):
         """
         **Purpose**
 
             draw a simple heatmap of the current expression-data data.
 
         **Arguments**
-
             filename (Required)
                 the filename of the image to save. depending upon the current
                 drawing settings it will save either a png (default) svg or eps.
@@ -387,13 +706,13 @@ class expression(base_expression):
                 bracket the data within a certain range of values.
                 For example to bracket to 0 .. 1 you would use the syntax::
     
-                    result = array.drawHeatmap(filename="ma.png", bracket=[0,1])
+                    result = array.heatmap(filename="ma.png", bracket=[0,1])
     
-                Or for something like log2 normalised array data:
+                Or for something like log2 normalised array data::
     
-                    result = array.drawHeatmap(filename="ma.png", bracket=[-2,2])
+                    result = array.heatmap(filename="ma.png", bracket=[-2,2])
     
-                "Bracket' chops off the edges of the data, using this logic:
+                "Bracket' chops off the edges of the data, using this logic::
     
                     if value > high_bracket then value := high_bracket
                     if value < low_bracket then value := low_bracket
@@ -410,40 +729,55 @@ class expression(base_expression):
             row_cluster (Optional, default = True)
                 cluster the rows? True or False
     
+            row_colour_threshold (Optional, default=None)
+                colour_threshold to color the rows clustering dendrogram. 
+                
+                See also scipy.hierarchy.dendrogram
+    
             col_cluster (Optional, default = True)
-                cluster the column conditions, True or False
-    
+                cluster the column conditions, True or False                
+   
             log (Optional, defualt=False, True|False of 2..n for log2, log10)
-                    log the y axis (defaults to e)
-                    send an integer for the base, e.g. for log10
-    
-                    log=10
-    
-                    for log2
-    
-                    log=2
-    
-                    for mathematical constant e
-    
-                    log=True
-                    log="e"
+                log the y axis (defaults to e)
+                send an integer for the base, e.g. for log10
+
+                log=10
+
+                for log2
+
+                log=2
+
+                for mathematical constant e
+
+                log=True
+                log="e"
 
             row_tree (Optional, default=False)
-                provide your own tree for drawing. Should be a Scipy tree. row_labels and the data
+                provide your own tree for drawing. Should be a valid dendrogram tree. 
+                Probably the output from tree(), although you could role your own with Scipy.
+                row_labels and the data
                 will be rearranged based on the tree, so don't rearrange the data yourself.
 
             col_tree (Optional, default=False)
                 provide your own tree for ordering the data by. See row_tree for details.
                 This one is applied to the columns.
-
+                
             highlights (Optional, default=None)
                 sometimes the row_labels will be suppressed as there is too many labels on the plot. 
                 But you still want to highlight a few specific genes/rows on the plot.
                 Send a list to highlights that matches entries in the row_names.
 
-            discretize (Optional, default=False)
-                change the colourmap (either supplied in cmap or the default) into a 'discretized' version
-                that has large blocks of colours, defined by the number you send to discretize
+            digitize (Optional, default=False)
+                change the colourmap (either supplied in cmap or the default) into a 'digitized' version
+                that has large blocks of colours, defined by the number you send to discretize.
+                In other words, place the expression values into the number of 'digitized' bins
+
+            cmap (Optional, default=matplotlib.cm.RdBu)
+                colour map for the heatmaps. Use something like this:
+                
+                import matplotlib.cm as cm
+                
+                gl.heatmap(..., cmap=cm.afmhot)
 
             col_norm (Optional, default=False)
                 normalise each column of data between 0 .. max => 0.0 .. 1.0
@@ -469,9 +803,9 @@ class expression(base_expression):
                 value is a fraction of the entire figure size.
                 
             colbar_label (Optional, default="expression")
-                the label to place beneath the colour scale bar            
+                the label to place beneath the colour scale bar       
+                
         **Result**
-
             saves an image to the 'filename' location and
             
             returns a dictionary containing the real_filename and re-ordered labels after clustering (if any).
@@ -481,7 +815,7 @@ class expression(base_expression):
             upon the current setings).
         """
         # checks for option here please.
-        assert filename, "you must specify a filename"
+        assert filename, "heatmap: you must specify a filename"
 
         data = self.serialisedArrayDataList
 
@@ -495,9 +829,11 @@ class expression(base_expression):
 
         res = self.draw.heatmap(data=newdata,
             row_names=self[row_label_key], col_names=self.getConditionNames(),
-            filename=filename, **kargs)
+            filename=filename, 
+            row_colour_threshold=row_colour_threshold, 
+            **kargs)
             
-        config.log.info("heatmap(): Saved %s" % res["real_filename"])
+        config.log.info("heatmap: Saved %s" % res["real_filename"])
         return(res)
 
     def __fold_change(self, c1v, c2v, log=2):
@@ -536,8 +872,9 @@ class expression(base_expression):
                 keep the original data, but set it to 0
 
             use_fold_change (Optional, default=False)
-                by default glbase performs:
+                by default glbase performs::
                     2^ -[(control_sample) / (experimental_sample)] 
+                    
                 this will result in values bound between 0...1 with no change being 0.5.
                 
                 If use_fold_change is set to True a value will be calulated such that 
@@ -557,7 +894,7 @@ class expression(base_expression):
         """
         names = self.getConditionNames()
 
-        assert condition_name in names, "condition name: %s is not in this expression-data" % condition_name
+        assert condition_name in names, "normaliseToCondition: condition name '%s' is not in this expression-data" % condition_name
 
         name_index = names.index(condition_name)
         #print name_index
@@ -588,7 +925,7 @@ class expression(base_expression):
                     else:
                         new_array_data.append(0.5)
 
-            data_copy = copy.deepcopy(item)
+            data_copy = utils.qdeepcopy(item)
             newl.linearData.append(data_copy)
             data_copy["conditions"] = new_array_data # load the new_array_data over the old one.
 
@@ -607,7 +944,7 @@ class expression(base_expression):
                     newl._conditions.append(name)
 
         newl._optimiseData()
-        config.log.info("normaliseToCondition(): '%s'" % condition_name)
+        config.log.info("normaliseToCondition: '%s'" % condition_name)
         return(newl)
 
     def norm_multi_fc(self, conds=None, pad=1e-6, log=2, **kargs):
@@ -615,11 +952,13 @@ class expression(base_expression):
         **Purpose**
             transform the data, but do it relative to multiple base lines.
             
+            [Commonly, but incorrectly referred to as 'normalisation']
+            
             For example suppose you had the following samples:
             
             sampleA, sampleB, sampleC, sampleD, sampleE
             
-            And sy you wanted to transform the expression values into fold-change, but
+            And say you wanted to transform the expression values into fold-change, but
             sampleB should be transformed relative to sampleA whilst sampleD and E are relative to sampleC.
             
             You'd do this:
@@ -633,11 +972,12 @@ class expression(base_expression):
             
         **Arguments**
             conds (Required)
-                A dictionary, in the form:
+                A dictionary, in the form::
                     {"norm_sample": [A, B, list of samples to normalise to norm_sample],
                     "another_norm_sample": [C, D, other samples],
                     ...
                     }
+                    
                 Each sample in the lists [] will be normalised to the sample named as the key in the dict.
                 
             pad (Optional, default=1e-6)
@@ -649,7 +989,7 @@ class expression(base_expression):
         **Returns**
             A new expression object.
         """
-        assert conds.keys(), "conds must be a dictionary object"
+        assert conds.keys(), "norm_multi_fc: 'conds' must be a dictionary-like object"
         #if "err" in self.linearData[0]:
         #    config.log.warning("'err' key in this data, norm_multi_fc() will not correct the errors, I will delete this key")
         
@@ -689,7 +1029,7 @@ class expression(base_expression):
                 newi["err"] = newe
             newl.append(newi)
         
-        newgl = self.shallowcopy()
+        newgl = self.deepcopy()
         newgl.linearData = newl
         newgl._optimiseData()
         return(newgl)        
@@ -712,7 +1052,6 @@ class expression(base_expression):
                 
                 newexpn = expn.mean_replicates(["condA_rp1", "condA_rp2"], ["condB_rp1", "condB_rp2", "condB_rp3"])
                 
-            Keyword args:
             threshold (Optional, default=0.8)
                 by default mean_replicates will measure the Pearson correlation between samples and 
                 if the score is below threshold will emit a warning
@@ -720,50 +1059,77 @@ class expression(base_expression):
             output_pears (Optional, default=False)
                 If a filename, mean_replicates will output a square table for all of the Pearson
                 correlation values for each pair of RNA samples, where replicates are available.
+                
+            pearson_hist (Optional, default=False)
+                Save a histogram of the distribution of Pearson correlations.
         
         **Returns**
             A new expression object containing mean-ed values for each set of replicates.
         """
-        
         newe = []
         all_conds = self._conditions
-        all_reps = set([x for sublist in reps for x in sublist]) # I still don't know how this works.
+        all_reps = set([x for sublist in reps for x in sublist]) # Flatten the 2D list. I still don't know how this works.
         done = []
+        pearson_vals = []
+        # Test that all condition names are available:
+        #print [c in self._conditions for c in all_reps], self._conditions
+        if False in [c in self._conditions for c in all_reps]:
+            missing_conds = [c for c in all_reps if c not in self._conditions]
+            raise AssertionError, "mean_replicates: '%s' condition names not found" % (", ".join(missing_conds),)
         
         threshold = 0.8
         if "threshold" in kargs and kargs["threshold"]:
             threshold = kargs["threshold"]
+            
         output_pears = False
+        pearson_hist_filename = False
+        
         if "output_pears" in kargs and kargs["output_pears"]:
             output_pears = kargs["output_pears"]
-            
-        for index, item in enumerate(self.linearData):
-            newi = copy.deepcopy(item)
-            newi["conditions"] = []
-            newi["err"] = [] # blank any preexisting keys
-            done = []
-            new_cond_names = []
-            for cind, cond in enumerate(self._conditions): # preserve order of conditions
-                if cond in all_reps: # Its one of the reps to merge
-                    # check it's not done already:
-                    if cond not in done:
-                        # get the p it is in:
-                        p = [i for i in reps if cond in i][0] # the names of the set of replicates to merge
-                        pinds = [self._conditions.index(i) for i in p]
-                        expn_vals = [item["conditions"][i] for i in pinds]
-                        mean = sum(expn_vals) / float(len(pinds))
-                        err = numpy.std(expn_vals) / math.sqrt(len(expn_vals))
-                        newi["conditions"].append(mean)
-                        newi["err"].append(err)
-                        
-                        # add all reps to the done list:
-                        [done.append(i) for i in p]
-                        new_cond_names.append(p[0]) # merge into the 0th key
-                else: # not to be merged or modified, so just add it to conditions. 
-                    newi["conditions"].append(item["conditions"][cind]) 
-                    newi["err"].append(0.0)
-                    new_cond_names.append(cond) 
-            newe.append(newi) # put it on the new expn object
+        if "pearson_hist" in kargs and kargs["pearson_hist"]:
+            pearson_hist_filename = kargs["pearson_hist"]
+        
+        new_serialisedArrayDataDict = {}
+        errors = {}
+        new_condition_name_list = []
+        
+        for cind, cond in enumerate(self._conditions): 
+            if cond in all_reps: # Its one of the reps to merge
+                if cond not in done: # check it's not done already:
+                
+                    # get the p it is in:
+                    p = [i for i in reps if cond in i][0] # the indeces of the replicates to merge, the [0] is so that if the rep is in two sets I don't end up with multiple sets
+                    expn_vals = numpy.array([self.serialisedArrayDataDict[i] for i in p])
+                    mean = sum(expn_vals) / float(len(p))
+                    err = numpy.std(expn_vals, axis=0) / math.sqrt(len(expn_vals))
+                    new_serialisedArrayDataDict[p[0]] = mean # merge into the 0th replicate key
+                    errors[p[0]] = err
+                    new_condition_name_list.append(p[0])
+                    
+                    # add all reps to the done list:
+                    [done.append(i) for i in p]
+            else: # not to be merged or modified, so just add it to conditions. 
+                new_serialisedArrayDataDict[cond] = self.serialisedArrayDataDict[cond] # merge into the 0th replicate key
+                errors[cond] = numpy.zeros(len(self.serialisedArrayDataDict[cond]))
+                new_condition_name_list.append(cond)           
+
+        # reload self.serialisedArrayDataDict back into numpy_array_all_data
+        newgl = self.deepcopy()
+        newgl._conditions = new_condition_name_list 
+        
+        # Get an numpy array of all of the data:
+        newgl.serialisedArrayDataDict = new_serialisedArrayDataDict
+        newgl.numpy_array_all_data = numpy.vstack([new_serialisedArrayDataDict[i] for i in new_condition_name_list])
+        newgl.numpy_array_all_data = newgl.numpy_array_all_data.T
+        
+        # Do the same for errors:
+        # Get an array of all errors:
+        error_stack = numpy.vstack([errors[i] for i in new_condition_name_list]).T
+        for i, row in enumerate(error_stack):
+            newgl.linearData[i]["err"] = list(row)
+        
+        # Load back
+        newgl._load_numpy_back_into_linearData() # Already calls _optimiseData()       
 
         pear_out = numpy.zeros([len(self._conditions), len(self._conditions)])         
         # check pairs for pearson correlation 
@@ -782,6 +1148,7 @@ class expression(base_expression):
                             p2ind = self._conditions.index(p2)
                             pear_out[p1ind, p2ind] = corr[0]
                             pear_out[p2ind, p1ind] = corr[0]
+                        pearson_vals.append(corr[0])
                     elif i1 == i2 and output_pears:
                         p1ind = self._conditions.index(p1)
                         pear_out[p1ind, p1ind] = 1.0
@@ -798,13 +1165,17 @@ class expression(base_expression):
                         d_out.append(str(d))
                 oh.write("%s\t%s\n" % (self._conditions[i], "\t".join(d_out)))
             oh.close()
-            config.log.info("mean_replicates(): Saved Pearson correlation table '%s'" % (output_pears,))
-                        
-        newgl = self.shallowcopy()
-        newgl.linearData = newe
-        newgl._conditions = new_cond_names
-        newgl._optimiseData()
-        config.log.info("mean_replicates(): Started with %s conditions, ended with %s" % (len(self[0]["conditions"]), len(newgl[0]["conditions"])))
+            config.log.info("mean_replicates: Saved Pearson correlation table '%s'" % (output_pears,))
+
+        if pearson_hist_filename:
+            fig = self.draw.getfigure(**kargs)
+            axis = fig.add_subplot(111)
+            axis.hist(pearson_vals, bins=50, range=[0, 1], facecolor='grey', ec="none", alpha=1.0)
+            axis.set_xlim([0,1])
+            
+            config.log.info("mean_replicates: Saved Pearson histogram '%s'" % self.draw.savefigure(fig, pearson_hist_filename))
+        
+        config.log.info("mean_replicates: Started with %s conditions, ended with %s" % (len(self._conditions), len(newgl[0]["conditions"])))
         return(newgl)               
 
     def add_fc_key(self, key="fc", cond1=None, cond2=None, log=2, pad=1.0E-06, and_err=False, **kargs):
@@ -847,12 +1218,12 @@ class expression(base_expression):
         **Returns**
             A new expression object containing the <fc> key.
         """
-        assert cond1, "add_fc_key(): you must specify a name for condition1"
-        assert cond1 in self._conditions, "add_fc_key(): appears '%s' not in this expression-object" % cond1
-        assert cond2, "add_fc_key(): you must specify a name for condition1"
-        assert cond2 in self._conditions, "add_fc_key(): appears '%s' not in this expression-object" % cond2
+        assert cond1, "add_fc_key: you must specify a name for condition1"
+        assert cond1 in self._conditions, "add_fc_key: appears '%s' not in this expression-object" % cond1
+        assert cond2, "add_fc_key: you must specify a name for condition1"
+        assert cond2 in self._conditions, "add_fc_key: appears '%s' not in this expression-object" % cond2
         if and_err:
-            assert "err" in self.linearData[0], "add_fc_key(): 'err' key not found in this genelist"
+            assert "err" in self.linearData[0], "add_fc_key: 'err' key not found in this genelist"
         
         newl = self.deepcopy() # full copy
         
@@ -869,7 +1240,7 @@ class expression(base_expression):
                     config.log.error("(%.2f/%.2f) failed" % (c2v, c1v))
                 else:
                     config.log.error("(%.2f/%.2f) failed" % (c1v, c2v))
-                raise Exception("add_fc_key(): encountered an error, possibly the pad value '%s' is too small, or you need to log transform the data as you are getting an Infinity result" % pad)
+                raise Exception("add_fc_key: encountered an error, possibly the pad value '%s' is too small, or you need to log transform the data as you are getting an Infinity result" % pad)
             
             if and_err: # If it got here then the above try probably passed.
                 expn_lo_err = item["conditions"][c2i] - item["err"][c2i] + pad
@@ -884,7 +1255,7 @@ class expression(base_expression):
                 #print expn_lo_err, expn_base, expn_hi_err, up, dn, item[key]
             
         newl._optimiseData()
-        config.log.info("add_fc_key(): Added fold-change key '%s'" % key)
+        config.log.info("add_fc_key: Added fold-change key '%s'" % key)
         return(newl)
 
     def filter_by_fc(self, fckey=None, direction="any", value=2.0, **kargs):
@@ -908,8 +1279,8 @@ class expression(base_expression):
         **Returns**
             A new expression-object containing only the items that pass.    
         """
-        assert fckey, "filter_by_fc(): 'fckey' argument is required"
-        assert fckey in self.linearData[0], "filter_by_fc(): '%s' not found in this expression object" % fckey
+        assert fckey, "filter_by_fc: 'fckey' argument is required"
+        assert fckey in self.linearData[0], "filter_by_fc: '%s' not found in this expression object" % fckey
         assert direction in ("up", "down", "dn", "any"), "filter_by_fc(): direction argument '%s' not recognised" % direction
         
         new_expn = []
@@ -931,77 +1302,17 @@ class expression(base_expression):
         
         rep_d = {"up": "+", "dn": "-", "down": "-", "any": "+\-"}
         
-        config.log.info("filter_by_fc(): Filtered expression by fold-change '%s' %s%s, found: %s" % (fckey, rep_d[direction], value, len(ret)))
+        config.log.info("filter_by_fc: Filtered expression by fold-change '%s' %s%s, found: %s" % (fckey, rep_d[direction], value, len(ret)))
         return(ret)         
-
-    def filter_by_value(self, key=None, evaluator=None, value=None, **kargs):
-        """
-        **Purpose**
-            Filter data based on a key with some numeric data.
-            
-            If you skip the keyword arguments you can write nice things like this:
-            
-            newdata = expn.filter_by_value("q-value", "<", 0.05)
-            
-        **Arguments**
-            key (Required)
-                The name of the key to use to filter the data on.
-                or a name of a condition in the expression object to filter on.
-                
-            evaluator (Required, values=["gt", "lt", "gte", "lte", "equal"])
-                The comparator. 
-                    gt = '>' greater than value
-                    lt = '<' less than value
-                    gte = '>=' greater than or equal to value
-                    lte = '<=' less than or equal to value
-                    equal = "==" equal to value
-                    
-                    You can also send the > < >= <= or == as a string symbol as well.
-                                
-            value (Required)
-                The value of change required to pass the test.
-                
-        **Returns**
-            A new expression-object containing only the items that pass.    
-        """
-        assert key, "filter_by_value(): 'key' argument is required"
-        assert evaluator in ("gt", "lt", "gte", "lte", "equal", ">", "<", ">=", "<=", "=="), "filter_by_value(): evaluator argument '%s' not recognised" % evaluator
-        
-        if key in self._conditions:
-            its_a_condition = True
-        else:
-            assert key in self.keys(), "filter_by_value():'%s' not found in this expression object" % key
-            its_a_condition = False
-            
-        new_expn = []
-        
-        conv_dict = {"gt": ">", "lt": "<", "gte": ">=", "lte": " <=", "equal": "=="}
-        if evaluator in ("gt", "lt", "gte", "lte", "equal"):
-            evaluator = conv_dict[evaluator]
-        
-        if its_a_condition:
-            cond_index = self._conditions.index(key)
-            for item in self.linearData:
-                if eval("%s %s %s" % (item["conditions"][cond_index], evaluator, value)):
-                    new_expn.append(item)
-        else: # filter on a normal key.
-            for item in self.linearData:
-                if eval("%s %s %s" % (item[key], evaluator, value)):
-                    new_expn.append(item)
-        
-        ret = expression(loadable_list=new_expn, cond_names=self._conditions, silent=True)
-        
-        config.log.info("filter_by_value(): Filtered expression for ['%s' %s %s], found: %s" % (key, evaluator, value, len(ret)))
-        return(ret)     
 
     def filter_low_expressed(self, min_expression, number_of_conditions):
         """
         **Purpose**
             filter genes by a minimum_expression value in at least number_of_conditions
             
-            Basically the R command:
+            Basically the command:
             
-            keep <- rowSums(expression_table > min_expression) >= number_of_conditions
+            sum([i > min_expression for i in <expression_data>]) >= number_of_conditions
             
         **Arguments**
             min_expression (Required)
@@ -1021,17 +1332,176 @@ class expression(base_expression):
             if sum([int(i > min_expression) for i in item["conditions"]]) >= number_of_conditions: # passed
                 newl.linearData.append(item.copy())
         
+        assert len(newl) > 0, "filter_low_expressed: The number of genes passing the filter was zero!"
         newl._optimiseData()
-        config.log.info("filter_low_expression(): removed %s items, list now %s items long" % (len(self) - len(newl), len(newl)))
+        config.log.info("filter_low_expression: removed %s items, list now %s items long" % (len(self) - len(newl), len(newl)))
         return(newl)
 
-    def drawDotplot(self, x_condition_name, y_condition_name, filename=None, genelist=None, key=None, 
-        label=False, **kargs):
+    def filter_high_expressed(self, max_expression, number_of_conditions):
         """
-        Deprecated alias for scatter()
+        **Purpose**
+            remove genes with a maximum expression value in at least number_of_conditions
+            
+            Basically the command:
+            
+            sum([int(i > max_expression) for i in item["conditions"]]) <= number_of_conditions
+            
+        **Arguments**
+            max_expression (Required)
+                The maximum expression value required to pass the test
+                
+            number_of_conditions (Required)
+                The number of conditions that must be greater than min_expression
+        
+        **Results**
+            Returns a new genelist 
         """
-        return(self.scatter(x_condition_name, y_condition_name, filename=None, genelist=None, key=None, 
-            label=False, **kargs))
+        
+        newl = self.shallowcopy()
+        newl.linearData = []
+        
+        for item in self.linearData:
+            if sum([int(i > max_expression) for i in item["conditions"]]) <= number_of_conditions: # passed
+                newl.linearData.append(item.copy())
+        
+        assert len(newl) > 0, "filter_high_expressed: The number of genes passing the filter was zero!"
+        newl._optimiseData()
+        config.log.info("filter_high_expressed: removed %s items, list now %s items long" % (len(self) - len(newl), len(newl)))
+        return(newl)
+
+    def filter_by_expression(self, condition_name, minimum_expression, **kargs):
+        """
+        **Purpose**
+            Keep only items in <condition_name> with >= minimum_expression
+
+        **Arguments**
+            condition_name (Required)
+                The name of the condition to test
+            
+            minimum_expression (Required)
+                the minimum expression value equal to or greater required
+
+        **Returns**
+            A new expression object with probes that fail to pass removed.
+        """
+        # kargs tidier to go here.
+
+        newl = self.deepcopy()
+        newl.linearData = []
+
+        cindex = self._conditions.index(condition_name)
+
+        for row in self.linearData:
+            if row["conditions"][cindex] >= minimum_expression:
+                newl.linearData.append(row)
+        newl._optimiseData()
+        config.log.info("filter_by_expression: %s items >= %s in '%s'" % (len(newl), minimum_expression, condition_name))
+        return(newl)
+
+    def filter_conditions_by_threshold(self, genes, key, threshold, **kargs):
+        """
+        **Purpose**
+            filter out conditions based on a threshold test for 
+            a list of genes.
+            
+            One useage might be to remove all conditions not expressing some set of
+            housekeeping genes:
+            
+            newe = expn.filter_conditions_by_threshold(["GAPDH", "ACTB", "EEF1A1"], "name", 1)
+        
+        **Arguments**
+            genes (Required)
+                a List of genes (or rows) to test, 
+                
+            key (Required)
+                key in the genelist to use to find the genes
+                
+            threshold (Required)
+                all genes specified in genes must be > than this threshold.
+                
+        **Returns** 
+            A new expression object, with the conditions that failed removed.
+        
+        """
+        cond_names = self.getConditionNames()
+        
+        cell_expressing = []
+        genes_to_test = genes
+
+        # I should get all the genes here, then just iterate through the genes, in case there are duplicate.s
+
+        for g in genes_to_test:
+            this_gene = e.getRowsByKey(key=key, values=g)[0] # what if more?
+            for i, n in enumerate(cond_names):
+                if this_gene["conditions"][i] >= threshold[g]:
+                    cell_expressing.append(n)
+            
+        cell_expressing = list(set(cell_expressing))
+        print cell_expressing
+
+        e = e.sliceConditions(cell_expressing)
+        print e
+        print e.getConditionNames()
+        
+        return(newe)
+
+    def filter_by_value(self, value, absolute=False, **kargs):
+        """
+        **Purpose**
+            Keep only items in <condition_name> with >= minimum_expression
+
+        **Arguments**
+            value (Required)
+                Keep only rows with > value
+                
+            absolute (Optional, default=False)
+                ignore the sign? (e.g. abs(value))
+
+        **Returns**
+            A new expression object with rows that fail to pass removed.
+        """
+        newl = self.deepcopy()
+        newl.linearData = []
+
+        for row in self.linearData:
+            if absolute:
+                vals = [abs(v) > value for v in row["conditions"]]
+            else:
+                vals = [v > value for v in row["conditions"]]
+            if True in vals:
+                newl.linearData.append(row)
+        newl._optimiseData()
+        config.log.info("filter_by_value: %s items passed" % (len(newl),))
+        return(newl)
+
+    def filter_by_CV(self, minCV, maxCV, pad=0.1):
+        """
+        **Purpose**
+            Filter each gene to be within the range minCV, maxCV
+            coefficient of variations. For good measure it will add in a 
+            'CV' key to the genelist
+
+        **Arguments**
+            minCV, maxCV (Required)
+                The minimum and maximum CVs thresolds required
+            
+            pad (Optional, default=0.1)
+                pad for the mean divisor to stop division by zero
+
+        **Returns**
+            A new expression object with rows that fail to pass removed.
+        """
+        newl = self.deepcopy()
+        newl.linearData = []
+
+        for row in self.linearData:
+            CV = numpy.std(row['conditions']) / (numpy.mean(row['conditions'])+pad)
+            if CV > minCV and CV < maxCV:
+                row['CV'] = CV
+                newl.linearData.append(row)
+        newl._optimiseData()
+        config.log.info("filter_by_CV: %s items passed" % (len(newl),))
+        return(newl)
 
     def scatter(self, x_condition_name, y_condition_name, filename=None, genelist=None, key=None, 
         label=False, **kargs):
@@ -1061,13 +1531,22 @@ class expression(base_expression):
             print_correlation (Optional, default=None)
                 You have to spectify the type of correlation to print on the graph.
                 valid are:
-                    r = R (Correlation coefficient)
-                    r2 = R^2.
+            
+                r = R (Correlation coefficient)
+                r2 = R^2.
+                pearson = Pearson
+                    
                 You need to also set do_best_fit_line=True for this to work
+
+            spot_size (Optional, default=5)
+                The size of each dot.
+
+            plot_diag_slope (Optional, default=False)
+                Plot a diagonal line across the scatter plot.
                 
             available key-word arguments:
             xlabel, ylabel, title, log (set this to the base to log the data by),
-            xlims, ylims
+            xlims, ylims, spot_size, 
 
         **Returns**
             the actual filename saved as and a new image in filename.
@@ -1097,10 +1576,10 @@ class expression(base_expression):
             real_filename = self.draw.nice_scatter(x_data, y_data, filename, **kargs)
         
 
-        config.log.info("scatter(): Saved '%s'" % real_filename)
+        config.log.info("scatter: Saved '%s'" % real_filename)
         return(True)
 
-    def boxplot(self, filename=None, **kargs):
+    def boxplot(self, filename=None, draw_outliers=True, whis=1.5, **kargs):
         """
         **Purpose**
 
@@ -1127,6 +1606,13 @@ class expression(base_expression):
                 log=True
                 log="e"
 
+            draw_outliers (Optional, default=True)
+                draw the 9/95 % outlier ticks on the plot
+                
+            whis (Optional, default=1.5)
+                The location of the whiskers for the boxplot, see
+                matplotlib for details of the settings
+
         **Results**
 
         saves an image with the correct filetype extension for the current
@@ -1141,9 +1627,42 @@ class expression(base_expression):
             data = self.__log_transform_data(data, log=kargs["log"])
 
         # do plot
-        actual_filename = self.draw.boxplot(data=data, filename=filename, labels=self.getConditionNames(), **kargs)
+        actual_filename = self.draw.boxplot(data=data, filename=filename, 
+            labels=self.getConditionNames(), showfliers=draw_outliers, **kargs)
 
-        config.log.info("boxplot(): Saved %s" % actual_filename)
+        config.log.info("boxplot: Saved %s" % actual_filename)
+        return(actual_filename)
+
+    def violinplot(self, filename=None, beans=False, **kargs):
+        """
+        **Purpose**
+
+        Draw a beanplot/violinplot of all conditions.
+
+        **Arguments**
+            filename (Required)
+                filename to save as. The file extension may be modified
+                depending the setting of the current config.DEFAULT_DRAWER
+
+            beans (Optional, default=False)
+                Draw the beans on the beanplot, each dot corresponds to a sample. 
+                The algorithm for arranging the dits is a bit whacky, so may not look that nice.
+                So by default it is off.
+        **Results**
+
+        saves an image with the correct filetype extension for the current
+        config.DEFAULT_DRAWER.
+        returns the actual filename used to save the file.
+        """
+        assert filename, "must provide a filename"
+
+        data = self.serialisedArrayDataDict
+
+        # do plot
+        actual_filename = self.draw.beanplot(data=data, filename=filename, 
+            order=self.getConditionNames(), beans=beans, **kargs)
+
+        config.log.info("beanplot: Saved %s" % actual_filename)
         return(actual_filename)
 
     def multi_line(self, filename=None, alpha=None, **kargs):
@@ -1177,14 +1696,8 @@ class expression(base_expression):
             
         self.draw.do_common_args(ax, **kargs)
         realfilename = self.draw.savefigure(fig, filename)
-        config.log.info("multi_line(): Saved '%s' with alpha=%.5f" % (realfilename, alpha))
+        config.log.info("multi_line: Saved '%s' with alpha=%.5f" % (realfilename, alpha))
         return(None)
-
-    def drawBoxplot(self, filename=None, **kargs):
-        """
-        Deprecated alias for boxplot()
-        """
-        return(self.boxplot(filename=filename, **kargs))
 
     def log(self, base=math.e, pad=0.00001):
         """
@@ -1222,9 +1735,12 @@ class expression(base_expression):
     def unlog(self, base=None, adjuster=0.00001):
         """
         **Purpose**
-            retrun the raw data to the unlogged form.  YOU MUST PROVIDE THE CORRECT BASE
+            return the raw data to the unlogged form.  YOU MUST PROVIDE THE CORRECT BASE
 
             NOTE: THis is one of the few IN-PLACE glbase commands.
+            
+            Also note that continual repeated log() unlog() will cause the data to 'drift' away from its
+            actual values. 
 
         **Arguments**
             base (Required)
@@ -1288,20 +1804,20 @@ class expression(base_expression):
         **Purpose**
             subtract number from all of the expression data, moving the value towards 0 with a limit of 0.
             
-            This will perform the following logic:
+            This will perform the following logic::
             
-            if expression_value > 0:
-                expression_value -= 1
-                if expression_value < 0:
-                    expression_value = 0
-                    
-            elif expression_value < 0:
-                expression_value += 1
                 if expression_value > 0:
-                    expression_value = 0
+                    expression_value -= number
+                    if expression_value < 0:
+                        expression_value = 0
+                    
+                elif expression_value < 0:
+                    expression_value += number
+                    if expression_value > 0:
+                        expression_value = 0
                 
             
-            NOTE: This is one of the few IN-PLACE glbase commands.
+            NOTE: This is an IN-PLACE glbase commands.
 
         **Arguments**
             number (Required)
@@ -1316,15 +1832,37 @@ class expression(base_expression):
             newcond = []
             for expression_value in item["conditions"]:
                 if expression_value >= 0:
-                    expression_value -= 1
+                    expression_value -= number
                     if expression_value < 0:
                         expression_value = 0
                     
                 elif expression_value <= 0:
-                    expression_value += 1
+                    expression_value += number
                     if expression_value > 0:
                         expression_value = 0
                 newcond.append(expression_value)
+            item["conditions"] = newcond
+        self._optimiseData()
+        return(None)   
+
+    def sub(self, number=None):
+        """
+        **Purpose**
+            subtract number from all of the expression data.
+            
+            This is an IN-PLACE operation
+
+        **Arguments**
+            number (Required)
+                the number to add to the expression data
+        
+        **Returns**
+            None
+        """
+        assert number, "must provide a number"
+           
+        for item in self.linearData:
+            newcond = [i-number for i in item["conditions"]]
             item["conditions"] = newcond
         self._optimiseData()
         return(None)   
@@ -1465,7 +2003,7 @@ class expression(base_expression):
         ax.legend()
         
         real_filename = self.draw.savefigure(fig, filename)
-        config.log.info("curves(): Saved '%s'" % filename)
+        config.log.info("curves: Saved '%s'" % filename)
         return(True)
 
     def getDataByCriteria(self, **kargs):
@@ -1510,6 +2048,8 @@ class expression(base_expression):
         """
         (Internal)
         candidate for reveal?
+        
+        This should be done using the numpy array        
         """
         self._conditions.append(condition_name)
         max_data = max(condition_data)
@@ -1526,30 +2066,6 @@ class expression(base_expression):
             item["conditions"].append(toAdd)
         self._optimiseData()
         return(True)
-
-    def remove_by_expression(self, minimum_value, number_to_pass=1, **kargs):
-        """
-        **Purpose**
-            If the expression is below 'minimum_value' in at least
-            'number_to_pass' conditions
-
-        **Arguments**
-
-        **Returns**
-            A new expression object with probes that fail to pass removed.
-        """
-        # kargs tidier to go here.
-
-        newl = self.shallowcopy()
-        newl.linearData = []
-
-        for probe in self.linearData:
-            s = sum([i > minimum_value for i in probe["conditions"]])
-            if s > number_to_pass:
-                newl.append(probe)
-        newl._optimiseData()
-        config.log.info("remove_by_expression(): %s items < %s in %s conditions" % (len(self) - len(newl), minimum_value, number_to_pass))
-        return(newl)
 
     def cumulative_distributions(self, genelists=None, filename=None, key=None, **kargs):
         """
@@ -1627,7 +2143,7 @@ class expression(base_expression):
             I will use these symbols and collect every matching entry in the expression-data 
             and will draw a horizontal bar-chart
             
-            You probably want barh_single_item() in preference over this method
+            You probably want barh_single_item() in preference over this (old) method
             
         **Arguments**
         
@@ -1831,295 +2347,12 @@ class expression(base_expression):
         self.draw.do_common_args(ax, **kargs)
         real_filename = self.draw.savefigure(fig, filename)
         
-        config.log.info("hist(): Saved '%s'" % real_filename)
+        config.log.info("hist: Saved '%s'" % real_filename)
         return({"data": all_data, "labels": self._conditions})
-        
-    def print_stats(self, log=None):
-        """
-        **Purpose**
-            Print out the min, max, mean, median and stddev for each condition in the microarray data
-        
-            TODO: Add test for normality
-        
-        **Arguments**
-            log (Optional)
-                if true log2 transform the data.
                 
-                (Data with an expression of zero will be excluded from the log calculation and
-                mean scores)
-            
-        **Returns**
-            a dictionary containing min, max, mean, median, stdev for each condition. In the order
-            of "conditions".
-        """
-        means = []
-        medians = []
-        stds = []
-        mins = []
-        maxs = []
-
-        print "All Array:"
-        print "\tmin", self.min()
-        print "\tmax", self.max()
-        print "\tmean", self.mean()
-        print "\tstddev", self.stdev()
-            
-        for k in self._conditions:
-            expn_values = self.getDataForCondition(k)
-            if log:
-                expn_values = [v for v in expn_values if int(v*10000) > 0]
-                expn_values = numpy.log2(expn_values)
-            
-            aaverage = numpy.average(expn_values)
-            amedian = numpy.median(expn_values)
-            astd = numpy.std(expn_values)
-            amin = numpy.min(expn_values)
-            amax = numpy.max(expn_values)
-            
-            print "Condition: %s" % k
-            print "\tmin", amin
-            print "\tmax", amax
-            print "\tmean", aaverage
-            print "\tmedian", amedian
-            print "\tstddev", astd
-            
-            means.append(aaverage)
-            medians.append(amedian)
-            stds.append(astd)
-            mins.append(amin)
-            maxs.append(amax)
-            
-        return({"mean": means, "median": medians, "stdev": stds, "min": mins, "max": maxs, 
-            "conditions": self._conditions})
-
-    def stats(self, log=None):
-        """
-        **Purpose**
-            Get the min, max, mean, median and stddev for each condition in the expression data
-        
-            TODO: Add test for normality
-        
-        **Arguments**
-            log (Optional)
-                if true log2 transform the data.
-                
-                (Data with an expression of zero will be excluded from the log calculation and
-                mean scores)
-            
-        **Returns**
-            a dictionary containing min, max, mean, median, stdev for each condition. In the order
-            of "conditions".
-        """
-        means = []
-        medians = []
-        stds = []
-        mins = []
-        maxs = []
-        
-        for k in self._conditions:
-            expn_values = self.getDataForCondition(k)
-            if log:
-                expn_values = [v for v in expn_values if int(v*10000) > 0]
-                expn_values = numpy.log2(expn_values)
-            
-            aaverage = numpy.average(expn_values)
-            amedian = numpy.median(expn_values)
-            astd = numpy.std(expn_values)
-            amin = self.min()
-            amax = self.max()
-            
-            means.append(aaverage)
-            medians.append(amedian)
-            stds.append(astd)
-            mins.append(amin)
-            maxs.append(amax)
-            
-        return({"mean": means, "median": medians, "stdev": stds, "min": mins, "max": maxs, 
-            "conditions": self._conditions})
-        
-    def min(self):
-        """
-        **Purpose**
-            get the minimum value in the expression data
-            
-        """
-        data = [item["conditions"] for item in self.linearData]       
-        data = numpy.array(data)
-        return(data.min())
-      
-    def max(self):
-        """
-        **Purpose**
-            get the maximum value in the expression data
-            
-        """
-        data = [item["conditions"] for item in self.linearData]       
-        data = numpy.array(data)
-        return(data.max())
-
-    def mean(self):
-        """
-        **Purpose**
-            get the mean value in the expression data
-            
-        """
-        data = [item["conditions"] for item in self.linearData]       
-        data = numpy.array(data)
-        return(numpy.average(data))
-   
-    def stdev(self):
-        """
-        **Purpose**
-            get the standard deviation of the expression data
-            (Does not calculate if your data is actually normal)
-            
-        """
-        data = [item["conditions"] for item in self.linearData]       
-        data = numpy.array(data)
-        return(numpy.std(data))   
-
-    def ttest(self, condition1, condition2, equal_var=False):
-        """
-        **Purpose**
-            perform a t-test between condition1 and condition2.
-            
-            Assumes the data is normally distributed. The t-test is only valid if the 
-            data is normally distributed. 
-            
-            This performs and independent t-test of the samples. And assumes the
-            two samples are independent. An appropriate use of this test would be 
-            to compare between a set of genes across two different biological samples.
-            
-            See Scipy.stats.ttest_ind() for more details
-        
-        **Arguments**
-            condition1
-                the name of condition 1 to use
-                
-            condition2
-                the name of condition 2 to use
-                
-            equal_var (Optional, default=False)
-                Generally the variation in samples is not expected to be the same for a typical
-                set of expression data. 
-                
-                So, set this to False and perform a 'Welch's t-test instead'. You can set it to True
-                and perform a Student's independent t-test which assumes sample variances are the same.
-                
-                See:
-                http://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.ttest_ind.html
-                
-                For more details.
-                
-        **Returns**
-            The t-statistic and the p-value
-        """
-        assert condition1 in self._conditions, "condition1 '%s' not on this array" % condition1
-        assert condition2 in self._conditions, "condition2 '%s' not on this array" % condition2
-        
-        data1 = self.getDataForCondition(condition1)
-        data2 = self.getDataForCondition(condition2)
-        
-        return(ttest_ind(data1, data2, equal_var=equal_var))
-
-    def pearsonr(self, condition1, condition2):
-        """
-        **Purpose**
-            perform a pearson correlation test between condition1 and condition2.
-            
-            See Scipy.stats.pearsonr() for more details
-        
-        **Arguments**
-            condition1
-                the name of condition 1 to use
-                
-            condition2
-                the name of condition 2 to use
-                
-        **Returns**
-            The pearson correlation co-efficient and the p-value
-        """
-        assert condition1 in self._conditions, "condition1 '%s' not on this array" % condition1
-        assert condition2 in self._conditions, "condition2 '%s' not on this array" % condition2
-        
-        data1 = self.getDataForCondition(condition1)
-        data2 = self.getDataForCondition(condition2)
-        
-        t, p = pearsonr(data1, data2)
-        return(t, p)
-        
-    def kruskal(self, list_of_conditions):
-        """
-        **Purpose**
-            perform a Kruskal-Wallis H-test for independent samples for several conditions.
-                                 
-            See Scipy.stats.kruskal() for more details
-        
-        **Arguments**
-            list_of_conditions (Required)
-                a list of condition names in this expression object to test.
-                
-        **Returns**
-            The kruskal correlation co-efficient and the p-value
-        """       
-        datas = [self.getDataForCondition(c) for c in list_of_conditions]
-        
-        t, p = kruskal(*datas)
-        return(t, p)
-
-    def mannwhitneyu(self, condition1, condition2):
-        """
-        **Purpose**
-            perform a Mann Whitney U-test for independent samples for two conditions.
-                                 
-            See Scipy.stats.mannwhitneyu() for more details
-        
-        **Arguments**
-            condition1
-                the name of condition 1 to use
-                
-            condition2
-                the name of condition 2 to use
-                
-        **Returns**
-            The u-statistic and one-sided p-value
-        """       
-        return(self.__unified_stats("mannwhitneyu", condition1, condition2))
-
-    def wilcoxon(self, condition1, condition2):
-        """
-        **Purpose**
-            perform a 'Wilcoxon signed-rank' test between condition1 and condition2.
-                                 
-            See Scipy.stats.wilcoxon() for more details
-        
-        **Arguments**
-            condition1
-                the name of condition 1 to use
-                
-            condition2
-                the name of condition 2 to use
-                
-        **Returns**
-            The wilcoxon z-statistic and p-value
-        """
-        return(self.__unified_stats("wilcoxon", condition1, condition2))
-
-    def __unified_stats(self, test, condition1, condition2):
-        assert condition1 in self._conditions, "condition1 '%s' not on this array" % condition1
-        assert condition2 in self._conditions, "condition2 '%s' not on this array" % condition2
-        
-        data1 = self.getDataForCondition(condition1)
-        data2 = self.getDataForCondition(condition2)
-        
-        test_funcs = {"wilcoxon": stats.wilcoxon,
-            "mannwhitneyu": stats.mannwhitneyu,
-            }
-        
-        return(test_funcs[test](data1, data2))            
-        
-    def tree(self, mode="conditions", filename=None, row_names=None, 
-        cluster_mode="euclidean", color_threshold=None, label_size=7, **kargs):
+    def tree(self, mode="conditions", filename=None, row_name_key=None, 
+        cluster_mode="euclidean", color_threshold=None, label_size=7, cut=False, 
+        **kargs):
         """
         **Purpose**
             Draw a hierarchical clustered tree of either the 'conditions' or 'rows'
@@ -2129,9 +2362,9 @@ class expression(base_expression):
                 filename to save an image to.
             
             mode (Optional, default="conditions")
-                cluster either the "conditions" or the "rows". (rows are usually genes)
+                cluster either the "conditions" or the "rows" or "genes". (rows are usually genes)
                 
-            row_names (Optional, default=None)
+            row_name_key (Optional, default=None)
                 A key to use for the row_names, if mode == "row"
                 
             cluster_mode (Optional, default="euclidean")
@@ -2141,15 +2374,35 @@ class expression(base_expression):
                 By default tree() uses the Scipy/MATLAB default colours to signify
                 links with similar distances. Set to -1 to change the tree to all blue.
                 
+                see scipy.cluster.hierarch.dendrogram
+                
             label_size (Optional, default=7)
                 The size of the text attached to the leaf labels.
+            
+            cut (Optional, default=False)
+                the cut threshold on the tree, to select groups and return the cut. 
+                Will draw a line on the dendrgram tree indicating its position. 
+                The value should range from 0..1.0
                 
+                Note that if cut is used then row_name_key must also be valid
+            
+            bracket (Optional, default=False)
+                The min and max to bracket the data. This is mainly here for compatibility with heatmap()
+                So that the row/col trees in heatmap and here exactly match
+                            
         **Returns**
-            The Tree in a dictionary {"tree": tree_data, "a": <dendrogram_data>}
+            if cut is False:
+                The Tree in a dictionary {"dendrogram": ..., "linkage": ..., "distance": ...}
+            if cut is True:
+                A dict of genelists, containing all of the items from the cut.
+                
         """
-        valid_modes = ("conditions", "rows")
+        valid_modes = ("conditions", "rows", "genes")
         
         assert mode in valid_modes, "'%s' not a valid mode" % mode
+        if cut:
+            assert cut >= 0.0 and cut <= 1.0, "cut '%.2f' must be between 0 and 1" % cut
+            assert row_name_key, "'row_name_key' must also be valid"
         
         if not "size" in kargs: # resize if not specified
             kargs["size"] = (3,6)
@@ -2157,27 +2410,54 @@ class expression(base_expression):
         fig = self.draw.getfigure(**kargs)
         
         data = numpy.array(self.serialisedArrayDataList) 
+
+        if "log" in kargs:
+            data = self.__log_transform_data(self.serialisedArrayDataList, log=kargs["log"])
+
+        if "bracket" in kargs: # done here so clustering is performed on bracketed data
+            data = self.draw.bracket_data(data, kargs["bracket"][0], kargs["bracket"][1])
+            vmin = kargs["bracket"][0]
+            vmax = kargs["bracket"][1]
             
         if mode == "conditions": # Use the condition names for rows:
             row_names = self._conditions
-        elif mode == "rows":
+        elif mode == "rows" or mode == "genes":
             data = data.T
-            if row_names:
-                row_names = self[row_names]
+            if row_name_key:
+                row_names = self[row_name_key]
+            else:
+                row_names = None
 
         ax = fig.add_subplot(111)
         ax.set_position([0.01, 0.01, 0.4, 0.98])
 
         # from scipy;
         # generate the dendrogram
-        Y = pdist(data, metric=cluster_mode)
-        Z = linkage(Y, 'complete')
-        a = dendrogram(Z, orientation='right', color_threshold=0.0, labels=row_names)
-        
+        dist = pdist(data, metric=cluster_mode)
+        if color_threshold:
+            color_threshold = color_threshold*((dist.max()-dist.min())+dist.min()) # convert to local measure
+        link = linkage(dist, 'complete', metric=cluster_mode)
+        a = dendrogram(link, orientation='right', labels=row_names, color_threshold=color_threshold)               
+                
         ax.set_frame_on(False)
         ax.set_xticklabels("")
-        [item.set_markeredgewidth(0.0) for item in ax.xaxis.get_ticklines()]
-        #[item.set_markeredgewidth(0.0) for item in ax.yaxis.get_ticklines()]
+        ax.tick_params(top="off", bottom="off", left="off", right="off")
+
+        if cut:
+            ret = []
+            d = cut*((dist.max()-dist.min())+dist.min())
+            config.log.info("tree: Using local threshold '%.2f'" % d)
+            clus = scipy.cluster.hierarchy.fcluster(link, d, 'distance')
+            for i, net in enumerate(set(clus)):
+                # get all of the gene names back out.
+                idxs = [idx for idx, x in enumerate(clus) if x == net]
+                newl = [{row_name_key: row_names[idx]} for idx in idxs]
+                newgl = genelist()
+                newgl.load_list(newl)
+                ret.append(newgl)
+
+            ax.axvline(d, color="grey", ls=":")
+            config.log.info("tree: Found %s clusters" % len(ret))
 
         # Use the tree to reorder the data.
         row_names = a["ivl"]
@@ -2186,8 +2466,11 @@ class expression(base_expression):
         #self.draw.do_common_args(ax, **kargs) # broken!?
         if filename: 
             real_filename = self.draw.savefigure(fig, filename)
-            config.log.info("tree(): Saved '%s'" % real_filename)
-        return({"tree": Z, "a": a, "Z": Z})
+            config.log.info("tree: Saved '%s'" % real_filename)
+        
+        if not cut:
+            ret = {"dendrogram": a, "linkage": link, "distance": dist}
+        return(ret)
         
     def gene_curve(self, key=None, values=None, filename=None, moving_average=None,
         **kargs):
@@ -2242,18 +2525,30 @@ class expression(base_expression):
         ax.legend()
         self.draw.do_common_args(ax, **kargs)
         actual_filename = self.draw.savefigure(fig, filename)
-        config.log.info("gene_curve(): Saved '%s'" % actual_filename)
+        config.log.info("gene_curve: Saved '%s'" % actual_filename)
         
-    def correlation_heatmap(self, filename=None, mode="r2", aspect="square", bracket=(0,1), **kargs):
+    def correlation_heatmap(self, axis="conditions", filename=None, label_key=None, mode="r2", aspect="square", bracket=(0,1), **kargs):
         """
         **Purpose**
             Plot a heatmap of the (R, R^2, Pearson or Spearman) correlation for all pairs of
-            samples in the expression object
+            samples in the expression object.
+            
+            Note that R and R^2 the calculation is very fast but pearson and spearman are quite a bit slower.
             
         **Arguments**
             filename (Required)
                 the filename to save the image to.
                 
+            axis (Optional, default="conditions")
+                perform the clustering based on conditions or rows, genes (actually just rows=genes)
+                
+                Valid axes are:
+                    'conditions' # the default
+                    'rows' or 'genes' # cluster by rows (or genes for typical expression data)
+            
+            label_key (Optional, but required if axis=genes or rows)
+                You must specify a label key if the axis is rows or genes
+            
             mode (Optional, default="r2")
                 by default the R (Coefficient of determination) is squared. Set to 'r' for 
                 Coefficient of determination value.
@@ -2269,55 +2564,60 @@ class expression(base_expression):
                 ...
                 
         **Returns**
-            A dict containing:
+            A dict containing::
                 "data": 2D numpy array containing the correlation scores (depending upon the mode)
                 "p": 2D numpy array of p-values.
                 "labels": the labels along the top and bottom of the array, sorted according to the 
-                    clustering (if any)
+                clustering (if any)
                 
-            Note that the arrays are not clustered.
+            Note that the arrays in 'data' are not clustered and will not be in the same order as the figure.
         """
         assert filename, "You must specify a filename"
+        assert axis in ("conditions", "genes", "rows"), "'%s' axis not found" % axis
+        assert mode in ("r", "r2", "pearson", "spearman"), "'%s' mode not found" % mode
         
-        arr = numpy.zeros((len(self._conditions), len(self._conditions)))
-        ps = numpy.zeros((len(self._conditions), len(self._conditions)))
+        if axis == "conditions":
+            data_table = self.getExpressionTable().T
+            labels = self._conditions
+        elif axis == "rows" or axis == "genes":
+            assert label_key, "You must specify a label_key if axis = rows/genes"
+            data_table = self.getExpressionTable()
+            labels = self[label_key]
         
-        p = progressbar(len(self._conditions))
-        for ic1, c1 in enumerate(self._conditions):
-            for ic2, c2 in enumerate(self._conditions):
-                if c1 == c2:
-                    arr[ic1, ic2] = 1.0
-                else:
-                    x = self.getDataForCondition(c1)
-                    y = self.getDataForCondition(c2)
-                    if mode in ("r", "r2"):
-                        arbr = scipy.polyfit(x, y, 1)
-                        xr = scipy.polyval(arbr, x)
-                        slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(x,y)
-                        ps[ic1, ic2] = p_value
-                        if mode == "r":
-                            arr[ic1, ic2] = r_value
-                        elif mode == "r2":
-                            arr[ic1, ic2] = r_value**2
+        if mode in ("r", "r2"):
+            arr = numpy.corrcoef(data_table)
+            if mode == "r2":
+                arr *= arr
+        else:
+            arr = numpy.zeros((len(labels), len(labels)))
+            ps = numpy.zeros((len(labels), len(labels)))
+            p = progressbar(len(labels))
+            for ic1, c1 in enumerate(labels):
+                for ic2, c2 in enumerate(labels):
+                    if ic1 == ic2: # stop identical labels mucking it up.
+                        arr[ic1, ic2] = 1.0
+                    else:
+                        x = data_table[ic1,:]
+                        y = data_table[ic2,:]
                             
-                    elif mode == "pearson":
-                        arr[ic1,ic2], ps[ic1, ic2] = scipy.stats.pearsonr(x, y)
-                    elif mode == "spearman":
-                        arr[ic1,ic2], ps[ic1, ic2] = scipy.stats.spearmanr(x, y)
-            p.update(ic1)
+                        if mode == "pearson":
+                            arr[ic1,ic2], ps[ic1, ic2] = scipy.stats.pearsonr(x, y)
+                        elif mode == "spearman":
+                            arr[ic1,ic2], ps[ic1, ic2] = scipy.stats.spearmanr(x, y)
+                p.update(ic1)
         
         square = True
-        aspect = "square"
         if "heat_hei" in kargs or "heat_wid" in kargs:
             square=False
                 
         results = self.draw.heatmap(filename=filename, data=arr, square=square,
-            bracket=bracket, aspect="square", row_names=self._conditions, col_names=self._conditions, 
-            colbar_label="correlation (%s)" % mode, **kargs)
-        config.log.info("correlation_heatmap(): Saved '%s'" % results["real_filename"])
+            bracket=bracket, aspect=aspect, row_names=labels, col_names=labels, 
+            colbar_label="Correlation (%s)" % mode, **kargs)
+        config.log.info("correlation_heatmap: Saved '%s'" % results["real_filename"])
         return({"data": results["reordered_data"], "labels": results["reordered_cols"]})
-
-    def closest_correlate(self, target_condition, number=5, cut_off=0.7, method="r2", **kargs):
+        
+    def closest_correlate(self, target_condition, number=5, cut_off=0.7, method="r2", 
+        pretty_print=False, **kargs):
         """
         
         **Purpose**
@@ -2337,13 +2637,18 @@ class expression(base_expression):
                 The method to use for the correlation, must be one of:
                 "r", "r2", "spearman", "pearson"
                 
+            pretty_print (Optional, default=False)
+                By default closest_correlate dumps it all in a fiddly dict.
+                With this enabled instead closest_correlate() will print it to the screen
+                nicely formatted.
+                
         **Returns**
             A list of dictionaries containing the closest correlations, their rank
             and their correlation score
         
         """
-        assert target_condition in self._conditions, "'%s' condition was not found" % target_condition
-        assert method in ("r", "r2", "pearson", "spearman"), "method '%s' not recognised" % method
+        assert target_condition in self._conditions, "closest_correlate: '%s' condition was not found" % target_condition
+        assert method in ("r", "r2", "pearson", "spearman"), "closest_correlate: method '%s' not recognised" % method
         
         # get all the correlations:
         
@@ -2373,6 +2678,11 @@ class expression(base_expression):
         # sort the dict by correlation:
         res = sorted(res, key=itemgetter("correlation"))
         res.reverse()
+        
+        if pretty_print:
+            for rank, item in enumerate(res):
+                print "%s:\t%s (%.3f)" % (rank+1, item["name"], item["correlation"])
+        
         return(res)
 
     def cut(self, function):
@@ -2398,18 +2708,18 @@ class expression(base_expression):
             A new expression object.
         """
         
-        assert function, "you must supply a falid function"
-        assert function({"name": None}), "function appears to be invalid"
+        assert function, "cut: you must supply a falid function"
+        assert function({"name": None}), "cut: function appears to be invalid"
         
         newl = []
         for item in self.linearData:
-            print item
-            print function(item)
+            #print item
+            #print function(item)
             if function(item):
                 newl.append(item)
         
         if not newl:
-            config.log.info("cut(): result of cut() is empty!")
+            config.log.info("cut: result of cut() is empty!")
             return(None)
         
         cc = self.shallowcopy() # going to replace linearData.
@@ -2419,7 +2729,7 @@ class expression(base_expression):
         return(cc)
         
     def barh_single_item(self, key=None, value=None, filename=None, tree=None, 
-        plot_mean=True, plot_stdev=True, fold_change=False, **kargs):
+        plot_mean=True, plot_stdev=True, fold_change=False, tight_layout=False, **kargs):
         """
         **Purpose**
             Plot a horizontal bar for a single item (gene?), for all conditions.
@@ -2464,18 +2774,20 @@ class expression(base_expression):
                 xticklabel_fontsize - x tick labels fontsizes
                 yticklabel_fontsize - y tick labels fontsizes
                 
-        
+            tight_layout (Optional, default=False)
+                wether to use matplotlib tight_layout() on the plot
+            
         **Returns** 
             The item used to draw the barchart    
         """
-        assert key, "you must specify a key"
-        assert value, "you must specify a value"
-        assert filename, "you must specify a filename"
+        assert key, "barh_single_item: you must specify a key"
+        assert value, "barh_single_item: you must specify a value"
+        assert filename, "barh_single_item: you must specify a filename"
         
         item = self._findDataByKeyLazy(key, value)
         
         if not item:
-            config.log.warning("'%s:%s' not found in this list, not saving" % (key, value))
+            config.log.warning("barh_single_item: '%s:%s' not found in this list, not saving" % (key, value))
             return(None)
         
         err = None  
@@ -2485,7 +2797,11 @@ class expression(base_expression):
             conds = []
             if "err" in item:
                 err = []
-            order = tree["a"]["ivl"]
+            if "dendrogram" in tree:
+                order = tree["dendrogram"]["ivl"]
+            else:
+                # This may die if not sending the correct data
+                order = tree["ivl"]
 
             # resort the data by order;
             for label in order:
@@ -2503,7 +2819,7 @@ class expression(base_expression):
          
         fig = self.draw.getfigure(aspect="long", **kargs)
         ax = fig.add_subplot(111)
-        ax.set_position([0.46, 0.04, 0.5, 0.92])
+        ax.set_position([0.46, 0.04, 0.5, 0.90]) # x,y,width,height
         
         y = numpy.arange(len(data))
         if err:
@@ -2558,41 +2874,93 @@ class expression(base_expression):
             kargs["title"] = value
                
         self.draw.do_common_args(ax, **kargs)
+        if tight_layout:
+            fig.tight_layout()
         actual_filename = self.draw.savefigure(fig, filename)
-        config.log.info("barh_single_item(): Saved '%s'" % actual_filename)
+        config.log.info("barh_single_item: Saved '%s'" % actual_filename)
         return(item)
-        
-    def get_pca(self, rowwise=False, label_key=None, **kargs):
+
+    def time_course_plot(self, key=None, value=None, filename=None, timepoints=None, plotmean=True, **kargs):
         """
         **Purpose**
-            Get the pca object for this expression data. For performing principal 
-            component analysis (PCA) on the expression data set.
-            
-            A typical workflow for PCA of expression data would go something like:
-            
-            expn = expression(filename="...", ...)
-            pca = expn.get_pca()
-            print pca.max() # maximum number of PCs.
-            pca.loading(filename="...") # PC loading bar chart.
-            pca.plot(1,2, filename="...") # PC 
+            Plot a nice graph from timecourse expression data (i.e. a line graph)
             
         **Arguments**
-            rowwise (Optional, default=False)
-                Perform PCA on the rows (probably genes), instead of on the conditions (the default)
+            key (Required)
+                The key to search for the item
                 
-            label_key (Optional, Required if rowwise=True)
-                The key to use in the genelist to use as a label on plots, etc. 
+            value (Required)
+                the value to search for
                 
-                Ignored if rowwise=False
+            filename (Required)
+                The filename to save to
+                
+            timepoints (Optional)
+                integer time points for your time course. If no timepoints are given glbase 
+                assumes your time points are equally spaced and in the same order from
+                getConditionNames()
+                
+                however, if you supply a series of integers (or floats) then the plot will be arranged
+                so that the x-axis 
+                
+            plotmean (Optional, default=True)
+                plot a line on the graph indicating the mean expression across the time course.
             
-        **Returns**
-            A 'pca' object.
-            See the documentation for pca for more details. 
+            Other standard draw() arguments are also accepted:
+                xlabel - x-axis label
+                ylabel - y-axis label
+                title  - title
+                xlims - x axis limits
+                ylims - y-axis limits
+                logx - set the x scale to a log scale argument should equal the base
+                logy - set the y scale to a log scale
+                legend_size - size of the legend, small, normal, medium
+                xticklabel_fontsize - x tick labels fontsizes
+                yticklabel_fontsize - y tick labels fontsizes
+                vlines - A list of X points to draw a vertical line at
+                hlines - A list of Y points to draw a vertical line at
             
-            You can get the pca object again in expn.pca
         """
-        self.pca = pca(self, rowwise=rowwise, label_key=label_key)
-        return(self.pca)
+        assert filename, "time_course_plot: You must provide a filename"
+        
+        if not timepoints:
+            timepoints = numpy.arange(len(self.getConditionNames())) + 1
+            
+        assert key, "time_course_plot: you must specify a key"
+        assert value, "time_course_plot: you must specify a value"
+        assert filename, "time_course_plot:you must specify a filename"
+        
+        data = self._findDataByKeyLazy(key, value)
+        
+        if not data:
+            config.log.warning("time_course_plot: '%s:%s' not found in this list, not saving" % (key, value))
+            return(None)
+        
+        data = list(data["conditions"])
+        
+        if not "aspect" in kargs:
+            kargs["aspect"] = "wide"
+        if not "size" in kargs:
+            kargs["size"] = "small"
+        
+        fig = self.draw.getfigure(**kargs)
+        ax = fig.add_subplot(111)
+
+        ax.plot(timepoints, data, '-o', color="black", mec="black", mfc="none")
+
+        if plotmean:
+            m = numpy.average(data)
+            ax.axhline(m, ls=":", color="grey")
+
+        if not "ylims" in kargs:
+            kargs["ylims"] = (0, max(data)+(max(data)/10.0))
+
+        ax.set_title("%s:%s" % (key, value))
+
+        self.draw.do_common_args(ax, **kargs)
+        actual_filename = self.draw.savefigure(fig, filename)
+        config.log.info("time_course_plot: Saved '%s'" % actual_filename)
+        return(actual_filename)        
         
     def fc_scatter(self, cond1, cond2, filename=None, plot_diagonals=True, zoom_bracket=[-3,3], 
         label_key="name", **kargs):
@@ -2635,7 +3003,7 @@ class expression(base_expression):
         **Returns**
             None
         """
-        assert filename, "fc_scatter(): you must specify a filename"
+        assert filename, "fc_scatter: you must specify a filename"
         
         # get the data
         c1d = self.getDataForCondition(cond1)
@@ -2728,7 +3096,7 @@ class expression(base_expression):
         """
 
         actual_filename = self.draw.savefigure(fig, filename)     
-        config.log.info("fc_scatter(): Saved '%s'" % actual_filename)
+        config.log.info("fc_scatter: Saved '%s'" % actual_filename)
         return(None)
         
     def kmeans(self, filename=None, key=None, seeds=None, dowhiten=True, plotseeds=True, **kargs):
@@ -2775,7 +3143,7 @@ class expression(base_expression):
         print "data", data.shape
         
         if dowhiten:
-            config.log.info("kmeans(): whiten...")
+            config.log.info("kmeans: whiten...")
             wt = whiten(data) # features are columns
         else:
             wt = data
@@ -2795,13 +3163,13 @@ class expression(base_expression):
             
             print "seeds", seeds.shape
         
-        config.log.info("kmeans(): kmeans...")
+        config.log.info("kmeans: kmeans...")
         centroids, variance = kmeans(wt, seeds)
         
         print centroids.shape
         print centroids
         
-        config.log.info("kmeans(): vq...")
+        config.log.info("kmeans: vq...")
         code, distance = vq(wt, centroids)
 
         print code
@@ -2841,4 +3209,130 @@ class expression(base_expression):
             #ax.set_yticklabels("")
             
         actual_filename = self.draw.savefigure(fig, filename)     
-        config.log.info("kmeans(): Saved '%s'" % actual_filename)
+        config.log.info("kmeans: Saved '%s'" % actual_filename)
+        
+    def bundle(self, filename=None, key=None, seeds=None, plotseeds=True, Z=0.9, mode="pearsonr", 
+        negative_correlations=False, **kargs):
+        """
+        **Purpose**
+            perform 'gene-bundling' on the expression data. 
+            
+            I still can't get k-means to correctly bundle together similar genes. So instead I will roll my own
+            gene-similarity bundler. 
+            
+            Output a stack of plots and return the groups
+            
+        **Arguments**
+            filename (Optional)
+                filename to save the profiles to
+            
+            seeds (Required)
+                For each item in the list, bundle together genes based on similarity.
+                
+            key (Required)
+                A key to use to extract the initial seeds from
+                
+            mode (Optional, default="pearsonr")
+                Valid modes are:
+                    pearsonr - Pearson correlation
+                    spearmanr - Rank order correlation
+            
+            Z (Optional, default=0.9)
+                Pearson correlation score required for a match (1.0 = perfect match, higher is better).
+                Note that the means are unscaled, so this will recover patterns that are similar but may have
+                much higher or lower mean signals.
+                                   
+            plotseeds (Optional, default=True)
+                Plot the seeds on the mini-plots with a thick black line.
+            
+            negative_correlations (Optional, default=False)
+                Also include negative correlations. Uses the same threshold as specified in 'Z', but
+                now -Z is used to cut off correlations.
+            
+        **Returns**
+            A dictionary in the form:
+            
+            {"<seed>": genelist(), "<seed2>": genelist(), ...}
+        """
+        assert mode in ("pearsonr", "spearmanr"), "bundle: '%s' mode not found!" % mode
+        
+        # Get the expression data.
+        data = numpy.array(self.serialisedArrayDataList).T
+        
+        stds = numpy.std(data, axis=0)
+        
+        centroids = []
+        for seed_bundle in seeds:
+            expns = []
+            if isinstance(seed_bundle, tuple): # bundle of bundles.
+                # get all the expression for this bundle:
+                for i in seed_bundle:
+                    col = self.index(key, i) # I need to know the column numbers for each item in seeds: 
+                    expns.append(self[col]["conditions"])    
+                centroids.append({"name": ",".join(seed_bundle), "avg": numpy.average(expns, axis=0), "std": numpy.std(expns, axis=0), "members": []})
+            else: # singlet
+                col = self.index(key, seed_bundle) # I need to know the column numbers for each item in seeds: 
+                centroids.append({"name": seed_bundle, "avg": numpy.array(self[col]["conditions"]), "std": stds, "members": []})
+             
+        # put all of the genes into a bundle:
+        for gene in self:
+            scores = []
+            for cen in centroids:
+                  
+                #variation = numpy.abs(gene["conditions"] - cen["avg"]) / cen["std"]
+                #score = numpy.sum(variation) / len(cen["avg"])
+                if mode == "pearsonr":
+                    score = scipy.stats.pearsonr(cen["avg"], gene["conditions"])[0]
+                elif mode == "spearmanr":
+                    score = scipy.stats.spearmanr(cen["avg"], gene["conditions"])[0]
+                scores.append(score)
+            #print scores
+                
+            if max(scores) > Z: # It has at least one good score;
+                best = scores.index(max(scores))
+                centroids[best]["members"].append(gene) # put it in the best scoring group
+                gene["score"] = max(scores) # return score
+            elif negative_correlations and min(scores) < -Z:
+                best = scores.index(min(scores))
+                centroids[best]["members"].append(gene) # put it in the best scoring group
+                gene["score"] = min(scores) # return score 
+                    
+                # I need to do a subsequent pass to add all other genes into a bin.
+                        
+        # Guess a suitable arrangement for the figure
+        sq = math.ceil(math.sqrt(len(centroids)))
+        if not "size" in kargs:
+            kargs["size"] = (sq*2, sq*2)
+        
+        fig = self.draw.getfigure(**kargs)
+
+        fig.subplots_adjust(0.01, 0.01, 0.98, 0.98, wspace=0.15, hspace=0.15)
+
+        xx = numpy.arange(len(self._conditions))
+
+        for i, cen in enumerate(centroids):
+            ax = fig.add_subplot(sq, sq, i+1)
+            
+            if cen["members"]:
+                dd = numpy.array([g["conditions"] for g in cen["members"]])
+                        
+                ax.plot(xx, dd.T, alpha=0.1, color="grey")
+                        
+                if plotseeds:
+                    ax.plot(cen["avg"], color="black") # err?
+                ax.set_title("%s (%s)" % (cen["name"], len(cen["members"])), size=6)
+
+            [t.set_fontsize(6) for t in ax.get_xticklabels()]
+            [t.set_fontsize(6) for t in ax.get_yticklabels()]
+
+            ax.set_xlim([-1,len(self._conditions)])
+
+        res = {}
+        for c in centroids:
+            gl = genelist(name=c["name"])
+            gl.load_list(c["members"])
+            res[c["name"]] = gl
+            
+        actual_filename = self.draw.savefigure(fig, filename)     
+        config.log.info("bundle: Saved '%s'" % actual_filename)
+        return(res)

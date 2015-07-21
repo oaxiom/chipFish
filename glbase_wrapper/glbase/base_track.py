@@ -15,13 +15,15 @@ from operator import itemgetter
 from errors import FailedToMakeNewDBError
 
 class base_track:
-    def __init__(self, name=None, new=False, filename=None):
+    def __init__(self, name=None, new=False, filename=None, norm_factor=1.0):
         """
         base track only accepts three arguments, 
         the filename, name (this is a legacy thing) and new.
         If new it sets up the meta data, but that's ALL!
         """
-        assert filename, "you must specify a filename to save the database to"
+        assert filename, "you must specify a filename"
+
+        self.norm_factor = norm_factor
 
         if name:
             m = name

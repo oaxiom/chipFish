@@ -44,13 +44,14 @@ Then it can go::
 
 """
 
-import sys, os, copy, random
+import sys, os, copy, random, numpy
 
 from numpy import array, arange, mean, max, min, std, float32
 from scipy.cluster.hierarchy import distance, linkage, dendrogram
 from scipy.spatial.distance import pdist # not in scipy.cluster.hierarchy.distance as you might expect :(
 from scipy import polyfit, polyval
 from scipy.stats import linregress
+import scipy.stats
 import numpy as np
 import matplotlib.pyplot as plot
 import matplotlib.cm as cm
@@ -93,17 +94,10 @@ class draw:
                     newd[x][y] = max
         return(newd)
 
-    def _heatmap(self, cluster_mode = "euclidean", row_cluster = True, col_cluster = True, dpi = config.DEFAULT_DPI,
-        vmin = 0, vmax = None, colour_map = cm.RdBu_r, **kargs):
-        """
-        Scheduled for deprecation
-        """
-        return(self.heatmap(cluster_mode, row_cluster, col_cluster, dpi,
-        vmin, vmax, cm.RdBu_r, **kargs))
-
     def heatmap(self, filename=None, cluster_mode="euclidean", row_cluster=True, col_cluster=True, 
         vmin=0, vmax=None, colour_map=cm.RdBu_r, col_norm=False, row_norm=False, heat_wid=0.25, heat_hei=0.85,
-        highlights=None, discretize=False, border=False,
+        highlights=None, digitize=False, border=False,draw_numbers=False, draw_numbers_threshold=-9e14,
+        draw_numbers_fmt='%.1f', draw_numbers_font_size=6,
         **kargs):
         """
         my own version of heatmap.
@@ -154,7 +148,7 @@ class draw:
                 The height of the heatmap. Heatmap runs from 0.1 to heat_hei, with a maximum of 0.9 (i.e. a total of 1.0)
                 value is a fraction of the entire figure size.
                 
-            colbar_label (Optional, default="expression")
+            colbar_label (Optional, default=None)
                 the label to place beneath the colour scale bar
                 
             highlights (Optional, default=None)
@@ -162,9 +156,29 @@ class draw:
                 But you still want to highlight a few specific genes/rows on the plot.
                 Send a list to highlights that matches entries in the row_names.
                 
-            discretize (Optional, default=False)
+            digitize (Optional, default=False)
                 change the colourmap (either supplied in cmap or the default) into a 'discretized' version
-                that has large blocks of colours, defined by the number you send to discretize
+                that has large blocks of colours, defined by the number you send to discretize.
+                
+                Note that disctretize only colorises the comlourmap and the data is still clustered on the underlying numeric data.
+                
+                You probably want to use expression.digitize() for that.
+                
+            imshow (Optional, default=False)
+                optional ability to use images for the heatmap. Currently experimental it is
+                not always supported in the vector output files.
+                
+draw_numbers (Optional, default=False)
+                draw the values of the heatmaps in each cell see also draw_numbers_threshold
+                
+            draw_numbers_threshold (Optional, default=-9e14)
+                draw the values in the cell if > draw_numbers_threshold
+            
+            draw_numbers_fmt (Optional, default= '%.1f')
+                string formatting for the displayed values
+            
+            draw_numbers_font_size (Optional, default=7)
+                the font size for the numbers in each cell
             
         **Returns**
             The actual filename used to save the image.
@@ -205,12 +219,17 @@ class draw:
             # positions of the items in the plot:
             # heat_hei needs to be adjusted. as 0.1 is the bottom edge. User wants the bottom
             # edge to move up rather than the top edge to move down.
-        
-            mmheat_hei = 0.93 - heat_hei # this is also the maximal value (heamap edge is against the bottom)
-        
-            left_side_tree =    [0.05,  mmheat_hei,   0.248, heat_hei]
-            top_side_tree =     [0.3,   0.932,  heat_wid,   0.044]
-            heatmap_location =  [0.3,   mmheat_hei,   heat_wid,  heat_hei]
+            if row_cluster:
+                mmheat_hei = 0.93 - heat_hei # this is also the maximal value (heamap edge is against the bottom)
+                left_side_tree =    [0.05,  mmheat_hei,   0.248, heat_hei]
+                top_side_tree =     [0.3,   0.932,  heat_wid,   0.044]
+                heatmap_location =  [0.3,   mmheat_hei,   heat_wid,  heat_hei]
+            else:
+                # If no row cluster take advantage of the extra width available, but shift down to accomodate the scalebar
+                mmheat_hei = 0.85 - heat_hei # this is also the maximal value (heamap edge is against the bottom)
+                #left_side_tree =    [0.05,  mmheat_hei,   0.248, heat_hei]
+                top_side_tree =     [0.03,   0.852,  heat_wid,   0.044]
+                heatmap_location =  [0.03,   mmheat_hei,   heat_wid,  heat_hei]
         scalebar_location = [0.01,  0.96,   0.24,   0.03]
         
         # set size of the row text depending upon the number of items:
@@ -236,6 +255,7 @@ class draw:
                 row_font_size = 0
                 
         if highlights:
+            highlights = list(set(highlights)) # Make it unique, because sometimes duplicates get through and it erroneously reports failure.
             found = [False for i in highlights]
             if row_font_size == 0:
                 row_font_size = 5 # IF the above sets to zero, reset to a reasonable value.
@@ -249,6 +269,7 @@ class draw:
                 if item in highlights:
                     new_row_names.append(item)
                     index = highlights.index(item)
+                    
                     found[index] = True
                 else:
                     new_row_names.append("")
@@ -285,11 +306,11 @@ class draw:
         if "row_cluster" in kargs: row_cluster = kargs["row_cluster"]
         if "col_cluster" in kargs: col_cluster = kargs["col_cluster"]
         if not "colbar_label" in kargs: 
-            kargs["colbar_label"] = "expression"
+            kargs["colbar_label"] = ""
         if "cmap" in kargs: 
             colour_map = kargs["cmap"]
-        if discretize:
-            colour_map = cmaps.discretize(colour_map, discretize)
+        if digitize:
+            colour_map = cmaps.discretize(colour_map, digitize)
 
         # a few grace and sanity checks here;
         if len(data) <= 1: row_cluster = False # clustering with a single point?
@@ -306,7 +327,8 @@ class draw:
             # from scipy;
             # generate the dendrogram
             if "row_tree" in kargs:
-                Z = kargs["row_tree"]["Z"]
+                assert "dendrogram" in kargs["row_tree"], "row_tree appears to be improperly formed ('dendrogram' is missing)"
+                Z = kargs["row_tree"]["linkage"]
             else:
                 Y = pdist(data, metric=cluster_mode)
                 Z = linkage(Y, method='complete', metric=cluster_mode)
@@ -318,8 +340,10 @@ class draw:
             ax1.set_yticklabels("")
             ax1.set_ylabel("")
             # clear the ticks.
-            [item.set_markeredgewidth(0.0) for item in ax1.xaxis.get_ticklines()]
-            [item.set_markeredgewidth(0.0) for item in ax1.yaxis.get_ticklines()]
+            ax1.tick_params(top=False, bottom=False, left=False, right=False)
+            
+            #[item.set_markeredgewidth(0.0) for item in ax1.xaxis.get_ticklines()]
+            #[item.set_markeredgewidth(0.0) for item in ax1.yaxis.get_ticklines()]
 
             # Use the tree to reorder the data.
             order = a["ivl"]
@@ -347,17 +371,17 @@ class draw:
             ax2.set_frame_on(False)
             ax2.set_position(top_side_tree)
             if "col_tree" in kargs and kargs["col_tree"]:
-                assert "Z" in kargs["col_tree"], "col_tree appears to be improperly formed (Z is missing)"
+                assert "dendrogram" in kargs["col_tree"], "col_tree appears to be improperly formed ('dendrogram' is missing)"
                 #if kargs["col_names"] and kargs["col_names"]:
                 #    assert len(kargs["col_tree"]["Z"]) == len(kargs["col_names"]), "tree is not the same size as the column labels"
-                Z = kargs["col_tree"]["Z"]
+                Z = kargs["col_tree"]["linkage"]
             else:
                 Y = pdist(transposed_data, metric=cluster_mode)
                 Z = linkage(Y, method='complete', metric=cluster_mode)
             a = dendrogram(Z, orientation='top')
 
-            [item.set_markeredgewidth(0.0) for item in ax2.xaxis.get_ticklines()]
-            [item.set_markeredgewidth(0.0) for item in ax2.yaxis.get_ticklines()]
+            ax2.tick_params(top=False, bottom=False, left=False, right=False)
+            
             ax2.set_xticklabels("")
             ax2.set_yticklabels("")
 
@@ -374,9 +398,21 @@ class draw:
 
         # ---------------- Second plot (heatmap) -----------------------
         ax3 = fig.add_subplot(143)
-        hm = ax3.pcolormesh(data, cmap=colour_map, vmin=vmin, vmax=vmax, antialiased=False)
+        if 'imshow' in kargs and kargs['imshow']:
+            ax3.set_position(heatmap_location) # must be done early for imshow
+            hm = ax3.imshow(data, cmap=colour_map, vmin=vmin, vmax=vmax, aspect="auto",
+                origin='lower', extent=[0, data.shape[1], 0, data.shape[0]], 
+                interpolation='none')
+        else:
+            hm = ax3.pcolormesh(data, cmap=colour_map, vmin=vmin, vmax=vmax, antialiased=False)
+            if draw_numbers:
+                for x in xrange(data.shape[0]):
+                    for y in xrange(data.shape[1]):
+                        if data[x, y] >= draw_numbers_threshold:
+                            ax3.text(y+0.5, x+0.5, draw_numbers_fmt % data[x, y], size=draw_numbers_font_size, 
+                                ha='center', va='center')
 
-        ax3.set_frame_on(border)
+        #ax3.set_frame_on(border)
         ax3.set_position(heatmap_location)
         if "col_names" in kargs and kargs["col_names"]:
             ax3.set_xticks(arange(len(kargs["col_names"]))+0.5)
@@ -396,8 +432,7 @@ class draw:
             ax3.set_yticklabels("")
 
         ax3.yaxis.tick_right()
-        [item.set_markeredgewidth(0.0) for item in ax3.xaxis.get_ticklines()]
-        [item.set_markeredgewidth(0.0) for item in ax3.yaxis.get_ticklines()]
+        ax3.tick_params(top=False, bottom=False, left=False, right=False)
         [t.set_fontsize(row_font_size) for t in ax3.get_yticklabels()] # generally has to go last.
         [t.set_fontsize(col_font_size) for t in ax3.get_xticklabels()]
 
@@ -496,8 +531,7 @@ class draw:
         ax3.set_yticklabels("")
 
         ax3.yaxis.tick_right()
-        [item.set_markeredgewidth(0.0) for item in ax3.xaxis.get_ticklines()]
-        [item.set_markeredgewidth(0.0) for item in ax3.yaxis.get_ticklines()]
+        ax3.tick_params(top=False, bottom=False, left=False, right=False)
         [t.set_fontsize(1) for t in ax3.get_yticklabels()] # generally has to go last.
         [t.set_fontsize(1) for t in ax3.get_xticklabels()]
 
@@ -512,17 +546,8 @@ class draw:
         return(self.savefigure(fig, filename))
 
     def _heatmap_and_plot(self, peak_data=None, match_key=None, 
-        arraydata=None, peakdata=None, bin=None, **kargs):
+        arraydata=None, peakdata=None, bin=None, draw_frames=False, **kargs):
         """
-        a two panel dendrogram - heatmap and plot.
-
-        todo:
-
-        * make it more generic - should be heatmap_data, plot_data.
-        * some sort of helper ot show the interaction between the data sets.
-
-        valid args:
-
         Required:
 
         filename
@@ -540,6 +565,9 @@ class draw:
         match_key
 
             the key to match between the array and the peaklist.
+
+        draw_frames (Optional, default=False)
+            draw a frame around each of the elements in the figure.
 
 
         Optional:
@@ -566,6 +594,10 @@ class draw:
         if "bracket" in kargs:
             vmin = kargs["bracket"][0]
             vmax = kargs["bracket"][1]
+        if "cmap" in kargs:
+            cmap = kargs["cmap"]
+        else:    
+            cmap = cm.RdBu_r
 
         # Positions of the items in the figure:
         left_heatmap = [0.10,  0.05,  0.20,  0.85]
@@ -582,15 +614,15 @@ class draw:
         # heatmap ------------------------------------------------------
 
         ax0 = fig.add_subplot(141) # colour bar goes in here.
-        ax0.set_frame_on(False)
+        ax0.set_frame_on(draw_frames)
         ax0.set_position(scale_bar)
-        [item.set_markeredgewidth(0.0) for item in ax0.yaxis.get_ticklines()]
+        ax0.tick_params(left=False, right=False)
 
         ax1 = fig.add_subplot(142)
         plot_data = arraydata.T
-        hm = ax1.pcolormesh(plot_data, cmap=cm.RdBu_r, vmin=vmin, vmax=vmax, antialiased=False)
+        hm = ax1.pcolormesh(plot_data, cmap=cmap, vmin=vmin, vmax=vmax, antialiased=False)
 
-        ax1.set_frame_on(False)
+        ax1.set_frame_on(draw_frames)
         ax1.set_position(left_heatmap)
         if "col_names" in kargs and kargs["col_names"]:
             ax1.set_xticks(arange(len(kargs["col_names"]))+0.5)
@@ -609,8 +641,7 @@ class draw:
             ax1.set_yticklabels("")
 
         ax1.yaxis.tick_left()
-        [item.set_markeredgewidth(0.0) for item in ax1.xaxis.get_ticklines()]
-        [item.set_markeredgewidth(0.0) for item in ax1.yaxis.get_ticklines()]
+        ax1.tick_params(top=False, bottom=False, left=False, right=False)
         [t.set_fontsize(6) for t in ax1.get_yticklabels()] # generally has to go last.
         [t.set_fontsize(6) for t in ax1.get_xticklabels()]
 
@@ -624,9 +655,9 @@ class draw:
 
         a = array(bin) # reshape the bin array
         a.shape = 1,len(bin)
-        ax2.pcolormesh(a.T, cmap=cm.gray_r, antialiased=True)
+        ax2.pcolormesh(a.T, cmap=cm.binary, antialiased=True)
 
-        ax2.set_frame_on(False)
+        ax2.set_frame_on(draw_frames)
         ax2.set_position(binding_map)
         ax2.set_yticks(arange(len(kargs["row_names"]))+0.5)
         ax2.set_yticklabels("")
@@ -634,19 +665,18 @@ class draw:
         ax2.set_xlim([0,1])
         ax2.set_ylim([0,len(kargs["row_names"])])
         ax2.yaxis.tick_left()
-        [item.set_markeredgewidth(0.0) for item in ax2.yaxis.get_ticklines()]
-        [item.set_markeredgewidth(0.0) for item in ax2.xaxis.get_ticklines()]
+        ax2.tick_params(top=False, bottom=False, left=False, right=False)
 
         # linegraph -----------------------------------------------------
 
         ax3 = fig.add_subplot(144)
         ax3.plot(peakdata, arange(len(peakdata))) # doesn't use the movingAverage generated x, scale it across the entire graph.
-        ax3.set_frame_on(False)
+        ax3.set_frame_on(draw_frames)
         ax3.set_position(freq_plot)
         ax3.set_yticklabels("")
         ax3.set_ylim([0, len(peakdata)])
-        ax3.set_xlim([min(peakdata), max(peakdata)])
-        [item.set_markeredgewidth(0.0) for item in ax3.yaxis.get_ticklines()]
+        ax3.set_xlim([min(peakdata), (max(peakdata))+(max(peakdata)/10.0)])
+        ax3.tick_params(left=False, right=False)
         [item.set_markeredgewidth(0.2) for item in ax3.xaxis.get_ticklines()]
         [t.set_fontsize(6) for t in ax3.get_xticklabels()]
 
@@ -724,8 +754,7 @@ class draw:
             ax.set_ylim([0,list_of_data[index].shape[0]])
 
             #ax.yaxis.tick_right()
-            [item.set_markeredgewidth(0.0) for item in ax.xaxis.get_ticklines()]
-            [item.set_markeredgewidth(0.0) for item in ax.yaxis.get_ticklines()]
+            ax.tick_params(top=False, bottom=False, left=False, right=False)
             [t.set_visible(False) for t in ax.get_yticklabels()] # generally has to go last.
             [t.set_visible(False) for t in ax.get_xticklabels()]
         
@@ -749,8 +778,7 @@ class draw:
             ax.set_xlim([0,dd.shape[1]])
             ax.set_ylim([0,dd.shape[0]])
 
-            [item.set_markeredgewidth(0.0) for item in ax.xaxis.get_ticklines()]
-            [item.set_markeredgewidth(0.0) for item in ax.yaxis.get_ticklines()]
+            ax.tick_params(top=False, bottom=False, left=False, right=False)
             [t.set_visible(False) for t in ax.get_yticklabels()] # generally has to go last.
             [t.set_visible(False) for t in ax.get_xticklabels()]
             
@@ -779,7 +807,7 @@ class draw:
 
         return(self.savefigure(fig, filename))
 
-    def boxplot(self, data=None, filename=None, labels=None, **kargs):
+    def boxplot(self, data=None, filename=None, labels=None, showfliers=True, whis=1.5, **kargs):
         """
         wrapper around matplotlib's boxplot
         """
@@ -791,7 +819,7 @@ class draw:
         ax = fig.add_subplot(111)
         #ax.axhline(0, ls=":", color="grey") # add a grey line at zero for better orientation
         ax.grid(axis="y", ls=":", color="grey", zorder=1000000)
-        r = ax.boxplot(data)
+        r = ax.boxplot(data, showfliers=showfliers, whis=whis)
 
         plot.setp(r['medians'], color='red') # set nicer colours
         plot.setp(r['whiskers'], color='black', lw=2)
@@ -893,8 +921,7 @@ class draw:
         ax.set_xticks([0, len(loc)])
         ax.set_yticks([0, 10])
 
-        [i.set_markeredgewidth(0.0) for i in ax.yaxis.get_ticklines()] # clear ticks
-        [i.set_markeredgewidth(0.0) for i in ax.xaxis.get_ticklines()]
+        ax.tick_params(top=False, bottom=False, left=False, right=False)
         left_base = loc["left"]
         for item in feature_list:
             if item["type"] == "gene":
@@ -1172,14 +1199,55 @@ class draw:
         axis.set_frame_on(False)
         axis.set_yticklabels("")
         axis.set_xticklabels("")
-        [i.set_markeredgewidth(0.0) for i in axis.yaxis.get_ticklines()]
-        [i.set_markeredgewidth(0.0) for i in axis.xaxis.get_ticklines()]
+        axis.tick_params(top=False, bottom=False, left=False, right=False)
 
         # add the labels:
         axis.text(5, 17, labels["left"], size=15, ha="center", va="center")
         axis.text(15, 17, labels["right"], size=15, ha="center", va="center")
         axis.text(10, 19, labels["title"], size=28, ha="center", va="center")
 
+        return(self.savefigure(fig, filename))
+
+    def venn2(self, A, B, AB, labelA, labelB, filename, **kargs):
+        """
+        same as _vennDiagram2 except it performs a triple overlap.
+        """
+        if not "aspect" in kargs:
+            kargs["aspect"] = "square"
+        if not "size" in kargs:
+            kargs["size"] = "small"
+        
+        fig = self.getfigure(**kargs)
+        ax = fig.add_subplot(111)
+        ax.set_position([0.02, 0.02, 0.96, 0.96])
+        ax.set_xlim([0,30])
+        ax.set_ylim([0,30])
+        
+        artists = []
+        artists.append(Circle((10, 15), 8, alpha=1, facecolor="none"))
+        artists.append(Circle((20, 15), 8, alpha=1, facecolor="none"))
+        
+        for a in artists: # add all artists...
+            ax.add_artist(a)
+
+        #ax.set_xticks([0,20])
+        #ax.set_yticks([0,20])
+        # clear frame and axis markers:
+        ax.set_frame_on(False)
+        ax.set_yticklabels("")
+        ax.set_xticklabels("")
+        
+        ax.tick_params(top=False, bottom=False, left=False, right=False)
+
+        # add the labels:
+        ax.text(7.5, 15, A-AB, size=15, ha="center", va="center")
+        ax.text(22.5, 15, B-AB, size=15, ha="center", va="center")
+
+        ax.text(15, 15, AB, size=15, ha="center", va="center")
+        
+        ax.text(7.5,  25, labelA, size=16, ha="center", va="center")
+        ax.text(22.5,  25, labelB, size=16, ha="center", va="center")
+        
         return(self.savefigure(fig, filename))
 
     def venn3(self, A, B, C, AB, AC, BC, ABC, labelA, labelB, labelC, filename, **kargs):
@@ -1211,8 +1279,8 @@ class draw:
         ax.set_frame_on(False)
         ax.set_yticklabels("")
         ax.set_xticklabels("")
-        [i.set_markeredgewidth(0.0) for i in ax.yaxis.get_ticklines()]
-        [i.set_markeredgewidth(0.0) for i in ax.xaxis.get_ticklines()]
+        
+        ax.tick_params(top=False, bottom=False, left=False, right=False)
 
         # add the labels:
         ax.text(7.5, 20, A-AB-AC+ABC, size=15, ha="center", va="center")
@@ -1231,125 +1299,174 @@ class draw:
 
         return(self.savefigure(fig, filename))
 
-    def _venn4(self, filename=None, lists=None, scores=None,
-        proportional=False, **kargs):
+    def venn4(self, lists, labels, filename=None, **kargs):
         """
-        draw a 4-way venn Diagram.
-
-        **Arguments**
-            matrix_grid (Required)
-                A dictionary of the form:
-                    {"A": A, "B": B, "C": D,
-                    "AC": AB, "AB": AB, "CD": CD, "BD": BD,
-                    "ABC": ABC, "ACD": ACD, "ABD": ABD, "BCD": BCD,
-                    "ABCD": ABCD}
-                containing the overlapping genelists
-                (ie. the lists after a call to map()).
-
-            The numbers should be corrected overlaps, (i.e,. A= A - AC - ABC - ABCD)
-
-            filename
-                save name
-
-            (Optional Arguments)
-
-            proportional (True|False, default False)
-                EXPERIMENTAL!
-                Use proportional circles suggesting the sizes of the overlaps
-
-            NotImplemented:
-
-            plot_sig (True|False, default False)
-                plot a binomial p-value test result for the overlap.
-
-            simulations (100 by default)
-                number of simulations to run for the p-value
-
-            world_size (defaults to sum of enitre data)
-                If your world_size is bigger you need to send it as the
-                simulations will overestimate the overlaps.
-
-            (Supported generic kargs)
-
-            dpi
-                dpi of the output file.
-
-        **Result**
-            saves a venn Diagram and returns the actual path to the saved file.
-
-        **todo**
-            support multiple overlaps.
-            support for weighted circles.
-
+        Draw a 4-way venn Diagram.
+        
+        lists should be in the order:
+        
+        A, B, C, D, AB, AC, AD, BC, BD, CD, ABC, ABD, ACD, BCD, ABCD
+        
+        labels should be in the order: 
+        
+        A, B, C, D
         """
         # no valid_args specified here. You should know what you are doing...
         assert filename, "No filename specified!"
-
-
-        m = lists
-        s = scores
+        
+        # Verbosity for clarity
+        A = lists[0]
+        B = lists[1]
+        C = lists[2]
+        D = lists[3]
+        AB = lists[4]
+        AC = lists[5]
+        AD = lists[6]
+        BC = lists[7]
+        BD = lists[8]
+        CD = lists[9]       
+        ABC = lists[10]
+        ABD = lists[11]
+        ACD = lists[12]
+        BCD = lists[13]
+        ABCD = lists[14]
+        labelA = labels[0]
+        labelB = labels[1]
+        labelC = labels[2]
+        labelD = labels[3]
 
         fig = self.getfigure(**kargs)
-        axis = fig.add_subplot(111)
-        axis.set_position([0.02, 0.02, 0.96, 0.96])
-
+        ax = fig.add_subplot(111)
+        ax.set_position([0.02, 0.02, 0.96, 0.96])
+        ax.set_xlim([0,10])
+        ax.set_ylim([0,10])
+        
         artists = []
-        if not proportional:
-            artists.append(Circle((8, 8), 5, alpha=0.7, facecolor="#9930a7")) # (loc), size
-            artists.append(Circle((12, 8), 5, alpha=0.6, facecolor="#fd8348"))
-            artists.append(Circle((12, 12), 5, alpha=0.5, facecolor="#30aa7f")) # (loc), size
-            artists.append(Circle((8, 12), 5, alpha=0.4, facecolor="#e7f847"))
-
-            # outlines:
-            artists.append(Circle((8, 8), 5, alpha=1.0, fill=False, lw=2))
-            artists.append(Circle((12, 8), 5, alpha=1.0, fill=False, lw=2))
-            artists.append(Circle((12, 12), 5, alpha=1.0, fill=False, lw=2))
-            artists.append(Circle((8, 12), 5, alpha=1.0, fill=False, lw=2)) # I draw the circle twice to give bold outer lines.
-
-            # labels:
-            axis.text(6, 6, "%s" %str(s["A"]), size=25, ha="center", va="center")
-            axis.text(14, 6, "%s" %str(s["B"]), size=25, ha="center", va="center")
-            axis.text(6, 14, "%s" %str(s["C"]), size=25, ha="center", va="center")
-            axis.text(14, 14, "%s" %str(s["D"]), size=25, ha="center", va="center")
-
-            # doubles:
-            axis.text(10, 6, "%s" % str(s["AB"]), size=20, ha="center", va="center")
-            axis.text(6,  10, "%s" % str(s["AC"]), size=20, ha="center", va="center")
-            axis.text(10, 14, "%s" % str(s["CD"]), size=20, ha="center", va="center")
-            axis.text(14, 10, "%s" % str(s["BD"]), size=20, ha="center", va="center")
-
-            axis.text(12, 12, "%s" % str(s["BCD"]), size=15, ha="center", va="center")
-            axis.text(8, 12, "%s" % str(s["ACD"]), size=15, ha="center", va="center")
-            axis.text(8, 8,  "%s" % str(s["ABC"]), size=15, ha="center", va="center")
-            axis.text(12, 8, "%s" % str(s["ABD"]), size=15, ha="center", va="center")
-
-            # Fours:
-            axis.text(10, 10, str(s["ABCD"]), size=25, ha="center", va="center")
-
-            #axis.text(10, 10, str(overlap), size=25, ha="center", va="center")
-            #axis.text(15, 10, str(right), size=30, ha="center", va="center")
-        else:
-            raise NotImplementedError
-
+        artists.append(Ellipse((7,7), width=3, height=7, angle=45, facecolor="none"))
+        artists.append(Ellipse((6.5,6), width=3, height=7, angle=45, facecolor="none"))
+        artists.append(Ellipse((6.5,4), width=3, height=7, angle=135, facecolor="none"))
+        artists.append(Ellipse((7,3), width=3, height=7, angle=135, facecolor="none"))
+        
         for a in artists: # add all artists...
-            axis.add_artist(a)
+            ax.add_artist(a)
 
-        axis.set_xticks([0,20])
-        axis.set_yticks([0,20])
+        ax.set_xticks([0,10])
+        ax.set_yticks([0,10])
         # clear frame and axis markers:
-        axis.set_frame_on(False)
-        axis.set_yticklabels("")
-        axis.set_xticklabels("")
-        [i.set_markeredgewidth(0.0) for i in axis.yaxis.get_ticklines()]
-        [i.set_markeredgewidth(0.0) for i in axis.xaxis.get_ticklines()]
+        ax.set_frame_on(False)
+        ax.set_yticklabels("")
+        ax.set_xticklabels("")
+        ax.tick_params(top=False, bottom=False, left=False, right=False)
 
+        # New version using sets to do everything
         # add the labels:
-        axis.text(5, 2, m["A"].name, size=15, ha="center", va="center")
-        axis.text(15, 2, m["B"].name, size=15, ha="center", va="center")
-        axis.text(5, 18, m["C"].name, size=15, ha="center", va="center")
-        axis.text(15, 18, m["D"].name, size=15, ha="center", va="center")
-        #axis.text(15, 17, labels["right"], size=15, ha="center", va="center")
-        #axis.text(10, 19, labels["title"], size=28, ha="center", va="center")
+        ax.text(7, 8.4, A, size=12, ha="center", va="center")
+        ax.text(5, 6.3, B, size=12, ha="center", va="center")
+        ax.text(5, 3.7, C, size=12, ha="center", va="center")
+        ax.text(7, 1.6, D, size=12, ha="center", va="center")
+
+        ax.text(6, 7,     AB, size=12, ha="center", va="center")
+        ax.text(8.7, 6.2, AC, size=12, ha="center", va="center")
+        ax.text(9.4, 5,   AD, size=12, ha="center", va="center")
+        ax.text(6.1, 5,   BC, size=12, ha="center", va="center")
+        ax.text(8.7, 3.8, BD, size=12, ha="center", va="center")
+        ax.text(6, 3,     CD, size=12, ha="center", va="center")
+        
+        ax.text(7.2, 5.9, ABC, size=12, ha="center", va="center")
+        ax.text(9.0, 4.6, ABD, size=12, ha="center", va="center")
+        ax.text(9.0, 5.4, ACD, size=12, ha="center", va="center")
+        ax.text(7.2, 4.1, BCD, size=12, ha="center", va="center")
+        
+        ax.text(8, 5, ABCD, size=12, ha="center", va="center")
+
+        # labels
+        ax.text(4.2,  9, labelA, size=13, ha="right", va="center")
+        ax.text(3.7,  8, labelB, size=13, ha="right", va="center")
+        ax.text(3.7,  2, labelC, size=13, ha="right", va="center")
+        ax.text(4.2,  1, labelD, size=13, ha="right", va="center")
+
+        return(self.savefigure(fig, filename))
+
+    def venn5(self, lists, labels, filename=None, **kargs):
+        """
+        Draw a 5-way venn Diagram.
+        
+        lists should be in the order:
+        
+        A, B, C, D, AB, AC, AD, BC, BD, CD, ABC, ABD, ACD, BCD, ABCD
+        
+        labels should be in the order: 
+        
+        A, B, C, D
+        """
+        # no valid_args specified here. You should know what you are doing...
+        assert filename, "No filename specified!"
+        
+        # Verbosity for clarity
+        A = lists[0]
+        B = lists[1]
+        C = lists[2]
+        D = lists[3]
+        E = lists[4]
+        AB = lists[5]
+        AC = lists[6]
+        AD = lists[7]
+        AE = lists[8]
+        BC = lists[9]
+        BD = lists[10]
+        BE = lists[11]
+        CD = lists[12]
+        CE = lists[13]
+        DE = lists[14]
+        ABC = lists[15]
+        ABD = lists[16]
+        ABE = lists[17]
+        ACD = lists[18]
+        ACE = lists[19]
+        ADE = lists[20]
+        BCD = lists[21]
+        BCE = lists[22]
+        BDE = lists[23]
+        CDE = lists[24]
+        ABCD = lists[25]
+        ABCE = lists[26]
+        ACDE = lists[27]
+        BCDE = lists[28]
+        ABCDE = lists[29]
+
+        fig = self.getfigure(**kargs)
+        ax = fig.add_subplot(111)
+        #ax.set_position([0.02, 0.02, 0.96, 0.96])
+        ax.set_xlim([0,10])
+        ax.set_ylim([0,10])
+        
+        artists = []
+        artists.append(Ellipse((5,       5-0.6), width=3, height=8, angle=0, facecolor="none"))
+        artists.append(Ellipse((5+0.75,  5-0.3), width=3, height=8, angle=72, facecolor="none"))
+        artists.append(Ellipse((5+0.45,  5+0.9), width=3, height=8, angle=144, facecolor="none"))
+        artists.append(Ellipse((5-0.45,  5+0.9), width=3, height=8, angle=216, facecolor="none"))
+        artists.append(Ellipse((5-0.75,  5-0.3), width=3, height=8, angle=288, facecolor="none"))
+        
+        for a in artists: # add all artists...
+            ax.add_artist(a)
+
+        #ax.set_xticks([0,10])
+        #ax.set_yticks([0,10])
+        # clear frame and axis markers:
+        #ax.set_frame_on(False)
+        #ax.set_yticklabels("")
+        #ax.set_xticklabels("")
+        #[i.set_markeredgewidth(0.0) for i in ax.yaxis.get_ticklines()]
+        #[i.set_markeredgewidth(0.0) for i in ax.xaxis.get_ticklines()]
+
+        # add the labels:       
+        ax.text(5, 5, 'ABCDE', size=12, ha="center", va="center")
+        
+        # labels
+        ax.text(4.2, 9, labels[0], size=16, ha="right", va="center")
+        ax.text(3.7, 8, labels[1], size=16, ha="right", va="center")
+        ax.text(3.7, 2, labels[2], size=16, ha="right", va="center")
+        ax.text(4.2, 1, labels[3], size=16, ha="right", va="center")
 
         return(self.savefigure(fig, filename))
 
@@ -1359,7 +1476,7 @@ class draw:
             setup a valid figure instance based on size.
         
         **Arguments**
-            size (Optional, default="medium")
+            size or figsize (Optional, default="medium")
                 if size is a tuple then that tuple is the specified size in inches (don't ask)
                 You can also specify "small", "medium", "large" and "huge". Corrsponding to approximate pixel
                 sizes of (with the "normal" aspect)
@@ -1377,8 +1494,9 @@ class draw:
         **Returns**
             A valid matplotlib figure object
         """
-        # options in the args seem to be set at compile time. 
-        # So I have to interpret them here
+        if "figsize" in kargs and kargs["figsize"]:
+            size = kargs["figsize"]
+        
         if not size:
             size = config.draw_size
         elif len(size) == 2: # A tuple or list?
@@ -1445,6 +1563,7 @@ class draw:
                 title  - title
                 xlims - x axis limits
                 ylims - y-axis limits
+                xticklabels -list (or not) of labels for the x axis
                 logx - set the x scale to a log scale argument should equal the base
                 logy - set the y scale to a log scale
                 legend_size - size of the legend, small, normal, medium
@@ -1452,11 +1571,20 @@ class draw:
                 yticklabel_fontsize - y tick labels fontsizes
                 vlines - A list of X points to draw a vertical line at
                 hlines - A list of Y points to draw a vertical line at
+                ticks_top - True/False, display the axis ticks on the top
+                ticks_bottom - True/False, display the axis ticks on the bottom
+                ticks_left - True/False, display the axis ticks on the left
+                ticks_right - True/False, display the axis ticks on the right
+                ticks - True/False, display any ticks at all
                 
         **Returns**
             None
         """
-        legend = ax.get_legend()
+        legend = None
+        try:
+            legend = ax.get_legend()
+        except AttributeError:
+            pass            
         if legend: # None in no legend on this plot
             legend.get_frame().set_alpha(0.5) # make the legend transparent
         
@@ -1474,18 +1602,35 @@ class draw:
             ax.set_xscale("log", basex=kargs["logx"])
         if "logy" in kargs:
             ax.set_yscale("log", basey=kargs["logy"])
+        if "log" in kargs and kargs["log"]:
+            ax.set_xscale("log", basex=kargs["log"])
+            ax.set_yscale("log", basey=kargs["log"])
         if "legend_size" in kargs:
             [t.set_fontsize(kargs["legend_size"]) for t in legend.get_texts()]
         if "xticklabel_fontsize" in kargs:
             [t.set_fontsize(kargs["xticklabel_fontsize"]) for t in ax.get_xticklabels()]
         if "yticklabel_fontsize" in kargs:
             [t.set_fontsize(kargs["yticklabel_fontsize"]) for t in ax.get_yticklabels()]
+        if "xticklabels" in kargs:
+            ax.set_xticklabels(kargs["xticklabels"])
         if "vlines" in kargs and kargs["vlines"]:
             for l in kargs["vlines"]:
                 ax.axvline(l, ls=":", color="grey")
+        if "hlines" in kargs and kargs["hlines"]:
+            for l in kargs["hlines"]:
+                ax.axhline(l, ls=":", color="grey")
         if "grid" in kargs and kargs["grid"]:
             ax.grid()
-        
+        if "ticks" in kargs and not kargs["ticks"]:
+            ax.tick_params(top="off", bottom="off", left="off", right="off")
+        if "ticks_top" in kargs and not kargs["ticks_top"]:
+            ax.tick_params(top="off")
+        if "ticks_bottom" in kargs and not kargs["ticks_bottom"]:
+            ax.tick_params(bottom="off")
+        if "ticks_left" in kargs and not kargs["ticks_left"]:
+            ax.tick_params(left="off")
+        if "ticks_right" in kargs and not kargs["ticks_right"]:
+            ax.tick_params(right="off")       
 
     def _stacked_plots(self, filename, loc, features, graphs, merged=False, **kargs):
         """
@@ -1518,8 +1663,7 @@ class draw:
             ax2.set_xticklabels("")
             ax2.set_yticklabels("")
             ax2.set_ylabel("")
-            [item.set_markeredgewidth(0.0) for item in ax2.xaxis.get_ticklines()]
-            [item.set_markeredgewidth(0.0) for item in ax2.yaxis.get_ticklines()]
+            ax2.tick_params(top=False, bottom=False, left=False, right=False)
             ax2.set_ylim([0, 1])
             ax2.set_xlim([0, len(graphs[key])])
 
@@ -1600,8 +1744,7 @@ class draw:
         ax3.set_yticklabels("")
         ax3.set_xticklabels("")
         ax3.yaxis.tick_right()
-        [item.set_markeredgewidth(0.0) for item in ax3.xaxis.get_ticklines()]
-        [item.set_markeredgewidth(0.0) for item in ax3.yaxis.get_ticklines()]
+        ax3.tick_params(top=False, bottom=False, left=False, right=False)
         #[t.set_fontsize(6) for t in ax3.get_yticklabels()] # generally has to go last.
         #[t.set_fontsize(6) for t in ax3.get_xticklabels()]
 
@@ -1660,7 +1803,7 @@ class draw:
         fig = self.getfigure(aspect="square")
         ax = fig.add_subplot(111)
         
-        ax.scatter(x, y, s=spot_size, c="black", alpha=0.2, edgecolors="none")
+        ax.scatter(x, y, s=spot_size, c="grey", alpha=0.2, edgecolors="none")
         
         if "spots" in kargs and kargs["spots"]:
             if "spots_cols" in kargs and kargs["spots_cols"]:
@@ -1672,7 +1815,7 @@ class draw:
             if "spot_labels" in kargs and kargs["spot_labels"]:
                 # for the matplot.lib < 100: I want to label everything.
                 for i, n in enumerate(kargs["spot_labels"]):
-                    ax.annotate(n, (kargs["spots"][0][i], kargs["spots"][1][i]), size=6)
+                    ax.annotate(n, (kargs["spots"][0][i], kargs["spots"][1][i]), size=16, color="black", ha="center", va="center")
         
         if print_correlation or do_best_fit_line:
             # linear regression
@@ -1680,16 +1823,21 @@ class draw:
             xr = polyval([ar,br], x)
             slope, intercept, r_value, p_value, std_err = linregress(x,y)
     
+            # I think this line is actually wrong?
             mx = [min(x), max(x)]
             my = [slope * min(x) + intercept, slope * max(x) + intercept]
-    
-            ax.plot(mx, my, "r.-")
+            
+            # Only draw if specified:
+            if do_best_fit_line:
+                ax.plot(mx, my, "r.-")
             
             if print_correlation:
                 if print_correlation == "r":
                     ax.set_title("R=%.4f" % r_value)
                 elif print_correlation == "r2":
                     ax.set_title("R2=%.4f" % (r_value*r_value))
+                elif print_correlation == "pearson":
+                    ax.set_title("Pearson=%.4f" % scipy.stats.pearsonr(x,y)[0])
         if plot_diag_slope:
             ax.plot([min(x+y), max(x+y)], [min(x+y), max(x+y)], ":", color="grey")
         
@@ -1774,12 +1922,17 @@ class draw:
                     err_up[i] = [a - b for a, b in zip(err_up[i], n)]
                 if err_dn:
                     err_dn[i] = [b - a for a, b in zip(err_dn[i], n)]
-                   
+                
+        if "cond_names" in kargs:
+            labs = kargs["cond_names"]
+        else: # fake one
+            labs = ["" for t in da]
+                
         if not cols:
             # I need to generate a series of colours.
-            cmap = cm.get_cmap(cm.Paired, len(kargs["cond_names"]))
+            cmap = cm.get_cmap(cm.Paired, len(labs))
             cols = []
-            step = 256 // len(kargs["cond_names"]) 
+            step = 256 // len(labs) 
             for t in xrange(1, 256, step):
                 cols.append(cmap(t))
             #print cols
@@ -1795,11 +1948,6 @@ class draw:
         err_dn = array(err_dn).T
         wid = (1.0 / len(da))-0.05
         x = arange(len(da[0]))
-               
-        if "cond_names" in kargs:
-            labs = kargs["cond_names"]
-        else: # fake one
-            labs = ["" for t in da]
     
         general_args = {"ec": "black", "ecolor": "black"} 
         
@@ -1825,8 +1973,7 @@ class draw:
         
         self.do_common_args(ax, **kargs)
         
-        [item.set_markeredgewidth(0.0) for item in ax.xaxis.get_ticklines()]
-        [item.set_markeredgewidth(0.0) for item in ax.yaxis.get_ticklines()]
+        ax.tick_params(top=False, bottom=False, left=False, right=False)
         #[t.set_fontsize(6) for t in ax3.get_yticklabels()] # generally has to go last.
         [t.set_fontsize(6) for t in ax.get_yticklabels()]
         
@@ -1846,7 +1993,7 @@ class draw:
             extra_args["autopct"] = "%1.1f%%"
         
         if colours:
-            texts = ax.pie(data, labels=labels, shadow=False, colors=colours, **extra_args)
+            texts = ax.pie(data, labels=labels, shadow=False, colors=colours, labeldistance=1.03, **extra_args)
             
         elif cmap:
             ld = len(data)
@@ -1855,9 +2002,9 @@ class draw:
             colours = cmap(ran)[:,:-1]
             colours = [rgb2hex(col) for col in colours] # rgb2hex from matplotlib not needed, but easier to print
             
-            texts = ax.pie(data, labels=labels, shadow=False, colors=colours, **extra_args)           
+            texts = ax.pie(data, labels=labels, shadow=False, colors=colours, labeldistance=1.1, **extra_args)           
         else:
-            texts = ax.pie(data, labels=labels, shadow=False, **extra_args)
+            texts = ax.pie(data, labels=labels, shadow=False, labeldistance=1.03, **extra_args)
         
         plot.setp(texts[1], fontsize=font_size)
         
@@ -1867,11 +2014,11 @@ class draw:
         return(self.savefigure(fig, filename))
         
     def beanplot(self, data, filename, violin=True, order=None, mean=False, median=True, alpha=0.2, 
-        **kargs):
+        beans=True, **kargs):
         """
         http://statsmodels.sourceforge.net/devel/_modules/statsmodels/graphics/boxplots.html#beanplot
         **Purpose**
-            A beanplot/beeswarm!
+            A beanplot/beeswarm/violin plot!
             
         **Arguments**
             data 
@@ -1885,6 +2032,9 @@ class draw:
             violin (Optional, default=True)
                 Draw a KDE violin around the points
                 
+            beans (Optional, default=True)
+                draw the beans!
+                
             means (Optional, default=False)
                 draw red lines for means on each plot
             
@@ -1893,7 +2043,7 @@ class draw:
                 
             order (Optional, default=None)
                 list of the keys in the order you want them.
-                Also doubles as lables.
+                Also doubles as labels.
             
             alpha (Optional, default=0.2)
                 The alpha value to use for transparency of the spots (0...1)
@@ -1925,33 +2075,39 @@ class draw:
         cmax = 0
         bins = 50
         for x, d in enumerate(order):
-            x_data = np.linspace(min(data[d]), max(data[d]), bins)
+            x_data = np.linspace(min(data[d]), max(data[d]), bins+2)
             # get the violin: required, even if not drawn.
-            y_violin = utils.kde(data[d], range=(min(data[d]), max(data[d])), bins=bins, covariance=0.2)
-            y_violin = ((y_violin / max(y_violin))/2.1) # normalise
-            if violin:
-                ax.plot(x+y_violin, x_data, color="grey")
-                ax.plot(x-y_violin, x_data, color="grey")
+            # Check that there is some variation. If no variation then utils.kde will break
+            if numpy.std(data[d]) > 0:
+                y_violin = utils.kde(data[d], range=(min(data[d]), max(data[d])), bins=bins, covariance=0.2)
+                y_violin = ((y_violin / max(y_violin)) / 2.1) # normalise
+                y_violin = numpy.insert(y_violin, 0, 0)
+                y_violin = numpy.append(y_violin, 0)
             
-            jitter_envelope = np.interp(data[d], x_data, y_violin)
-            jitter_coord = jitter_envelope * (np.random.uniform(low=0, high=1, size=len(data[d])) + np.random.uniform(low=-1, high=0, size=len(data[d])))
-
-            ax.scatter(jitter_coord+x, data[d], alpha=alpha, edgecolor="none", s=10)#, color="red")
+                if violin:
+                    ax.plot(x+y_violin, x_data, color="grey")
+                    ax.plot(x-y_violin, x_data, color="grey")
+            
+                jitter_envelope = np.interp(data[d], x_data, y_violin)
+                jitter_coord = jitter_envelope * (np.random.uniform(low=0, high=1, size=len(data[d])) + np.random.uniform(low=-1, high=0, size=len(data[d])))
+                if beans:
+                    ax.scatter(jitter_coord+x, data[d], alpha=alpha, edgecolor="none", s=10)#, color="red")
             
             if median:
-                ax.plot([x-0.3, x+0.3], [np.median(data[d])]*2, c="red")
-            elif mean:
-                ax.axhline([x-0.3, x+0.3], [np.mean(data[d])]*2, c="red")
+                ax.plot([x-0.3, x+0.3], [numpy.median(data[d])]*2, c="green")
+            if mean:
+                ax.plot([x-0.3, x+0.3], [numpy.mean(data[d])]*2, c="red")
                 
             if max(data[d]) > cmax: 
                 cmax = max(data[d])
             if min(data[d]) < cmin:
                 cmin = min(data[d])
                 
-        ax.set_xticklabels([""] + order)            
+        ax.set_xticklabels(order)            
         
         ax.set_ylim([cmin, cmax])
-        ax.set_xlim([-0.6, len(data)-0.4])
+        ax.set_xlim([-0.6, len(order)-0.4])
+        ax.set_xticks([i for i in xrange(len(order))]) # xticks must be 1 separated to get all labels for line up
         
         fig.autofmt_xdate()
         

@@ -64,7 +64,7 @@ fasta = fc(name="fasta",
 
 gtf = fc(name="gtf",
     description="GTF, gene transfer file format.",
-    format={"feature_type": 1, "feature": 2, "gtf_decorators": 8,
+    format={"feature_type": 1, "feature": 2, "gtf_decorators": 8, "commentlines": "#",
         "loc": "location(chr=column[0], left=column[3], right=column[4])", 
         "strand": 6, "skiplines": -1, "force_tsv": True})
 
@@ -97,7 +97,7 @@ encode_broadpeak = fc("encode_broadpeak",
 # --------------------- motif discovery formats
 fimo_out = fc(name="fimo_out", 
     description="Load in the fimo.txt file output by FIMO, part of the MEME suite.",
-    format={"force_tsv": True, "pattern-name": 0, "sequence": 1, "score": 4,
+    format={"force_tsv": True, "pattern-name": 0, "name": 1, "score": 4,
         "p-value": 5, "q-value": 6, "sequence": 7, 
         "loc": "location(chr=column[1], left=min(column[2], column[3]), right=max(column[2], column[3]))"})
 
@@ -124,6 +124,11 @@ homer_peaks = fc(name="homer_peaks",
     format={"loc": {"code": "location(chr=column[1], left=column[2], right=column[3])"},
     "force_tsv": True, "commentlines": "#", "tagcount": 5},
     description="file format output by HOMER findPeaks")
+
+dfilter_bed = fc(name="dfilter_bed",
+    format={"loc": {"code": "location(chr=column[0], left=column[1], right=column[2])"},
+        "p_value": 5, "tag_count": 6, "force_tsv": True, "skiplines": 1},
+    description="file format output by DFilter")
 
 # --------------------- next-gen sequencing formats:
 # This is not a full implementation of the sam file specification.
@@ -179,6 +184,11 @@ illumina_anotations = {"array_systematic_name":0, "refseq": 3, "entrez": 7}
 snp_txt = dict(bin=0, name=4, score=5, strand=6, refNCBI=7, refUCSC=8, observed=9,
     molType=10, cclass=11, valid=12, avHet=13, avHetSE=14, func=15, locType=16, weight=17,
     loc={"code": "location(chr=column[1], left=column[2], right=column[3])"}, force_tsv=True)
+
+ncbi_gwas = fc(name="ncbi_gwas",
+    format={'force_tsv': True, 'loc': 'location(chr=column[11], left=int(column[12]), right=int(column[12])+1)', 
+    'snp_name': 20, 'associated_gene': 13, '__column_must_be_used': 11},
+    description="Export from the NCBI GWAS Catalog. Will only load data that has a valid genomic location")
 
 # --------------------- microarray-like file formats
 array_tsv = {"refseq": 0, "entrez": 1, "symbol": 2,
@@ -241,12 +251,12 @@ hg18_refseq = fc(name="hg18_refseq",
     description="The Hg18 RefSeq gene table as downloaded from the UCSC Genome Browser")
 
 # --------------------- miscellaneous
-homer_annotated= {"loc": "location(chr=column[0], left=column[1], right=column[2])",
+homer_annotated = {"loc": "location(chr=column[0], left=column[1], right=column[2])",
     "peak_id":3,"motif_score":4,"strand": 5,"motif_seq":6,"summit_dist":7,
     "summit_height":8,"nearest_gene":9,"TSS_dist":10,"annotation":11, 
     "force_tsv": True,"skiplines": -1} 
 
-MACS_combined={"loc": "location(chr=column[0], left=column[1], right=column[2])","peak_id":3,
+MACS_combined = {"loc": "location(chr=column[0], left=column[1], right=column[2])","peak_id":3,
     "summit_height":4,"p-value_score": 5,"number_tags":6,"fold_enrichment":7,"FDR":8, "force_tsv": True,
     "skiplines": -1}
 
@@ -266,6 +276,24 @@ blast_tabular = fc(name="blast_tabular",
         'subjectStart': 8, 'subjectEnd': 9, 'eVal': 10, 'bitScore': 11,
         "force_tsv": True, "skiplines": -1},
     description="The default BLAST tabular format output")
+
+# --------------------- Interproscan and HMMER
+
+hmmer_tbl = fc(name="hmmer_tbl",
+    description="hmmsearch/hmmscan --tbl_out loader",
+    format={"special": "hmmer_tbl"})
+
+# --------------------- GO outputs
+
+go_GREAT_shown = fc(name="go_GREAT_shown",
+    description="GO shown-* tables from GREAT",
+    format={"commentlines": "#", "term": 0, "rank": 1, "q-value": 3, "force_tsv": True}
+    )
+
+go_DAVID = fc(name="go_DAVID",
+    description="GO table saved from DAVID 'functional Chart' view",
+    format={"force_tsv": True, "ontology": 0, 'count': 2, "name": 1, "qvalue": 11, "pvalue": 4}
+    )
 
 # --------------------- class container
 
@@ -296,7 +324,7 @@ class fccatalogue():
     def find(self, value):
         """
         **Purpose**
-            find a particular motif based on value
+            find a particular motif format on value
             
         **Arguments**
             value
@@ -316,10 +344,15 @@ class fccatalogue():
 catalogue = fccatalogue([fimo_out, fasta, gtf, bed, full_bed, minimal_bed,
     exporttxt_loc_only, exporttxt_all, mm8_refgene, mm9_refgene, mm10_refgene, hg18_refseq, hg19_refgene,
     snp, pgsnp, psl, encode_rna_expn, encode_broadpeak, sam_tophat, sam_tophat_xs, sam, 
-    blast_tabular, rsem_gene, bowtie_loc_only, bowtie, homer_peaks])
+    blast_tabular, rsem_gene, bowtie_loc_only, bowtie, homer_peaks, hmmer_tbl, dfilter_bed,
+    # GO lists:
+    go_GREAT_shown, go_DAVID, 
+    ncbi_gwas,
+    ])
          
 if __name__ == "__main__":
     print catalogue
-    #print "Find:"
-    #catalogue.find("bed")
+    print 
+    print "Find:"
+    catalogue.find("bed")
         

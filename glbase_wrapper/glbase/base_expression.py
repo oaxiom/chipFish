@@ -6,7 +6,7 @@ Basic handling for microarray and rna-seq and realtime PCR like data
 
 """
 
-import sys, os, csv, string, math, copy
+import sys, os, csv, string, math, collections
 
 from operator import itemgetter
 
@@ -19,6 +19,7 @@ from draw import draw
 from genelist import genelist
 from progress import progressbar
 from errors import AssertionError, ArgumentError
+from utils import qdeepcopy
 
 class base_expression(genelist):
     def __init__(self, filename=None, loadable_list=None, format=None, expn=None, silent=False, **kargs):
@@ -109,22 +110,40 @@ class base_expression(genelist):
                         break
                 oh.close()
                 if not silent: 
-                    config.log.info("expression(): I guessed the condition names as '%s'" % ", ".join(self._conditions))
+                    config.log.info("expression(): I found the following conditions:")
+                print "\n".join(["%s\t%s" % (n, i) for n, i in enumerate(self._conditions)])
   
         # coerce the conditions errs etc to floats
-        for i in self:
-            i["conditions"] = [float(str(t).replace(",", "")) for t in i["conditions"]] # because somebody once sent me a file with ',' for thousands!
+        for idx, i in enumerate(self):
+            try:
+                i["conditions"] = [float(str(t).replace(",", "")) for t in i["conditions"]] # because somebody once sent me a file with ',' for thousands!
+            except ValueError:
+                config.log.warning("line %s, contains missing data (%s), filling with 0" % (idx, i["conditions"]))
+                i["conditions"] = [0 for t in self._conditions] # Use conditions as the example I had here was also missing all of the other values.
+                
+            # These will bomb on missing data... 
             if "err" in i:
                 i["err"] = [float(t) for t in i["err"]]
             if "cv_err" in i:
                 i["cv_err"] = [float(t) for t in i["cv_err"]]
-        
+
         self._optimiseData()
         if not silent:
-            config.log.info("expression(): loaded %s items" % len(self))
+            config.log.info("expression(): loaded %s items, %s conditions" % (len(self), len(self.getConditionNames())))
         
     def __repr__(self):
         return("glbase.expression")
+
+    def _load_numpy_back_into_linearData(self):
+        """
+        For routines that make a change in self.numpy_array_all_data
+        
+        this must be called after to propogate the changes back into linearData
+        
+        """
+        for i, row in enumerate(self.numpy_array_all_data):
+            self.linearData[i]["conditions"] = list(row)
+        self._optimiseData() 
 
     def _optimiseData(self):
         """
@@ -150,8 +169,15 @@ class base_expression(genelist):
         # presumably something downstream is doing something nasty.
 
         return(True)
+
+    def saveCSV(self, filename=None, interleave_errors=True, no_header=False, no_col1_header=False, **kargs):
+        """
+        A CSV version of saveTSV(), see saveTSV() for syntax
+        """
+        self.saveTSV(filename=filename, tsv=False, interleave_errors=True, no_header=False, no_col1_header=False, **kargs)
+        config.log.info("saveCSV(): Saved '%s'" % filename)
         
-    def saveTSV(self, filename=None, tsv=True, interleave_errors=True, **kargs):
+    def saveTSV(self, filename=None, tsv=True, interleave_errors=True, no_header=False, no_col1_header=False, **kargs):
         """
         (Override)
         **Purpose**
@@ -179,12 +205,30 @@ class base_expression(genelist):
                 if interleave_errors=False then:
                 
                 Sample1 Sample2 Err1 Err2
+            
+            no_col1_header (Optional, default=False)
+                In case you want a table like this:
+                
+                    A   B   C   D
+                W   1   2   3   4
+                X   2   2   2   2
+                Y   2   2   2   2
+                Z   2   2   2   2
+
+                i.e. the top left column label is empty.
 
         **Returns**
             returns None
 
         """
-        valig_args = ["filename", "tsv", "key_order"]
+        self._save_TSV_CSV(filename=filename, tsv=True, interleave_errors=True, no_header=False, no_col1_header=False, **kargs)
+        config.log.info("saveTSV(): Saved '%s'" % filename)
+        
+    def _save_TSV_CSV(self, filename=None, tsv=True, interleave_errors=True, no_header=False, no_col1_header=False, **kargs):
+        """
+        Internal unified saveCSV/TSV for expression objects
+        """
+        valig_args = ["filename", "tsv", "key_order", "no_header"]
         for k in kargs:
             if k not in valig_args:
                 raise ArgumentError, (self.saveCSV, k)
@@ -212,13 +256,13 @@ class base_expression(genelist):
 
         if "err" in self.keys():
             if interleave_errors:
-                title_row = [k for k in write_keys if k in self.keys()]
-                
                 conds = ["mean_%s" % c for c in self.getConditionNames()]
                 errs = ["err_%s" % c for c in self.getConditionNames()]
                 paired = [val for pair in zip(conds, errs) for val in pair]
                 
-                writer.writerow(title_row + paired)
+                if not no_header:
+                    title_row = [k for k in write_keys if k in self.keys()]            
+                    writer.writerow(title_row + paired)
 
                 for data in self.linearData:
                     line = [data[k] for k in write_keys if k in data]
@@ -228,8 +272,9 @@ class base_expression(genelist):
                     writer.writerow(line + interleaved_data)# conditions go last.
                 oh.close()
             else:
-                title_row = [k for k in write_keys in k in self.keys()]
-                writer.writerow(write_keys + self.getConditionNames() + ["err_%s" % i for i in self.getConditionNames()])
+                if not no_header:
+                    title_row = [k for k in write_keys in k in self.keys()]
+                    writer.writerow(write_keys + self.getConditionNames() + ["err_%s" % i for i in self.getConditionNames()])
 
                 for data in self.linearData:
                     line = [data[k] for k in write_keys if k in data]
@@ -237,15 +282,17 @@ class base_expression(genelist):
                 oh.close()
                 
         else: # no error, very easy:
-            title_row = [k for k in write_keys if k in self.keys()]
-            writer.writerow(title_row + self.getConditionNames())
-
+            if not no_header:
+                title_row = [k for k in write_keys if k in self.keys()]
+                if no_col1_header:
+                    title_row[0] = ""
+                writer.writerow(title_row + self.getConditionNames())
+            
             for data in self.linearData:
                 line = [data[k] for k in write_keys if k in data]
                 writer.writerow(line + data["conditions"])# conditions go last.
             oh.close()
-                
-        config.log.info("saveTSV(): Saved '%s'" % filename)
+
         return(None)
         
     def sort(self, key):
@@ -288,7 +335,7 @@ class base_expression(genelist):
             a genelist-like object or load it into an empty genelist.
             This is the method to do that officially.
 
-            This method should be used with great care. Some sanity
+            This method should be used with care. Some sanity
             checking is done. But not very much.
             
             This load_list is modified for expression-like genelists. 
@@ -356,13 +403,18 @@ class base_expression(genelist):
         """
         returns a list of the condition headers
         """
-        return(self._conditions)
+        return(list(self._conditions))
 
     def setConditionNames(self, new_cond_names):
         """
         rename the conditions names for the expression data
+        
+        THIS IS AN IN-PLACE method and returns None
         """
         assert len(new_cond_names) == len(self._conditions), "setConditionNames(): new and old condition names are different lengths (%s vs. %s)" % (len(new_cond_names), len(self._conditions))
+        if len(set(new_cond_names)) != len(self._conditions):
+            dupes = [x for x, y in collections.Counter(new_cond_names).items() if y > 1]
+            raise AssertionError, "setConditionNames(): Due to a variety of complicated reasons, condition names MUST be unique, non-unique names are: %s" % (", ".join(dupes))
         
         self._conditions = list(new_cond_names)
         self._optimiseData()

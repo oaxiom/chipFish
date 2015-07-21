@@ -213,7 +213,7 @@ class motif:
                 item["%s_seqs" % self.name] = "None"
                 newl.append(item)
                     
-        newgl = seq_data.__copy__()
+        newgl = seq_data.shallowcopy()
         newgl.load_list(newl)
         return(newgl)                
 

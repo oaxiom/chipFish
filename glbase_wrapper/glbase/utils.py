@@ -9,7 +9,7 @@ degenerate character N=[ATCG]
 
 """
 
-import sys, os, numpy, string, csv, random, math
+import sys, os, numpy, string, csv, random, math, cPickle
 import scipy.stats as stats
 from scipy.spatial.distance import pdist
 
@@ -870,7 +870,7 @@ def scale_data(array_like, range=(0, 100)):
             scaled[fi] += numpy.average(val)
     return(scaled)
 
-def kde(val_list, range=(0,1), covariance=0.02, bins=50):
+def kde(val_list, range=(0,1), covariance=0.02, bins=20):
     """
     kernal denstity estimation of an array
     
@@ -878,13 +878,12 @@ def kde(val_list, range=(0,1), covariance=0.02, bins=50):
     """
     a = numpy.linspace(range[0], range[1], bins)
     
-    # Hack gaussian_kde()
     def covariance_factor(self):
         return covariance
     
     kde = stats.gaussian_kde(val_list)
-    setattr(kde, 'covariance_factor', covariance_factor.__get__(kde, type(kde)))
-    kde._compute_covariance()
+    #setattr(kde, 'covariance_factor', covariance_factor.__get__(kde, type(kde))) # Hack gaussian_kde()
+    #kde._compute_covariance()
 
     kk = kde.evaluate(a) # resacle to get in integer range.
     
@@ -1174,6 +1173,12 @@ def fold_change(c1, c2, log=2, pad=1e-6):
             config.log.error("(%.2f/%.2f) failed" % (c1v, c2v))
         raise Exception("__fold_change() encountered an error, possibly the pad value is too small, or you are trying to apply fold-change to log transformed data")
 
+def rgba_to_hex(rgba_color):
+    return ('#{r:02x}{g:02x}{b:02x}'.format(r=int(rgba_color[0]*255),g=int(rgba_color[1]*255),b=int(rgba_color[2]*255)))
+
+def qdeepcopy(anobject):
+    # You should wrap me in a try: except:
+    return(cPickle.loads(cPickle.dumps(anobject, -1)))
 
 if __name__ == "__main__":
     # small tester for euclidean_distance()

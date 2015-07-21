@@ -1,0 +1,16 @@
+The glbase todo list:
+o = partially implemented
+-----------------------
+
+o. BAM/SAM loading. [SAM done]
+
+.. test-case for mask_zero in flat_pileup
+
+.. merge flat_track and track pileup()
+
+.. output of rawtag_filename data for track and flat_track. 
+
+o. Ability to skip track type= or # etc. lines on snp, bed, gtf, pgsnp etc...
+    - but these lines should be stored and resaved out?
+    
+.. Add meme and HOMER motif file output for pwms
