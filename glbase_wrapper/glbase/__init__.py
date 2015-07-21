@@ -76,6 +76,7 @@ from .location import location
 from .genelist import genelist
 from .expression import expression
 from .genome import genome
+from .genome_sql import genome_sql # To replace genome
 from .delayedlist import delayedlist
 from .glglob import glglob
 from .element import motif
@@ -111,7 +112,7 @@ def version():
     config.log.info("The working directory is: '%s'" % (os.getcwd()))
 
 # export all of the libraries, methods and helpers.
-__all__ = ["genelist", "fastq", "expression", "genome", "track", "flat_track", "delayedlist", 
+__all__ = ["genelist", "fastq", "expression", "genome", "genome_sql", "track", "flat_track", "delayedlist", 
             "glgo", # primary objects
             "rigidgrid", # Temporarily available
             "location", "pwm", "pwms", #accesory objects 

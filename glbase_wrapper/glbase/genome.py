@@ -4,7 +4,7 @@ Genome
 
 TODO:
 -----
-
+. To be replaced by genome_sql
 
 """
 

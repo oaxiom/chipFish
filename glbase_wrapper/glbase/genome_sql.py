@@ -104,7 +104,7 @@ class genome_sql(base_track):
             return(True)
         return(False)
 
-    def add_feature(self, loc, cds_loc, exonCounts, exonStarts, exonEnds, name, strand="+", increment=1):
+    def add_feature(self, loc, cds_loc, exonCounts, exonStarts, exonEnds, name, strand):
         """
         **Purpose**
             Add a location to the track.
@@ -115,8 +115,6 @@ class genome_sql(base_track):
             loc
 
             strand
-
-            increment
 
         **Returns**
             True, if completes succesfully, or exception.
@@ -136,92 +134,16 @@ class genome_sql(base_track):
         table_name = "chr_%s" % str(loc["chr"])
 
         # get the old number of seq_reads
-        c.execute("SELECT seq_reads FROM main WHERE chromosome=?", (loc["chr"], ))
+        c.execute("SELECT num_features FROM main WHERE chromosome=?", (loc["chr"], ))
         current_seq_reads = c.fetchone()[0] # always returns a tuple
 
-        c.execute("UPDATE main SET seq_reads=? WHERE chromosome=?", (current_seq_reads+1, loc["chr"]))
+        c.execute("UPDATE main SET num_features=? WHERE chromosome=?", (current_seq_reads+1, loc["chr"]))
 
         # add the location to the seq table:
         insert_data = (loc['left'], loc['right'], cds_loc['left'], cds_loc['right'], str(exonStarts), str(exonEnds), str(name), str(strand))
-        c.execute("INSERT INTO %s VALUES (?, ?, ?)" % table_name, insert_data)
+        c.execute("INSERT INTO %s VALUES (?, ?, ?, ?, ?, ?, ?, ?)" % table_name, insert_data)
 
-        c.close()
-
-    def get(self, loc, resolution=1, read_extend=0, kde_smooth=False, 
-        view_wid=0, strand=False, **kargs):
-        """
-        **Purpose**
-            get the data between location 'loc' and return it formatted as
-            a nbp resolution array
-
-        **Arguments**
-            loc (Required)
-                a valid location or string location.
-
-            resolution (Optional, default = 1bp)
-                nbp resolution required (you should probably send a float for accurate rendering)
-
-            read_extend (Optional, default = 0)
-                extend the read length to 'fill in the peak'
-                if the original reads are 36bp, then add ~70bp to give an
-                estimated size of the peak.
-                If the reads are end-based, then set this to the estimated
-                size of the DNA shear.
-            
-            kde_smooth (Experimental)
-                perform kde smoothng on the data, using the integer specified as an option.
-                In this case the read_extend acts as a tag shift instead of a read_extend
-                Hence set that to half of the expected shear size.
-
-            strand (Optional, default=False)
-                collect only reads on the specified strand. (track will use read strand 
-                information intelligently, if present).
-    
-        **Returns**
-            an 'numpy.array([0, 1, 2 ... n])' contiginous array
-            or a tuple containing two arrays, one for each strand.
-        """
-        if not isinstance(loc, location):
-            loc = location(loc=loc)
-        extended_loc = loc.expand(read_extend)
-
-        result = self.get_reads(extended_loc, strand=strand)
-        
-        if kde_smooth:
-            return(self.__kde_smooth(loc, result, resolution, 0, view_wid, read_extend))
-
-        loc_left = loc["left"]
-        loc_right = loc["right"]
-
-        # make a single array
-        a = [0] * int( (loc_right-loc_left+resolution)/resolution ) # Fast list allocation
-        # Python lists are much faster for this than numpy or array
-
-        len_a = len(a)
-        
-        for r in result:
-            read_left, read_right, strand = r
-            if strand == "+":
-                read_right += (read_extend + 1) # coords are open
-            elif strand == "-" :
-                read_left -= read_extend
-                read_right += 1 # coords are open 
-            
-            rel_array_left = int((read_left - loc_left) // resolution)
-            rel_array_right = int((read_right - loc_left) // resolution)        
-            
-            if rel_array_left <= 0:
-                rel_array_left = 0
-            if rel_array_right > len_a:
-                rel_array_right = len_a
-            
-            for array_relative_location in xrange(rel_array_left, rel_array_right, 1):
-                a[array_relative_location] += 1
-            
-            #a[rel_array_left:rel_array_right] += 1 # Why is this slower than the for loop? # could be done with num_expr?
-            
-            #[a[array_relative_location].__add__(1) for array_relative_location in xrange(rel_array_left, rel_array_right, 1)] # just returns the exact item, a is unaffected?
-        return(numpy.array(a)*self.norm_factor)             
+        c.close()          
 
     def getFeatures(self, loc=None, **kargs):
         """
@@ -244,83 +166,14 @@ class genome_sql(base_track):
         except:
             raise AssertionError, "cannot cooerce location into correct form. Location is mangled?"
 
-        ret = []
-        if loc["chr"] in self.dataByChr:
-            for item in self.dataByChr[loc["chr"]]:
-                #print location["left"], location["right"], item["loc"]["left"], item["loc"]["right"]
-                if utils.qcollide(loc["left"], loc["right"], item["loc"]["left"], item["loc"]["right"]):
-                    # make a suitable draw object
-                    if 'type' not in item:
-                        item["type"] = "gene" # set the type flag for gDraw
-                    ret.append(item)
-        return(ret)
-                
-    def get_reads(self, loc, strand=None):
-        """
-        **Purpose**
-            get all of the sequence reads between location 'loc' and return
-            it formatted as a list of tuples: (left, right, strand), seq reads.
-
-        **Arguments**
-            loc (Required)
-                a valid location or string location.
-
-        **Returns**
-            a list containing all of the reads between loc.
-        """
-        #if not isinstance(loc, location):
-        #    loc = location(loc=loc)
-
-        #if len(loc["chr"]) < 30: # small security measure.
         table_name = "chr_%s" % loc["chr"]
 
-        #result = self._connection.execute("SELECT * FROM %s WHERE (?>=left AND ?<=right) OR (?>=left AND ?<=right) OR (left<=? AND right>=?) OR (?<=left AND ?>=right)" % table_name,
-        #    (loc["left"], loc["left"], loc["right"], loc["right"], loc["left"], loc["right"], loc["left"], loc["right"]))
-        
-        # This is the code used in location.collide():
-        #self["right"] >= loc["left"] and self["left"] <= loc["right"]
-        result = self._connection.execute("SELECT left, right, strand FROM %s WHERE (right >= ? AND left <= ?)" % table_name,
+        result = self._connection.execute("SELECT * FROM %s WHERE (transcript_right >= ? AND transcript_left <= ?)" % table_name,
             (loc["left"], loc["right"]))
-    
-        #result = None       
-        result = result.fetchall() # safer for empty lists and reusing the cursor
-        
-        if result and strand: # sort out only this strand
-            if strand in positive_strand_labels:
-                strand_to_get = positive_strand_labels
-            elif strand in negative_strand_labels:
-                strand_to_get = negative_strand_labels
-            
-            newl = []
-            for r in result:
-                if r[2] in strand_to_get:
-                    newl.append(r)
-            result = newl                    
+      
+        result = result.fetchall() # safer for empty lists and reusing the cursor          
 
         return(result)
-
-    def get_read_count(self, loc):
-        """
-        **Purpose**
-            get the number of reads within the location specified
-
-        **Arguments**
-            loc (Required)
-                a valid location or string location.
-
-        **Returns**
-            an integer (or 0) containing the number of reads falling within
-            the location string.
-        """
-        if not self._c:
-            self._c = self._connection.cursor()
-
-        table_name = "chr_%s" % loc["chr"]
-
-        self._c.execute("SELECT left, right, strand FROM %s WHERE (right >= ? AND left <= ?)" % table_name,
-            (loc["left"], loc["right"]))
-            
-        return(len(self._c.fetchall()))
 
     def get_chromosome_names(self):
         """
@@ -340,26 +193,7 @@ class genome_sql(base_track):
         r = [i[0] for i in self._c.fetchall()]
         return(set(r))
 
-    def get_numreads_on_chromosome(self, name):
-        """
-        **Purpose**
-            Return the number of reads on chromosme name
-            
-        **Arguments**
-            name (Required)
-                get the number of reads on chromsome 'name'
-            
-        **Returns**
-            An integer containing the number of reads
-        """
-        if not self._c:
-            self._c = self._connection.cursor()
-
-        self._c.execute("SELECT chromosome, seq_reads FROM main WHERE chromosome=?", (str(name), ))
-        r = self._c.fetchone()
-        return(r[1])
-
-    def get_total_num_reads(self):
+    def get_feature_count(self):
         """
         **Purpose**
             Return the number total number of reads for this track.
@@ -396,3 +230,156 @@ class genome_sql(base_track):
             for i in chr_table_res:
                 print " ", i
         c.close()
+        
+    def bindSequence(self, path=None):
+        """
+        **Purpose**
+
+        Bind genome fasta files so that this genome object will recognise
+        the sequence. This step is required if you want to use fastalists
+        and genome.getSequence()
+
+        **Arguments**
+
+        path
+            path specifying the locations of the FASTA files that make
+            up the sequence data. They usually come in the form "chr1.fa"
+            for human and mouse genomes.
+            
+            bindSequence will only work with multi-fasta files, i.e. the fasta genome should 
+            be in the form:
+            
+            FILE: chr1.fa::
+            
+                >chr1 
+                NNNNNNNNNNNNNNNNNNNNNNNN
+            
+            FILE: chr2.fa::
+            
+                >chr2 
+                NNNNNNNNNNNNNNNNNNNNNNNN
+
+            etc.
+            
+            The names of the chromosomes will come from the names of the fasta files before the 
+            period and with 'chr' removed (if present), so for example:
+            
+            chr1.fa 
+
+            will result in '1' entries in the db.
+            
+            And similarly '1.fa' will result in chr names of '1'. 
+
+        **Result**
+
+        returns True if complete.
+        genome.getSequence(loc="chrN:left-right") will now correctly return
+        the sequence specified by the location.
+        """
+        raise NotImplementedError
+        
+    def getSequence(self, loc=None, **kargs):
+        """
+        **Purpose**
+
+        get the sequence under coords...
+
+        **Arguments**
+
+        loc or coords (one is Required)
+            genomic coordinates of the form "chr1:100100-100200"
+
+        strand
+            Use, +, f, top, forward, 0, for the top strand
+            Use, -, r, bottom, reverse, 1, for the reverse complement strand
+            If the strand is not specified then the + strand will be returned.
+
+        mask (Optional, default=False)
+            'repeat mask' the returned sequence (i.e. convert lower-case
+            acgt to NNNN). DOES NOT perform repeat masking. Only converts lower-cased
+            bases to NNN. 
+
+        **Result**
+
+        returns a string containing the sequence at 'coords'
+        """
+        raise NotImplementedError
+    
+    def getSequences(self, genelist=None, loc_key='loc', replace_loc_key=True, strand_key=False, 
+        mask=False, pointify=False, delta=False, **kargs):
+        """
+        **Purpose**
+
+        Get all of the sequences from a gene_list-like object (e.g. a peaklist,
+        microarray, etc) with some sort of valid location key (e.g. "chr1:10000-20000")
+
+        I've checked this extensively - if you provide the correct location
+        it will send back the correct sequence. Any further errors are
+        generally from wrong locations. So Heh.
+
+        **Arguments**
+
+        genelist (Required)
+            some sort of genelist-like object
+
+        loc_key (Required)
+            the name of the location key (e.g. "loc", "tss_loc", "coords", etc..)
+
+        Optional Arguments
+
+        replace_loc_key (Optional, default=True)
+            If you specify a delta then the sequence will cover a different region than that
+            specified in the loc key. hence getSequences() replaces the "loc" key with
+            the new loc for which the sequence was taken from. If you set this to False
+            then the old loc key is NOT overwritten.
+
+        strand_key
+            If you want the list to respect the strand you must tell it the name of
+            a 'strand' key.
+
+        deltaleft=n
+            expand the coordinates left by n base pairs
+            Will respect the orientation of the strand.
+            (You must specify a 'strand_key')
+
+        deltaright=n
+            expand the coordinates rightwards by n base pairs.
+            Will respect the orientation
+            of the strand.
+            (You must specify a 'strand_key')
+
+        delta=n
+            expand the coordinates by n, added onto the left and right
+
+        pointify (True|False, default=False)
+            turn the location into a single base pair based on the centre
+            of the coordinates (best used in combination with delta to
+            expand reads symmetrically, pointify will be performed before
+            the expansion of the coordinates)
+
+        mask (default=False)
+            use the upper and lower case of the fasta files to 'mask'
+            the sequence. This will turn acgt to NNNN.
+
+            This is not a proper repeat masker and relies on your genome
+            being repeat masked. For human and mouse this is usually true,
+            but for other genomes has not been tested.
+
+        **Result**
+
+        returns a copy of the original genelist-like object
+        with the new key "seq" containing the sequence.
+        Will add a new key "seq_loc" that contains the new location that
+        the seq spans across.
+        """
+        raise NotImplementedError
+
+if __name__ == '__main__':
+    gsql = genome_sql(new=True, filename='/tmp/test_genome_sql.sql')
+    gsql.add_feature(location(chr='chr1', left=111110, right=120000), 
+            location(chr='ch1', left=111110, right=120000), 
+            10, [1,2,3,4], [5,6,7,8], 
+            'Nanog', '+')
+    
+    print gsql.getFeatures(loc='chr1:100000-120000')
+        
