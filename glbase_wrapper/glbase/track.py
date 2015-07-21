@@ -42,9 +42,12 @@ class track(base_track):
             Use seqToTrk() in preference of this. But if you know what you are 
             doing then this will generate a new (empty) db.
 
+        norm_factor (Optional, default = 1.0)
+            An optional normalization factor. Data is multiplied by this number before display
+
     """
-    def __init__(self, name=None, new=False, filename=None, **kargs):
-        base_track.__init__(self, name, new, filename)
+    def __init__(self, name=None, new=False, filename=None, norm_factor=1.0, **kargs):
+        base_track.__init__(self, name, new, filename, norm_factor)
         
         if new:
             self.__setup_tables(filename)
@@ -172,6 +175,10 @@ class track(base_track):
                 In this case the read_extend acts as a tag shift instead of a read_extend
                 Hence set that to half of the expected shear size.
 
+            strand (Optional, default=False)
+                collect only reads on the specified strand. (track will use read strand 
+                information intelligently, if present).
+    
         **Returns**
             an 'numpy.array([0, 1, 2 ... n])' contiginous array
             or a tuple containing two arrays, one for each strand.
@@ -213,10 +220,10 @@ class track(base_track):
             for array_relative_location in xrange(rel_array_left, rel_array_right, 1):
                 a[array_relative_location] += 1
             
-            #a[rel_array_left:rel_array_right] += 1 # Why is this slower than the for loop?
+            #a[rel_array_left:rel_array_right] += 1 # Why is this slower than the for loop? # could be done with num_expr?
             
             #[a[array_relative_location].__add__(1) for array_relative_location in xrange(rel_array_left, rel_array_right, 1)] # just returns the exact item, a is unaffected?
-        return(numpy.array(a))
+        return(numpy.array(a)*self.norm_factor)
 
     def __kde_smooth(self, loc, reads, resolution, bandwidth, view_wid, read_shift=100):
         """
@@ -354,7 +361,7 @@ class track(base_track):
 
         #print "array_len", len(a)
 
-        return(numpy.array(a))
+        return(numpy.array(a)*self.norm_factor)
 
     def get_reads(self, loc, strand=None):
         """
@@ -674,9 +681,11 @@ class track(base_track):
                 #print only_do, n
                 break
             p.update(i)
-
+       
         if not self._draw:
             self._draw = draw()
+
+        pileup /= float(len(genelist)) # convert it back to a relative tag density.
 
         # matplotlib pileup graph
         fig = self._draw.getfigure(**kargs)
@@ -721,7 +730,7 @@ class track(base_track):
         return(ret)
 
     def heatmap(self, filename=None, genelist=None, distance=1000, read_extend=200, log=2, 
-        bins=20, sort_by_intensity=True, raw_heatmap_filename=None, bracket=None, **kargs):
+        bins=30, sort_by_intensity=True, raw_heatmap_filename=None, bracket=None, **kargs):
         """
         **Purpose**
             Draw a heatmap of the seq tag density drawn from a genelist with a "loc" key.
@@ -769,8 +778,7 @@ class track(base_track):
         p = progressbar(len(genelist.linearData))
         for idx, item in enumerate(genelist.linearData):
             l = item["loc"].pointify().expand(distance)
-            
-            row = self.get(l, read_extend=read_extend)
+            row = self.get(l, read_extend=read_extend) # You do not need to tell it to use the strand: It will use it knows to use strand if present.
        
             # bin the data
             row = numpy.array(utils.bin_data(row, bin_size))
@@ -813,7 +821,12 @@ class track(base_track):
         
         if filename:
             if not bracket:
-                bracket=[1, data.max()]
+                m = data.mean()
+                ma = data.max()
+                mi = data.min()
+                std = data.std()
+                bracket=[m, m+(std*2.0)]
+                config.log.info("track.heatmap(): I guessed the bracket ranges as [%.3f, %.3f]" % (bracket[0], bracket[1]))
             elif len(bracket) == 1: # Assume only minimum.
                 bracket = [bracket[0], data.max()]
             
@@ -822,9 +835,9 @@ class track(base_track):
         if raw_heatmap_filename:
             numpy.savetxt(raw_heatmap_filename, data, delimiter="\t")
             
-            config.log.info("saved raw_heatmap_filename to '%s'" % raw_heatmap_filename)
+            config.log.info("track.heatmap(): Saved raw_heatmap_filename to '%s'" % raw_heatmap_filename)
         
-        config.log.info("Saved heatmap tag density to '%s'" % filename)
+        config.log.info("track.heatmap(): Saved heatmap tag density to '%s'" % filename)
         return({"data": data})
 
     def measure_frip(self, genelist=None, sample=None, delta=None, pointify=False):
@@ -900,7 +913,7 @@ class track(base_track):
                 
                 trk.qc_encode_idr(chromosome_sizes=gldata.chromsizes["mm9"])
                 
-                Potentially, hg18, hg19, mm8 and mm9 will be available. too. maybe.
+                Potentially, hg18, hg19, mm8 and mm9 will be available too. maybe.
                 
             filename (Required)
                 filename to save the plot to
@@ -919,7 +932,7 @@ class track(base_track):
         plus_strands = {}
         minu_strands = {}
         
-        # constructing a numpy array is excessively large. I only need store pairs of reads
+        # constructing a numpy array is excessively large. I only need to store pairs of reads
         
         all_chroms = set(self.get_chromosome_names()) & set([i.replace("chr", "") for i in chrom_sizes.keys()]) # only iterate ones in both list
         all_p = numpy.array([])

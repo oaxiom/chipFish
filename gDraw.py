@@ -176,6 +176,9 @@ class gDraw:
             "gene": self.__drawGene,
             "lncRNA": self.__drawGene,
             "microRNA": self.__drawGene,
+            'LINE': self.__drawRepeat, 
+            'LTR': self.__drawRepeat, 
+            'SINE': self.__drawRepeat
             }
     
         if opt.draw.double_lines_for_genome:
@@ -877,7 +880,119 @@ class gDraw:
 
         return(True)
 
+    def __drawRepeat(self, data, track_data=None):
+        """
+        draw Features of the type "Repeat"
+        should be an dict containing the following keys:
+        type: repeat
+        loc: location span of gene
+        strand: strand of gene
+        Class: 
+        """
+        if not track_data: # See if we are bound into a track slot.
+            track_slot_base = 0
+        else:
+            track_slot_base = track_data["track_location"]
 
+        posLeft = self.__realToLocal(data["loc"]["left"], track_slot_base)[0]
+        posBase = self.__realToLocal(data["loc"]["left"], track_slot_base)[1]
+        posRight = self.__realToLocal(data["loc"]["right"], track_slot_base)[0]
+        self.ctx.set_line_width(1)
+        self.__setPenColour(opt.graphics.gene_colour)
+
+        #---------------------------------------------------------------
+        # draw gene blocks.
+        tc = [] # build a list of the genome coordinates.
+        for item in data["exonStarts"]:
+            tc.append({"c": item ,"t": "es"})
+        for item in data["exonEnds"]:
+            tc.append({"c": item, "t": "ee"})
+        tc.append({"c": data["cds_loc"]["left"], "t": "cdss"})
+        tc.append({"c": data["cds_loc"]["right"], "t": "cdse"})
+
+        tc = sorted(tc, key=itemgetter("c"))
+
+        current_offset = opt.graphics.gene_height
+        coords = []
+        coords.append(self.__realToLocal(data["loc"]["left"], track_slot_base))
+        coords.append(self.__realToLocal(data["loc"]["left"], track_slot_base + opt.graphics.gene_height))
+        for c in tc:
+            if c["t"] == "cdss":
+                current_offset = opt.graphics.cds_height
+                coords.append(self.__realToLocal(c["c"], track_slot_base + opt.graphics.gene_height))
+                coords.append(self.__realToLocal(c["c"], track_slot_base + opt.graphics.cds_height))
+            elif c["t"] == "cdse":
+                current_offset = opt.graphics.gene_height
+                coords.append(self.__realToLocal(c["c"], track_slot_base + opt.graphics.cds_height))
+                coords.append(self.__realToLocal(c["c"], track_slot_base + opt.graphics.gene_height))
+            elif c["t"] == "es":
+                coords.append(self.__realToLocal(c["c"], track_slot_base))
+                coords.append(self.__realToLocal(c["c"], track_slot_base + current_offset))
+            elif c["t"] == "ee":
+                coords.append(self.__realToLocal(c["c"], track_slot_base + current_offset))
+                coords.append(self.__realToLocal(c["c"], track_slot_base))
+
+        coords.append(self.__realToLocal(data["loc"]["right"], track_slot_base + opt.graphics.gene_height))
+        coords.append(self.__realToLocal(data["loc"]["right"], track_slot_base))
+
+        self.ctx.move_to(coords[0][0], coords[0][1])
+        for index, item in enumerate(coords):
+            self.ctx.line_to(item[0], item[1])
+        self.ctx.move_to(coords[0][0], coords[0][1])
+
+        coords.reverse()
+        for item in coords:
+            self.ctx.line_to(item[0], posBase + (posBase - item[1]))
+            
+        self.ctx.line_to(coords[0][0], coords[0][1]) # Finish so fill works 
+        #self.ctx.stroke()
+        self.ctx.fill()
+
+        self.ctx.set_line_width(1)
+
+        #---------------------------------------------------------------
+        # Draw gene arrow
+
+        if data["strand"] == "+": # top strand
+            loc = self.__realToLocal(data["loc"]["left"], track_slot_base)
+            # arrow.
+            self.ctx.move_to(loc[0], loc[1]-20)
+            self.ctx.line_to(loc[0], loc[1]-20-opt.graphics.arrow_height_px)
+            self.ctx.line_to(loc[0] + opt.graphics.arrow_width_px, loc[1]-20)
+            self.ctx.line_to(loc[0], loc[1]-20+opt.graphics.arrow_height_px)
+            self.ctx.line_to(loc[0], loc[1]-20)
+            self.ctx.fill()
+            self.__drawText(loc[0]+opt.graphics.arrow_width_px+3, loc[1]-20+opt.graphics.arrow_height_px, "Arial", data["name"], size=opt.gene.font_size, style=opt.gene.font_style)
+        elif data["strand"] == "-":
+            loc = self.__realToLocal(data["loc"]["right"], track_slot_base)
+            # arrow.
+            self.ctx.move_to(loc[0], loc[1]+20)
+            self.ctx.line_to(loc[0], loc[1]+20-opt.graphics.arrow_height_px)
+            self.ctx.line_to(loc[0]-opt.graphics.arrow_width_px, loc[1]+20)
+            self.ctx.line_to(loc[0], loc[1]+20+opt.graphics.arrow_height_px)
+            self.ctx.line_to(loc[0], loc[1]+20)
+            self.ctx.fill()
+            self.__drawText(loc[0]+opt.graphics.arrow_width_px-13, loc[1]+22+opt.graphics.arrow_height_px, "Arial", data["name"], size=opt.gene.font_size, align="right", style=opt.gene.font_style)
+        else:
+            raise ErrorInvalidGeneDefinition
+
+        if opt.draw.single_midline_in_introns: # draw a single line through the gene
+            # this looks best when the genome is not being drawn.
+            leftmost = self.__realToLocal(data["loc"]["left"], track_slot_base)
+            rightmost = self.__realToLocal(data["loc"]["right"], track_slot_base)
+            self.__setPenColour(opt.graphics.gene_colour)
+            self.ctx.set_line_width(1)
+            self.ctx.move_to(leftmost[0], leftmost[1])
+            self.ctx.line_to(rightmost[0], rightmost[1])
+            self.ctx.stroke()
+
+        if opt.draw.chevrons_inside_introns:
+            pass
+
+        if opt.draw.braces_between_exons:
+            pass
+
+        return(True)
 
     def __setPenColour(self, colour):
         """

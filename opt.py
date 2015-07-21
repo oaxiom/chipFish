@@ -131,4 +131,4 @@ class track:
     scale_bar_font_size = 14
     label_fontsize = 22
     min_scale = 2 # The minimum x axis value for tracks. 
-    lock_scales = True # Lock all scales on the Tracks together.
+    lock_scales = False # Lock all scales on the Tracks together.

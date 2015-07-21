@@ -22,6 +22,7 @@ from errors import AssertionError, NotImplementedError, GlglobDuplicateNameError
 from location import location
 from progress import progressbar
 from genelist import genelist
+from expression import expression
 
 import matplotlib.pyplot as plot
 import matplotlib.cm as cm
@@ -31,18 +32,18 @@ if config.SKLEARN_AVAIL: # These are optional
     from sklearn.cluster import DBSCAN
 
 class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
-    """
-    **Purpose**
-        An bunch of genelists to enable across-genelist meta comparisons
-        
-    **Arguments**
-        list of genelists 
-            The first argument must be a list of genelists.
-            
-        Optional arguments:
-            None specified.
-    """
     def __init__(self, *args, **kargs):
+        """
+        **Purpose**
+            An bunch of genelists to enable across-genelist meta comparisons
+        
+        **Arguments**
+            list of genelists 
+                The first argument must be a list of genelists.
+            
+            Optional arguments:
+                None specified.
+        """
         _base_genelist.__init__(self)
 
         # args should be a list of lists.
@@ -128,7 +129,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
 
             distance_score (string, "euclidean", optional defaults to "euclidean")
                 Scoring method for distance caluclations.
-                This is not implemnted at the moment, and only uses a
+                This is not implemented at the moment, and only uses a
                 euclidean distance.
 
             output_pair_wise_correlation_plots (True|False)
@@ -145,6 +146,13 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
              
             col_cluster (optional, True|False, default=True)
                 cluster the columns of the heatmap                
+
+            row_font_size (Optional, default=guess suitable size)
+                the size of the row labels (in points). If set this will also override the hiding of
+                labels if there are too many elements. 
+                
+            col_font_size (Optional, default=8)
+                the size of the column labels (in points)
             
         **Result**
             returns the distance matrix if succesful or False|None if not.
@@ -220,29 +228,6 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
 
         result_table = spear_result_table
 
-        """
-        # for euclidean distanes caluclate the distance for each column.
-        # Although the data is actually triangluar I fill the whole lot in.
-        # This may need optimising later.
-        # see the test_glglob for a test example.
-        # this is the method for euclidean distance.
-        # get comparisons by column.
-        # There is probably a much easier way of doing this...
-        # slicing the matrices...
-        maximum_value = 0 # I want to store this for bracketing the heatmap
-        minimum_value = 2147483646 # start with a huge value. = LongInt - 1
-        for ci1, this_col in enumerate(matrix):
-            for ci2, other_col in enumerate(matrix):
-                pair_distance = 0.0
-                for each_pair in xrange(len(this_col)):
-                    pair_distance += math.pow(float(this_col[each_pair] - other_col[each_pair]), 2)
-                result_table[ci1, ci2] = math.sqrt(pair_distance)
-                if ci1 != ci2: # ignore the diagonal.
-                    if result_table[ci1, ci2] > maximum_value: # I want to store this to bracketing the heatmap
-                        maximum_value = result_table[ci1, ci2]
-        """
-        #result_table = spear_result_table # zeros( (len(self), len(self)) ) # square matrix to store the data.
-
         # need to add the labels and serialise into a doct of lists.
         dict_of_lists = {}
         row_names = []
@@ -272,7 +257,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         ret = self.draw.heatmap(data=dict_of_lists, filename=filename,
             colbar_label="correlation", bracket=[-0.2, 1],
             square=True, cmap=cm.hot, cluster_mode="euclidean", row_cluster=row_cluster, col_cluster=col_cluster,
-            row_names=row_names, col_names=row_names, aspect=aspect)
+            row_names=row_names, col_names=row_names, aspect=aspect, **kargs)
 
         config.log.info("Saved Figure to '%s'" % ret["real_filename"])
         return(dict_of_lists)
@@ -280,7 +265,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
     def venn(self, key=None, filename=None, **kargs):
         """
         **Purpose**
-            draw 2,3 or 4 venn Diagrams
+            draw 2, 3 or 4 venn Diagrams
             currently only equally size venndiagrams are supported.
             (proportional venn diagrams are experimental only, enable them
             using experimental_proportional_venn = True as an argument).
@@ -292,7 +277,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
 
             genelist.map(genelist=other_genelist, <...>, image_filename="venndiagram.png")
             
-            Note also that the data from linearData will be converted to unique 
+            Note also that the data from each genelist will be converted to unique 
             values. So the final numbers may not match your original list sizes 
 
         **Arguments**
@@ -300,7 +285,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 key to use to map() between the two lists.
 
             filename
-                save the venn diagram to this filename.
+                save the venn diagram to this filename
 
             title (Optional)
                 title for the figures
@@ -314,7 +299,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             if not k in valid_args:
                 raise ArgumentError, (self.map, k)
 
-        assert len(self.linearData) <= 4, "currently glglob venn diagrams only support at most 4 overlaps"
+        assert len(self.linearData) <= 5, "currently glglob venn diagrams only support at most 5 overlaps"
         assert len(self.linearData) >= 2, "you must send at least two lists"
         assert key, "Must specify a 'key' to map the two lists"
         assert filename, "no filename specified for venn_diagrams to save to"
@@ -323,10 +308,16 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         if "experimental_proportional_venn" in kargs and kargs["experimental_proportional_venn"]:
             proportional=True
 
+        # The code below is needlessly verbose for clarity.
         if len(self.linearData) == 2:
-            # simple case, genelist.map() can deal with this one.
-            self.linearData[0].map(genelist=self.linearData[1], image_filename=kargs["filename"], venn_proportional=proportional)
-            config.log.info("Save a venn diagram to: %s" % kargs["filename"])
+            A = set(self.linearData[0][key])
+            B = set(self.linearData[1][key])
+            
+            AB = A & B
+        
+            realfilename = self.draw.venn2(len(A), len(B), len(AB), 
+                self.linearData[0].name, self.linearData[1].name, 
+                filename, **kargs)
             return(None)
         
         elif len(self.linearData) == 3:
@@ -366,88 +357,94 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 filename, **kargs)
             
         elif len(self.linearData) == 4:
-            config.log.warning("Due to the nature of this implemetation of 4-way venn diagrams")
-            config.log.warning("opposing corners are not overlapped as a pair.")
-            config.log.warning("You should be aware of this limitation")
-            # work out the overlap matrix:
+            A = set(self.linearData[0][key])
+            B = set(self.linearData[1][key])
+            C = set(self.linearData[2][key])
+            D = set(self.linearData[3][key])
+            print len(A), len(B), len(C), len(D)
 
-            A = self.linearData[0] # A # this is more for clarity than neccesity
-            B = self.linearData[1] # B
-            C = self.linearData[2] # C
-            D = self.linearData[3] # D
+            # Use set logic to work out the actual values:
+            # I'm pretty sure this is accurate at this point.
 
-            # calculate first round of overlaps (twos):
-            AC = A.map(genelist=C, key=key) # AC
-            AB = A.map(genelist=B, key=key) # AB
-            CD = C.map(genelist=D, key=key) # CD
-            BD = B.map(genelist=D, key=key) # BD
-            #AD = A.map(genelist=D, key=key) # AD # these two are not presented.
-            #BC = B.map(genelist=C, key=key) # BC
+            ABCD = A & B & C & D
+            
+            ABC = (A & B & C) - ABCD
+            ABD = (A & B & D) - ABCD
+            ACD = (A & C & D) - ABCD
+            BCD = (B & C & D) - ABCD
+        
+            AB = (((A & B) - ABC) - ABD) - ABCD
+            AC = (((A & C) - ABC) - ACD) - ABCD
+            AD = (((A & D) - ABD) - ACD) - ABCD
+            BC = (((B & C) - ABC) - BCD) - ABCD
+            BD = (((B & D) - ABD) - BCD) - ABCD
+            CD = (((C & D) - ACD) - BCD) - ABCD
+            
+            A = A - ABCD - ABC - ABD - ACD - AB - AC - AD
+            B = B - ABCD - ABC - ABD - BCD - AB - BC - BD
+            C = C - ABCD - ABC - ACD - BCD - AC - BC - CD
+            D = D - ABCD - ABD - ACD - BCD - AD - BD - CD
+            
+            # A, B, C, D, AB, AC, AD, BC, BD, CD, ABC, ABD, ACD, BCD, ABCD
+            lists = [len(A), len(B), len(C), len(D), 
+                len(AB), len(AC), len(AD), len(BC), len(BD), len(CD), 
+                len(ABC), len(ABD), len(ACD), len(BCD), len(ABCD)]
+            
+            labs = [self.linearData[i].name for i in xrange(4)] 
+            
+            realfilename = self.draw.venn4(lists, labs, filename, **kargs)
 
-            # tidy up any genelists with no entries.
-            # second round (threes)
-            # fake some lists:
-            ABC = []
-            ACD = []
-            ABD = []
-            BCD = []
-            if AC and AB:
-                ABC = AB.map(genelist=AC, key=key) # ABC
-            if AC and CD:
-                ACD = AC.map(genelist=CD, key=key) # ACD
-            if AB and BD:
-                ABD = AB.map(genelist=BD, key=key) # ABD
-            if BD and CD:
-                BCD = BD.map(genelist=CD, key=key) # BCD
-
-            # FOUR:
-            ABCD = []
-            if ABC and BCD:
-                ABCD = ABC.map(genelist=BCD, key=key) # or any other pair will do.
-
-            lists = {"A": A, "B": B, "C": C, "D": D}
-                #"AC": AB, "AB": AB, "CD": CD, "BD": BD,
-                #"ABC": ABC, "ACD": ACD, "ABD": ABD, "BCD": BCD,
-                #"ABCD": ABCD}
-
-            scores = {"A": len(A), "B": len(B), "C": len(C), "D": len(D),
-                "AC": len(AB), "AB": len(AB), "CD": len(CD), "BD": len(BD),
-                "ABC": len(ABC), "ACD": len(ACD), "ABD": len(ABD), "BCD": len(BCD),
-                "ABCD": len(ABCD)}
-
-            # don't bother correcting the scores yet, just do the venn:
-            # a few corractions:
-            # ABCD is subtracted from all other elements:
-
-            # sub twos from singles:
-            scores["A"] -= scores["AB"]
-            scores["A"] -= scores["AC"]
-            scores["B"] -= scores["AB"]
-            scores["B"] -= scores["BD"]
-            scores["C"] -= scores["CD"]
-            scores["C"] -= scores["AC"]
-            scores["D"] -= scores["CD"]
-            scores["D"] -= scores["BD"]
-
-            # then subtract the threes from their children:
-            scores["AC"] -= scores["ABC"]
-            scores["AC"] -= scores["ACD"]
-
-            scores["AB"] -= scores["ABC"]
-            scores["AB"] -= scores["ABD"]
-
-            scores["CD"] -= scores["ACD"]
-            scores["CD"] -= scores["BCD"]
-
-            scores["BD"] -= scores["ABD"]
-            scores["BD"] -= scores["BCD"]
-
-
-            for k in scores:
-                if k != "ABCD":
-                    scores[k] -= scores["ABCD"]
-
-            realfilename = self.draw._venn4(lists=lists, scores=scores, filename=filename)
+        elif len(self.linearData) == 5:
+            raise NotImplementedError
+            
+            A = set(self.linearData[0][key])
+            B = set(self.linearData[1][key])
+            C = set(self.linearData[2][key])
+            D = set(self.linearData[3][key])
+            E = set(self.linearData[4][key])
+            
+            AB = A & B
+            AC = A & C
+            AD = A & D
+            AE = A & E
+            BC = B & C
+            BD = B & D
+            BE = B & E
+            CD = C & D
+            CE = C & E
+            DE = D & E
+            
+            ABC = A & B & C
+            ABD = A & B & D
+            ABE = A & B & E
+            ACD = A & C & D
+            ACE = A & C & E
+            ADE = A & D & E
+            BCD = B & C & D
+            BCE = B & C & E
+            BDE = B & D & E
+            CDE = C & D & E
+            
+            ABCD = A & B & C & D
+            ABCE = A & B & C & E
+            ACDE = A & C & D & E
+            BCDE = B & C & D & E
+            
+            ABCDE = A & B & C & D & E
+            
+            # A, B, C, D, E, 
+            # AB, AC, AD, AE, BC, BD, BE, CD, CE, DE,
+            # ABC, ABD, ABE, ACD, ACE, ADE, BCD, BCE, BDE, CDE
+            # ABCD, ABCE, ACDE, BCDE,
+            # ABCDE
+            lists = [len(A), len(B), len(C), len(D), len(E),
+                len(AB), len(AC), len(AD), len(AE), len(BC), len(BD), len(BE), len(CD), len(CE), len(DE),
+                len(ABC), len(ABD), len(ABE), len(ACD), len(ACE), len(ADE), len(BCD), len(BCE), len(BDE), len(CDE),
+                len(ABCD), len(ABCE), len(ACDE), len(BCDE), (ABCDE)]
+            
+            labs = [self.linearData[i].name for i in xrange(5)] 
+            
+            realfilename = self.draw.venn5(lists, labs, filename, **kargs)
         
         config.log.info("Saved Figure to '%s'" % realfilename)
         return(None)
@@ -685,9 +682,9 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         config.log.info("overlap_heatmap(): Saved overlap heatmap to '%s'" % ret["real_filename"])
         return(tab)
         
-    def chip_seq_cluster_heatmap(self, list_of_peaks, list_of_trks, filename=None, normalise=True, bins=20, 
+    def chip_seq_cluster_heatmap(self, list_of_peaks, list_of_trks, filename=None, normalise=False, bins=20, 
         pileup_distance=1000, merge_peaks_distance=400, sort_clusters=True, cache_data=False, log=2, bracket=None,
-        range_bracket=None, frames=False, titles=None, **kargs):
+        range_bracket=None, frames=False, titles=None, read_extend=200, **kargs):
         """
         **Purpose**
             Combine and merge all peaks, extract the read pileups then categorize the peaks into
@@ -752,7 +749,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 
             normalise (Optional, default=True)
                 Normalize the read pileup data within each library to the size of the 
-                library to assist in across-comparison of ChIP-seq libraries.
+                library to assist in cross-comparison of ChIP-seq libraries.
                                               
             merge_peaks_distance (Optional, default=400)
                 Maximum distance that two peaks can be apart before the two peaks are merged into
@@ -760,6 +757,10 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 
             pileup_distance (Optional, default=1000)
                 distance around the particular bin to draw in the pileup.
+                
+            read_extend (Optional, default=200)
+                The size in base pairs to extend the read. If a strand is present it will expand 
+                from the 3' end of the read.
 
             bins (Optional, default=10)
                 number of bins to use for the pileup. Best to use conservative numbers (10-50) as 
@@ -775,7 +776,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 Use logarithms for the heatmap. Possible options are 2 and 10.
             
             cmap (Optional, default=matplotlib.cm.YlOrRd)
-                A valid colour map for the heatmap.
+                A colour map for the heatmap.
             
             titles (Optional, default=peaks.name)
                 Supply your own titles for the top of the heatmap columns
@@ -900,7 +901,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             oh = open(os.path.realpath(cache_data), "rb")
             chr_blocks = cPickle.load(oh)
             oh.close()
-            config.log.info("Reloaded previously cached pileup data: '%s'" % cache_data)
+            config.log.info("chip_seq_cluster_heatmap(): Reloaded previously cached pileup data: '%s'" % cache_data)
             # this_loc will not be valid and I test it for length below, so I need to fake one.
 
         else:
@@ -909,7 +910,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             # New version that grabs all data and does the calcs in memory, uses more memory but ~2-3x faster
             for pindex, trk in enumerate(list_of_trks):
                 for index, chrom in enumerate(chr_blocks):
-                    data = trk.get_array_chromosome(chrom, read_extend=200)
+                    data = trk.get_array_chromosome(chrom, read_extend=read_extend)
 
                     for block_id in chr_blocks[chrom]:
                         left = block_id[0] - pileup_distance 
@@ -955,7 +956,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 oh = open(cache_data, "wb")
                 cPickle.dump(chr_blocks, oh, -1)
                 oh.close()
-                config.log.info("Saved pileup data to cache file: '%s'" % cache_data)
+                config.log.info("chip_seq_cluster_heatmap(): Saved pileup data to cache file: '%s'" % cache_data)
             
         # assign each item to a group and work out all of the possible groups
         cluster_ids = []
@@ -1013,6 +1014,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                         # Also add it into the return data.     
                         if cluster_index+1 not in ret_data:
                             ret_data[cluster_index+1] = {"genelist": genelist(name="cluster_%s" % (cluster_index+1,)), "cluster_membership": cluster_id["id"]}
+                        #print (chrom, int(block_id[0]), int(block_id[1]))
                         this_loc = location(loc="chr%s:%s-%s" % (chrom, int(block_id[0]), int(block_id[1]))) # does not include the pileup_distance
                         ret_data[cluster_index+1]["genelist"].linearData.append({"loc": this_loc})
                         groups.append(cluster_index+1)
@@ -1141,7 +1143,9 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             
             for cfig, data in enumerate(self.__pileup_data[cid]): 
                 ax = fig.add_subplot(1, len(self.__pileup_data[cid]), cfig+1)
-                ax.plot(data)
+                #print data
+                x = numpy.arange(len(data))
+                ax.plot(x, data)
                 
                 ax.set_xlim([0, maxx-2]) # -2 to trim off the unsightly tail due to binning.
                 [t.set_visible(False) for t in ax.get_xticklabels()]
@@ -1236,3 +1240,100 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
     
         actual_filename = self.draw.savefigure(fig, filename)
         config.log.info("genome_dist_radial(): Saved '%s'" % actual_filename)
+
+    def GO_heatmap(self, filename, p_value_limit=0.01, num_top=5, pvalue_key='pvalue',
+            size=[8, 6], bracket=[1.3,4], row_cluster=True, col_cluster=False, # heatmap args
+            heat_wid=0.15, cmap=cm.Reds, border=True, row_font_size=7, 
+            heat_hei=0.80, grid=True, 
+            draw_numbers=True, draw_numbers_threshold=2.0, draw_numbers_font_size=5, **kargs):
+        '''
+        **Purpose**
+            Produce a heatmap of GO categories from a glglob of GO genelists (glgo's)
+            
+        **Arguments**
+            filename (Required)
+                filename to save the resulting heatmap to
+        
+            p_value_limit (Optional, default=0.01)
+                minimum p-value to include in list
+            
+            pvalue_key (Optional, default='p_value')
+                The key in your 
+            
+            num_top (Optional, default=5)
+                Generally these heatmaps do not have much space to contain that
+                many categories, so you need to take the top N from each list.
+                
+                GO_heatmap will 'fill in' categories in other lists even if they do not
+                fulfill the 'p_value_limit' and 'num_top' criteria. 
+                
+                However, this only occurs if your GO lists contain all GO terms. If
+                you have already truncated the lists for some p-value then glbase cannot
+                fill in the missing data.
+                
+            This function will also accept all glbase heatmap arguments (see expression.heatmap). 
+            A few args have altered defaults:
+            
+            bracket (Optional, default=[1.3, 4.0])
+                the bracket for the min and max of the heatmap. This sort of bracket
+                assumes your data is -log10 transformed and so the p-value would 
+                range from 0.05 to 0.0001
+            
+        **Returns**
+            None and a heatmap in filename
+        
+        '''
+
+        format = {'force_tsv': True, 'pvalue': 1, 'name': 0}
+
+        main_cluster_membership = {}
+        number_of_clusters = len(self)
+        go_store = {}
+        main_cluster_membership = {}
+        cond_names_idx = {}
+        
+        for idx, go in enumerate(self.linearData):     
+            cond_names_idx[go.name] = idx
+            if not go:
+                config.log.warning("GO list '%s' was empty, skipping" % go.name)
+                continue
+                
+            go.sort(pvalue_key)
+            top5 = go[0:num_top]
+   
+            for item in top5:
+                if item[pvalue_key] < 0.01: 
+                    if item['name'] not in go_store:
+                        go_store[item['name']] = [-1] * (number_of_clusters)
+                    go_store[item['name']][idx] = -math.log10(item['pvalue'])
+                    #main_cluster_membership[item['name']] = clus_number-1
+                
+        # fill in the holes:
+        for go in self.linearData:   
+            for k in go_store:
+                this_k = go.get(key='name', value=k, mode='lazy') # by default
+                if this_k:
+                    go_store[k][cond_names_idx[go.name]] = -math.log10(float(this_k[0]['pvalue']))
+
+        newe = []
+
+        for k in go_store:
+            newe.append({'name': k, 'conditions': go_store[k]})
+    
+        print cond_names_idx
+        cond_names = sorted(zip(cond_names_idx.keys(), cond_names_idx.values()), key=itemgetter(1))
+        print cond_names
+        cond_names = [i[0] for i in cond_names]
+        print cond_names
+        
+        goex = expression(loadable_list=newe, cond_names=cond_names)
+        
+        goex.heatmap(filename=filename, size=size, bracket=bracket, 
+            row_cluster=row_cluster, col_cluster=col_cluster, 
+            heat_wid=heat_wid, cmap=cm.Reds, border=border,
+            row_font_size=row_font_size, heat_hei=heat_hei, grid=grid, 
+            draw_numbers=draw_numbers, colbar_label='-log10(%s)' % pvalue_key, 
+            draw_numbers_threshold=draw_numbers_threshold, 
+            draw_numbers_font_size=draw_numbers_font_size)
+        return(None)
+    

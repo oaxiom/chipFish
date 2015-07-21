@@ -60,3 +60,9 @@ if os.path.exists("mm10_refGene.tsv"):
     print mm10
     mm10.save("mm10_refGene.glb")
     print mm10._findByLabel("name", "Nanog")
+    
+if os.path.exists("hg38_refGene.tsv"):
+    mm10 = glbase_wrapper.genome(name="mm10", filename="hg38_refGene.tsv", format=format_mm9_refgene)
+    print mm10
+    mm10.save("hg38_refGene.glb")
+    print mm10._findByLabel("name", "Nanog")

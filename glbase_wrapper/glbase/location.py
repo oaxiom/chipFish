@@ -34,7 +34,7 @@ class location:
     def __eq__(self, other):
         if other:
             if isinstance(other, str):
-                return(str(self) == str(other)) # use string comparison.
+                return(str(self) == str(other.replace(",", ""))) # use string comparison.
 
             # use a faster ? dict comparison, or throw an exception, as this item probably not a <location>
             if self.loc["chr"] == other.loc["chr"]:
@@ -160,7 +160,7 @@ class location:
     def collide(self, loc):
         if loc["chr"] != self["chr"]:
             return(False)
-        return(self["right"] >= loc["left"] and self["left"] <= loc["right"])
+        return(self.loc["right"] >= loc.loc["left"] and self.loc["left"] <= loc.loc["right"])
 
     def qcollide(self, loc):
         """
@@ -171,7 +171,7 @@ class location:
         **Returns**
             True or False
         """
-        return(self["right"] >= loc["left"] and self["left"] <= loc["right"]) # nice one-liner
+        return(self.loc["right"] >= loc.loc["left"] and self.loc["left"] <= loc.loc["right"]) # nice one-liner
 
     def distance(self, loc):
         """

@@ -17,10 +17,10 @@ if RELEASE:
     # These will be finalised when (if?) I ever get around to releasing glbase
     VERSION = "1.380"
     DATE = ""
-else:
+else:        
     try:
-        oh = open(os.path.join(os.path.split(__file__)[0], ".hg/cache/branchheads"), "rU")
-        VERSION = "0.%s" % oh.readline().split()[1] #?!?!
+        oh = open(os.path.join(os.path.split(__file__)[0], "version.num"), "rU")
+        VERSION = "1.%s" % oh.readline().strip().replace("+", "") # The hg hook will put a plus as I call just before committing.
         oh.close()
     except Exception:
         VERSION = "version data not found"
@@ -35,11 +35,14 @@ SILENT = False # set this to True to silence all glbase output. Only works at st
 DEBUG = True
 do_logging = True
 
-# flags for the availability of three core libraries. 
+# flags for the availability of libraries
 MATPLOTLIB_AVAIL = False # required
 NUMPY_AVAIL = False # required
 SCIPY_AVAIL = False # required
 SKLEARN_AVAIL = False # optional
+NETWORKX_AVAIL = False # optional
+PYDOT_AVAIL = False # optional
+NUMEXPR_AVAIL = False # Optional
 
 # Some simple options for printing genelists
 NUM_ITEMS_TO_PRINT = 3 # number of items to print by default.
@@ -78,14 +81,14 @@ def change_draw_aspect(aspect):
 # this needs to be moved to log.py
 # You can access it using config.log()
 logging.basicConfig(level=logging.DEBUG,
-                    format='%(asctime)s %(name)-8s %(levelname)-8s %(message)s',
-                    datefmt='%m-%d %H:%M',
-                    filename=os.path.join(os.path.expanduser("~"), "glbase.log"),
-                    filemode='w')
-console = logging.StreamHandler()
-console.setLevel(logging.INFO)
-console.setFormatter(logging.Formatter('%(levelname)-8s: %(message)s'))# # console
-logging.getLogger('').addHandler(console)
+                    format='%(levelname)-8s: %(message)s',
+                    datefmt='%m-%d %H:%M'),
+                    #filename=os.path.join(os.path.expanduser("~"), "glbase.log"),
+                    #filemode='w') # This should be optional?
+#console = logging.StreamHandler()
+#console.setLevel(logging.INFO)
+#console.setFormatter(logging.Formatter('%(levelname)-8s: %(message)s'))# # console
+#logging.getLogger('').addHandler(console)
 
 # use config.log. ... () to get to the logger
 log = logging.getLogger('glbase')
@@ -96,7 +99,7 @@ warning = log.warning
 debug = log.debug
 error = log.error
 
-def silence_log():
+def silence_log(): # I think a NullHandler would be better for this?
     do_logging = False
     # by pointing to empty lambdas:
     log.info = lambda x:x

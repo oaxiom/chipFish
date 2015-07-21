@@ -49,7 +49,7 @@ class _base_genelist:
         raise Exception, "__shallowcopy__() is NOT supposrted for genelists, use gl.deepcopy() or gl.shallowcopy()"
     
     def __deepcopy__(self, fake_arg):
-        raise Exception, "__deepcopy__() is NOT supposrted for genelists, use gl.deepcopy() or gl.shallowcopy()"
+        raise Exception, "__deepcopy__() is NOT supported for genelists, use gl.deepcopy() or gl.shallowcopy()"
     
     def deepcopy(self):
         """
@@ -93,6 +93,34 @@ class _base_genelist:
         for n in self.linearData:
             yield n
 
+    def __getitem__(self, index):
+        """
+        (Override)
+        confers a = geneList[0] behaviour
+
+        This is a very slow way to access the data, and may be a little inconsistent in the things 
+        it returns.
+        
+        NOTE:
+        a = genelist[0] # returns a single dict
+        a = genelist[0:10] # returns a new 10 item normal python list.
+        a = genelist["name"] returns a python list containing a vertical slice of all of the "name" keys
+
+        """
+        newl = False
+        if isinstance(index, int):
+            # this should return a single dictionary.
+            return(self.linearData[index])
+        elif isinstance(index, str):
+            # returns all labels with that item.
+            return(self._findAllLabelsByKey(index))
+        elif isinstance(index, slice):
+            # returns a new genelist corresponding to the slice.
+            newl = self.shallowcopy()
+            newl.linearData = utils.qdeepcopy(self.linearData[index]) # separate the data so it can be modified.
+            newl._optimiseData()
+        return(newl) # deep copy the slice.
+
     def __setitem__(self, index, *args):
         """
         (Override)
@@ -114,19 +142,121 @@ class _base_genelist:
             except Exception: # I bet the list is empty.
                 return(hash(self.name))
 
+    def __and__(self, gene_list):
+        """
+        (Override)
+        confer and like behaviour: c = a & b
+        """
+        if not self.__eq__(gene_list): 
+            return(geneList()) # returns an empty list.
+            
+        newl = self.shallowcopy()
+        newl.linearData = []
+        for item1 in self.linearData:
+            for item2 in gene_list.linearData:
+                if item1 == item2:
+                    newl.linearData.append(copy.deepcopy(item1))
+
+        newl._optimiseData()
+        return(newl)
+
+    def __or__(self, gene_list):
+        """
+        (Override)
+        confer append like behaviour: c = a | b
+        OR does not keep duplicates.
+        """
+        if not self.__eq__(gene_list): return(geneList())
+        newl = self.deepcopy()
+        alist = self.linearData + gene_list.linearData
+        # remove conserved duplicates;
+        ulist = []
+        newl = self.shallowcopy()
+        for item in alist:
+            if item not in ulist:
+                ulist.append(item)
+                newl.linearData.append(copy.deepcopy(item))
+                
+        newl._optimiseData()
+        return(newl)
+
+    def __add__(self, gene_list):
+        """
+        (Override)
+        confer append like behaviour: c = a + b
+        keeps duplicates (just concatenate's lists)
+        """
+        mkeys = self._collectIdenticalKeys(gene_list)
+        if not mkeys: # unable to match.
+            config.log.warning("No matching keys, the resulting list would be meaningless")
+            return(False)
+        newl = self.deepcopy()
+        newl.linearData.extend(copy.deepcopy(gene_list.linearData)) 
+        newl._optimiseData()
+        return(newl)
+
+    def __sub__(self, gene_list):
+        """
+        (Override)
+        confer c = a - b ability.
+        Actually xor?
+        """
+        mkeys = self._collectIdenticalKeys(gene_list)
+        if not mkeys: # unable to match.
+            config.warning("Warning: No matching keys, unable to perform subtraction")
+            return(False)
+
+        newl = self.shallowcopy()
+        newl.linearData = []
+
+        dontAdd = False
+        for item in self.linearData: # do a map here...
+            for item2 in gene_list.linearData:
+                for k in mkeys:
+                    if item[k] == item2[k]:
+                        dontAdd = True
+                    else:
+                        dontAdd = False # all mkeys must match
+            if not dontAdd:
+                newl.linearData.append(copy.deepcopy(item))
+            dontAdd = False
+        newl._optimiseData()
+        return(newl)
+
+    def __eq__(self, gene_list):
+        """
+        (Internal)
+        Are the lists equivalent?
+        lists now, must only have one identical key.
+        
+        This is just testing the keys...
+        Wrong...
+        """
+        # check the hash's first to see if they are identical.
+        # This is diabled as it can be very slow.
+        #if self.__hash__() == gene_list.__hash__():
+        #    return(True)
+
+        for key in self.linearData[0]:
+            if key in gene_list.linearData[0]:
+                return(True) # just one key in common required.
+        return(False)
+
+    def __ne__(self, gene_list):
+        """
+        (Internal)
+        Are the lists equivalent?
+        ie do they have the same keys?
+        """
+        return(not self.__eq__(gene_list))
+
+
     def keys(self):
         """
         return a list of all the valid keys for this geneList
         """
         return([key for key in self.linearData[0]])
      
-    def history(self):
-        """
-        get the origins and history and where this list has been, and all of the operators
-        performed on it.
-        """
-        print self._history
-
     def _guessDataType(self, value):
         """
         (Internal)
@@ -233,3 +363,27 @@ class _base_genelist:
             cPickle.dump(self, oh, -1)
         oh.close()
         config.log.info("Saved binary version of list: '%s'" % filename)
+        
+    # ----------- special file loaders:
+    # Unbelievably stupid format for hmmer:
+    def __load_hmmer_tbl(self, filename):
+        """
+        Load the hmmer tbl_out table
+        """
+        oh = open(filename, "rU")
+        res = []
+        for line in oh:
+            if "#" not in line:
+                ll = line.split()
+                
+                name = ll[18:]
+                gene = "NA"
+                # split the name up into k:v pairs
+                for item in name:
+                    if ":" in item:
+                        if "gene:" in item:
+                            gene = item.split(":")[1]
+                
+                res.append({"peptide": ll[0], "dom_acc": ll[3], "dom_name": ll[2], "score": ll[4],
+                    "gene": gene})
+        return(res)

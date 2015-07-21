@@ -15,7 +15,7 @@ from __future__ import division
 
 import config
 
-import sys, os, math
+import sys, os, math, numpy
 from numpy import zeros, array
 
 from base_genelist import _base_genelist
@@ -24,13 +24,6 @@ from draw import draw
 from utils import rc, convertFASTAtoDict
 from progress import progressbar
 from location import location
-
-# see if weblogo is available.
-try:
-    import weblogo
-    WEBLOGO_AVAILABLE = True
-except:
-    WEBLOGO_AVAILABLE = False # fail silently
 
 # constant used below in score:
 con_setpos = {"a": 0, "c": 1, "g": 2, "t": 3,
@@ -58,7 +51,7 @@ class pwm:
             [ {"a": 1, "c": 2, "g": g, "t": t} ... ]
 
         fasta_file (Required, or pwm_matrix)
-            load a fasta file and turn int into a pwm_matrix
+            load a fasta file and turn int into a pwm matrix
             
         txt_file (Required)
             load a txt file which is a list of sequences and convert into a 
@@ -71,6 +64,7 @@ class pwm:
     """
     def __init__(self, name, pwm_matrix=None, fasta_file=None, txt_file=None, isPFM=True):
         self.name = name
+        self.__original_PFM = None
 
         if pwm_matrix is not None: # get around numpy.array() __non_zero__ silliness:
             if isinstance(pwm_matrix, list):
@@ -81,6 +75,7 @@ class pwm:
                 self.__matrix = self.__convert_dict_matrix(self, pwm_matrix)
             else:
                 self.__matrix = pwm_matrix # Probably a numpy array? Hope the user knows what he/she is doing
+                
         elif fasta_file:
             g = convertFASTAtoDict(fasta_file)
             pwm_matrix = None
@@ -92,6 +87,7 @@ class pwm:
                 for i, bp in enumerate(e["seq"]):
                     pwm_matrix[i][bp] += 1
             self.__matrix = self.__convert_dict_matrix(pwm_matrix)
+            
         elif txt_file:
             oh = open(txt_file, "rU")
             pwm_matrix = []
@@ -105,9 +101,12 @@ class pwm:
         else:
             raise AssertionError, "no valid input found for pwm"
             
+        self.__original_PFM = numpy.copy(self.__matrix) # Keep a copy of the original
+        
         if isPFM:
             config.log.debug("Converting the frequency matrix '%s' to a log-odds weight matrix" % self.name)
-            self.convertPFMtoPWM() 
+            self.convertPFMtoPWM()
+
         self.__do_minmax()
 
     def __convert_dict_matrix(self, dict_pwm_matrix):
@@ -151,10 +150,11 @@ class pwm:
         **Results**
             This object now contains a weight matrix, not a frequency matrix.
         """
+        
         for row in xrange(len(self.__matrix)):
             bign = sum(self.__matrix[row])
             for bp in xrange(len(self.__matrix[row])):
-                self.__matrix[row][bp] = math.log( ( self.__matrix[row][bp] + math.sqrt(bign) * 0.25) / (bign + math.sqrt(bign)) / 0.25, 2) # log 2, not log n
+                self.__matrix[row][bp] = math.log((self.__matrix[row][bp] + math.sqrt(bign) * 0.25) / (bign + math.sqrt(bign)) / 0.25, 2) # log 2, not log n
 
         self.__do_minmax() # redo min/max scores
 
@@ -357,7 +357,7 @@ class pwm:
         newl._optimiseData()
         return(newl)
 
-    def save(self, filename=None, mode="homer"):
+    def save(self, filename=None, mode="homer", usePFM=False):
         """
         **Purpsose**
             save the pwm into another file.
@@ -372,27 +372,87 @@ class pwm:
                 
                 homer - save as a pwm
         
+            usePFM (Optional, default=False)
+                use the position frequency matrix, in preference to the log-odds matrix
+        
         **Returns**
             None
         """
         assert filename, "no filename specified"
         
+        matrix_to_use = self.__matrix
+        if usePFM:
+            assert self.__original_PFM is not None, "pwm.save: No PFM is avaialble for this pwm"
+            matrix_to_use = self.__original_PFM
+        
         if mode == "homer":
             oh = open(filename, "w")
             
             oh.write(">%s\t%s\t%s\t%s\t%s\t%s\n" % (self.name, self.name, 0, 0, 0, "T:0(0),B:0(0),P(0)"))
-            for i in self.__matrix:
-                nl = i/sum(i)
-                oh.write("%s\n" % "\t".join([str(b) for b in nl]))          
+            for i in matrix_to_use:
+                if sum(i) == 0:
+                    nl = numpy.array([0.0, 0.0, 0.0, 0.0])
+                else:
+                    nl = i/float(sum(i))
+                print nl
+                oh.write("%s\n" % "\t".join([str(b) for b in nl]))   
+                
         elif mode == "counts":
             oh = open(filename, "w")
             
             oh.write(">%s\t%s\t%s\t%s\t%s\t%s\n" % (self.name, self.name, 0, 0, 0, "T:0(0),B:0(0),P(0)"))
-            for i in self.__matrix:
+            for i in matrix_to_use:
                 oh.write("%s\n" % "\t".join([str(b) for b in nl])) 
         
         return(None)
 
+    def draw_logo(self, filename, title=None):
+        '''
+        Draws a sequence logo from the PWM
+        
+        Requires weblogolib is available.
+        
+        Does not respect typical glbase config. Particularly config.draw_mode (Output is always a png)
+        
+        **Arguments**
+            filename
+                The filename to save the image to.
+                
+            title (Optional, default=the pwm name)
+                A title for the 
+        '''
+        assert filename, "pwm.draw_logo: You must specify a filename"
+        
+        # see if weblogo is available.
+        try:
+            import weblogolib
+            WEBLOGO_AVAILABLE = True
+        except Exception:
+            WEBLOGO_AVAILABLE = False # fail silently
+            raise AssertionError, 'pwm.draw_logo: Asking to draw logo, but weblogolib not found/available' 
+        
+        if not title:
+            title = self.name
+        
+        data = weblogolib.LogoData.from_counts("ACGT", self.__original_PFM)
+
+        options = weblogolib.LogoOptions()
+        options.logo_title = title
+        options.title_fontsize = 4
+        options.resolution = 200
+        options.show_xaxis = True
+        options.show_yaxis = True
+        options.scale_width = False
+        #options.logo_label = "motif: %s" % name
+        options.fineprint = False
+        options.color_scheme = weblogolib.std_color_schemes["base pairing"]
+        format = weblogolib.LogoFormat(data, options)
+
+        out = open(filename, "wb") # stick it in the parent dir
+        weblogolib.png_formatter(data, format, out)
+        out.close()
+        config.log.info("pwm.draw_logo: Saved '%s' logo" % filename)
+        
 if __name__ == "__main__":
     # These need to be moved into tests:
 
@@ -404,6 +464,7 @@ if __name__ == "__main__":
             [14,    2,  54, 8],         # g
             [9,     3,  17, 62],        # t -sox2 end
             [13,    58, 4,  24],        # c/g #
+            [1,1,1,1],
             [99,    0,  0,  0],         # a - oct4 start
             [0,     0,  0,  99],        # t
             [4,     0,  84, 12],        # g
@@ -421,6 +482,7 @@ if __name__ == "__main__":
     print
     print m.get_matrix()
 
-    m = pwm("meh", txt_file="tests/txt_motif_file.txt", isPFM=False)
+    #m = pwm("meh", txt_file="tests/txt_motif_file.txt", isPFM=False)
 
-    m.save("meh.matrix")
+    m.save("tests/test_data/meh.matrix")
+    m.save("tests/test_data/meh.matrix", usePFM=True)

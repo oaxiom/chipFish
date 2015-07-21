@@ -1,523 +1,333 @@
 """
 
-realtime.py
-
-part of glbase
-
-Used to tidy up qRT-PCR data.
-
-Supported platforms and file formats:
--------------------------------------
-. copy and paste from SDS 2.2.2 and 2.4 (tested 2010)
-. biomark (not really tested though since 2009)
+The new realtime system, basically a set of data preprocessors for expression objects
 
 """
 
-import csv, math, numpy
-
+import csv, numpy, copy
 import config
+from genelist import genelist
+from expression import expression
 
-class assay:
-    def __init__(self, _sampleName, _primerName, _output = None):
-        self.sample = _sampleName
-        self.primer = _primerName
-        self.sampleRef = None
-        self.primerRef = None
+valid_methods = ["Buganim", None, "Mean"]
 
-        self.Ct = []
-        self.Ct_call = []
-        # derived numbers;
-        self.log10ddCt = []
-        self.log2ddCt = []
-        self.percentddCt = []
-
-    def __str__(self):
-        return("sample: %s, primer: %s, ct: '%s'" % (self.sample, self.primer, self.Ct))
-
-    def addCt(self, _Ct, _Call = None):
-        self.Ct.append(_Ct)
-        if _Call:
-            if _Call == "Pass" or _Call == 1 or _Call == "True" or (_Call == False):
-                self.Ct_call.append(True)
-            elif _Call == "Fail" or _Call == 0 or _Call == "False" or (not _Call):
-                self.Ct_call.append(False)
-        else:
-            self.Ct_call.append(True) # otherwise assume all Ct's are good;
-
-    def setSampleReference(self, a_refSample):
-        self.sampleRef = a_refSample
-
-    def setPrimerReference(self, a_refPrimer):
-        self.primerRef = a_refPrimer
-
-    def calc_pass1(self):
-        # calculate the first delta and weed out the bad calls from Ct_call
-        self.tp1 = []
-        self.fp = []
-        for i in xrange(len(self.Ct)):
-            for t in xrange(len(self.primerRef.Ct)):
-                if (self.Ct_call[i]) and (self.primerRef.Ct_call[t]):
-                    self.tp1.append(self.Ct[i] - self.primerRef.Ct[t])
-                    self.fp.append(self.Ct[i])
-
-    def calc_pass2(self):
-        # multiply and calculate all ddCts against one another;
-        # do primer ref first;
-
-        pow_ddCt = []
-
-        # now normalise against the sample
-        for i in self.tp1:
-            for t in self.sampleRef.tp1:
-                pow_ddCt.append(math.pow(2, -i) / math.pow(2, -t))
-
-        pow_foldChange = []
-        for i in self.fp:
-            for t in self.sampleRef.fp:
-                pow_foldChange.append(math.pow(2, -i) / math.pow(2, -t))
-
-        self.log10ddCt = []
-        self.log2ddCt = []
-
-        # now the power;
-        if pow_ddCt:
-            for i in pow_ddCt:
-                self.log10ddCt.append(math.log10(i))
-                self.log2ddCt.append(math.log(i, 2))
-        else:
-            pass
-
-        if len(self.log10ddCt) == 0: # no values calculated
-            self.mean_log10ddCt = 0
-            self.err_log10ddCt = 0
-            self.mean_log2ddCt = 0
-            self.err_log2ddCt = 0
-            self.mean_percentddCt = 0
-            self.err_percentddCt = 0
-            self.mean_foldOverControl = 0
-        else:
-            self.mean_dCt = numpy.mean(self.tp1)
-            self.mean_log10ddCt = numpy.mean(self.log10ddCt)
-            self.err_log10ddCt = numpy.std(self.log10ddCt) / math.sqrt(len(self.Ct)) # divide by the sqrt of the original number of independent samples (ie 3)
-            self.mean_log2ddCt = numpy.mean(self.log2ddCt)
-            self.err_log2ddCt = numpy.std(self.log2ddCt) / math.sqrt(len(self.Ct)) # divide by the sqrt of the original number of independent samples (ie 3)
-            self.mean_percentddCt = numpy.mean(pow_ddCt)*100
-            self.err_percentddCt = numpy.std([x*100 for x in pow_ddCt]) / math.sqrt(len(self.Ct))
-            self.mean_foldOverControl = numpy.mean(pow_foldChange)
-            self.err_foldOverControl = numpy.std(pow_foldChange) / math.sqrt(len(self.Ct))
+def process_biomark(expression_sheets, sample_descriptor_tables, method, prefix=None, omit_samples=None, control_genes=None, missing_data_ct=35, 
+    convert_under_scores=False, use_pass_fail=True, use_only_prexix=False, cull_samples_with_low_control_genes=20):
+    """
+    **Purpose**
+        Load in some BioMark data and organise it into an expression object.
+        
+    **Arguments**
+        expression_sheets (Required)
+            A list of filenames containing the expression Ct measurements, 
+        
+            It should look like this (a csv file):
+    
+            Chip Run Info,D:\PCR DATA\LQH\lqh-0826\ChipRun.bml,1131312108,48.48 (113x),GE 48x48 Standard v1,ROX,FAM-MGB,8/26/2014 3:44:20 PM,01:28:46,BIOMARKHD198
+            Application Version,4.0.1
+            Application Build,20130423.0820
+            Export Type,Table Results
+            Quality Threshold,0.65
+            Baseline Correction Method,Linear (Derivative)
+            Ct Threshold Method,Auto (Global)
 
 
-    # debug printers;
-    def _pprint(self):
-        self.sprint()
-        if self.primerRef:
-            print ">>>>>primerRef"
-            self.primerRef.rprint()
-        else:
-            print ">>>>>primerRef\r\nNone"
-        if self.sampleRef:
-            print ">>>>>sampleRef"
-            self.sampleRef.rprint()
-        else:
-            print ">>>>>sampleRef\r\nNone"
-        print "\r\n"
+            Experiment Information,Experiment Information,Experiment Information,Experiment Information,Experiment Information,Experiment Information,FAM-MGB,FAM-MGB,FAM-MGB,FAM-MGB,User
+            Chamber,Sample,Sample,Sample,FAM-MGB,FAM-MGB,Ct,Ct,Ct,Ct,Defined
+            ID,Name,Type,rConc,Name,Type,Value,Quality,Call,Threshold,Comments
+            S48-A01,S48,Unknown,1,A01,Test,14.149687023483,0.977027260905451,Pass,0.00542578158304924,
+            S48-A02,S48,Unknown,1,A02,Test,13.2827171910875,0.978859410170243,Pass,0.00542578158304924,
+            ...
+        
+        sample_descriptor_tables (Required)
+            A set of descriptors that explain what the sample and primer names are. 
+            
+            It should look like this (a tsv file):
+            
+            Sample Name Cell Name
+            S01 Cell_1
+            S02 Cell_2
+            S03 Cell_3
+            ...
+            FAM-MGB Name    Primer Name
+            A01 MIXL1
+            A02 OTX2
+            A03 SNAI1
+            ...
+    
+            Note that the expression_sheets and samples_descriptor_tables are paired, and 
+            
+            len(expression_sheets) == len(samples_descriptor_tables)
+        
+        missing_data_ct (Optional, default=35)
+            A Ct value to input into missing data values.
+        
+        cull_samples_with_low_control_genes (Optional, default=20)
+            remove samples where the Ct in the control_genes is >20 (by default)
+            
+            If you have more than 1 control_gene, both genes must pass this threshold.
+            
+        prefix (Optional, default=None)
+            add a prefix to the 'sample names' to help in discriminating samples
+       
+        omit_samples (Optional, default=None)
+            send a list of names to exclude from the analysis. Testing is done using 'in'
+            so you can also add prefix's etc. Designed so you can omit samples such as
+            'negative control' etc.
+        
+        convert_under_scores (Optional, default=False)
+            convert underscores in the sample names to spaces
+        
+        method (Required)
+            The normalisation method required.
+            
+            Currently three methods are implemented:
+            
+            'Mean' - just mean the replicates.
+            'Buganim' - implements the normalisation procedure from Buganim et al., 2012; Cell.
+            None - This is primarily a debug routine to see all of the values in the Ct. You probably don't want to use this.
+        
+        control_genes (Required if method=="Buganim")
+            You must specify one ore more control primers if the method is 'Buganim'
+        
+        use_pass_fail (Optional, default=True)
+            Use the pass/fail calls from the BioMark.
+            
+    """
+    assert len(expression_sheets) == len(sample_descriptor_tables), "expression sheets and sample descriptors must be the same length"
+    assert len(expression_sheets) == len(prefix), "'prefix' is not the same length as the expression sheets"
+    assert method in valid_methods, "method '%s' not found" % method
+    if method == "Buganim":
+        assert control_genes, "You must specify control_genes when method == 'Buganim'"
+    
+    if not prefix:
+        prefix = [None] * len(expression_sheets)
+    
+    data = {}
+    
+    for expn_tab, desc_tab, prefix in zip(expression_sheets, sample_descriptor_tables, prefix):
+        sample_names, primer_names = load_descriptors(desc_tab, prefix, convert_under_scores)
+        expn = load_expn(expn_tab, missing_data_ct) # This already filters CtCall=Fail
+        
+        # First I need to combine all of the expn tables
+        for s in expn:
+            sam_name = sample_names[s]
+            if sam_name not in data:
+                data[sam_name] = {}
+            for p in expn[s]:
+                prim_name = primer_names[p]
+                if prim_name not in data[sam_name]:
+                    data[sam_name][prim_name] = []
+                data[sam_name][prim_name] = data[sam_name][prim_name] + expn[s][p]
 
-    def _sprint(self):
-        print self.sample, "\r\n",self.primer, "\r\n",  self.Ct, "\r\n", self.pow_ddCt, "\r\n", self.ddCt, "\r\n", self.mean, "\r\n",
-    def _rprint(self):
-        print self.sample, "\r\n",self.primer, "\r\n",  self.Ct, "\r\n", self.mean, "\r\n",
+    config.log.info("process_biomark: Found %s samples" % len(data))         
+    config.log.info("process_biomark: Found %s primers" % len(primer_names))  
+    
+    if method:
+        if method == "Mean":
+            for s in data:
+                for p in data[s]:
+                    data[s][p] = numpy.mean(data[s][p])
+            sample_names = data.keys()
+            #print data
+            primer_names = set(sum([data[s].keys() for s in data], []))
+            #print primer_names
+            
+                    
+        elif method == "Buganim":
+            data, sample_names, primer_names = norm_buganim(data, sample_names, primer_names, control_genes, missing_data_ct, 
+                cull_samples_with_low_control_genes=cull_samples_with_low_control_genes)        
+        elif method == "Buganim10":
+            data, sample_names, primer_names = norm_buganim(data, sample_names, primer_names, control_genes, missing_data_ct, fudge_factor=10,
+                cull_samples_with_low_control_genes=cull_samples_with_low_control_genes)     
+    
+    # sample_names must now be a list, primer_names must now be a set
+    # package the result into the format liked by expression()
+    # rows are primers.
+    newl = []
+    sam_order = sample_names   
+    sam_order.sort()
+    
+    # sort out omitted samples:
+    newsam_order = []
+    for s in sam_order:
+        if omit_samples and True in [o in s for o in omit_samples]: # omit these sample names
+            continue 
+        newsam_order.append(s) # Keep this sample name
+    sam_order = newsam_order
 
-class realtime:
-    def __init__(self, filename=None, format=None, **kargs):
-        """
-        **Purpose**
-            initialise and load in qRT-PCR data
-        """
-        # set up the lists;
-        self.assayList = []
-        self.primerList = []
-        self.sampleList = []
-        self.fileFormat = None
-        self.cRefSampleName = None
-        self.cRefPrimerName = None
-
-        if format == "ABI_SDS":
-            self.importSDSCopyPaste(filename)
-        elif format == "ABI_SDS2.4":
-            self.importSDSCopyPaste24(filename)
-
-    def importSDSCopyPaste(self, filename):
-        """
-        **Purpose**
-            import a SDS/ABI file that was copy and pasted
-            from the view in the bottom left corner of the SDS software
-
-        **Arguments**
-            filename (Required)
-                the filename to load
-        """
-        oh = open(filename, "rU")
-        reader = csv.reader(oh, dialect=csv.excel_tab)
-
-        for line in reader:
-            try:
-                sample_name = line[1] # catch other column missing wierdness
-                probe_name = line[2]
-                ct = float(line[4]) # catch undetermined's
-            except:
-                ct = None
-
-            if sample_name and probe_name and ct: # only keep ones with value
-                n = self.contains(probe_name, sample_name)
-                if n:
-                    n.addCt(ct, True)
-                else: # make a new assay
-                    a = assay(sample_name, probe_name) # not present so make a new element
-                    a.addCt(ct, True)
-                    self.assayList.append(a)
-
-                # is this a new sample type?
-                if sample_name not in self.sampleList:
-                    self.sampleList.append(sample_name)
-                # is this a new primer type?
-                if probe_name not in self.primerList:
-                    self.primerList.append(probe_name)
-        oh.close()
-        return(True)
-
-    def importSDSCopyPaste24(self, filename):
-        """
-        **Purpose**
-            import a SDS/ABI file that was copy and pasted from version 2.4
-            from the view in the bottom left corner of the SDS software
-
-        **Arguments**
-            filename (Required)
-                the filename to load
-        """
-        oh = open(filename, "rU")
-        reader = csv.reader(oh, dialect=csv.excel_tab)
-
-        for line in oh:
-            line = line.split("\t") # csv borks on the unicode.
-            try:
-                sample_name = line[4] # catch other column missing wierdness
-                probe_name = line[5]
-                ct = float(line[7]) # catch undetermined's
-            except Exception:
-                ct = None
-
-            if sample_name and probe_name and ct: # only keep ones with value
-                n = self.contains(probe_name, sample_name)
-                if n:
-                    n.addCt(ct, True)
-                else: # make a new assay
-                    a = assay(sample_name, probe_name) # not present so make a new element
-                    a.addCt(ct, True)
-                    self.assayList.append(a)
-
-                # is this a new sample type?
-                if sample_name not in self.sampleList:
-                    self.sampleList.append(sample_name)
-                # is this a new primer type?
-                if probe_name not in self.primerList:
-                    self.primerList.append(probe_name)
-        oh.close()
-        return(True)
-
-    def importBioMarkCSVFilter(self, _csvfile):
-        fh = open(_csvfile, "rb")
-        csvr = csv.reader(fh)
-        # read the header row;
-        # start at row 10 and read in the three lines
-        for n in xrange(10):
-            line = csvr.next()
-        headers = []
-        # then read in three lines and store them in a list of lists
-        for n in xrange(2):
-            line = csvr.next()
-            headers.append(line)
-        # squash the three lines into 1
-        nheaders = []
-        for n in xrange(len(headers[0])):
-            a = headers[0]
-            b = headers[1]
-            nheaders.append(a[n]+b[n])
-
-        #print nheaders
-
-        for n in xrange(len(nheaders)): # find the column numbers for all of the elements;
-            item = nheaders[n].lower()
-
-            if item == "samplename": cSamName = n
-            elif (item == "fam-mgbname") or (item == "fam-tamraname"): cPrimerName = n
-            elif item == "ctvalue": cCt = n
-            elif item == "ctcall": cCtCall = n
-
-        # and now iterate through the rest of the file and load in the data;
-        for row in csvr: # this continues from where the last read left off
-            n = self.contains(row[cPrimerName], row[cSamName])
-            if n:
-                n.addCt(float(row[cCt]) , row[cCtCall]) # element already present, so just add the Ct
+    for p in primer_names: # rows
+        # condition data. 
+        cond_data = []
+        for s in sam_order:
+            if s in data: # Must be true?
+                pass
+                
+            if p in data[s]:
+                Ct = data[s][p]
             else:
-                a = assay(row[cSamName], row[cPrimerName]) # not present so make a new element
-                a.addCt(float(row[cCt]), row[cCtCall])
-                self.assayList.append(a)
-
-            # is this a new sample type?
-            if not self.sampleList.count(row[cSamName]):
-                self.sampleList.append(row[cSamName])
-            # is this a new primer type?
-            if not self.primerList.count(row[cPrimerName]):
-                self.primerList.append(row[cPrimerName])
-
-        fh.close()
-
-    def importGenericFilter(self, _csvfile):
-        print "> Generic File Import"
-        fh = open(_csvfile, "rb")
-        csvr = csv.reader(fh)
-        # read the header row;
-        line = csvr.next()
-        cCtCall = None
-        for n in xrange(len(line)): # find the column numbers for all of the elements;
-            item = line[n].lower()
-
-            if item == "sample_name": cSamName = n
-            elif item == "primer_name": cPrimerName = n
-            elif item == "ct": cCt = n
-            elif item == "ct_call": cCtCall = n
-
-        fh.close()
-
-        self.importByColumnNumber(_csvfile, 1, cSamName, cPrimerName, cCt, cCtCall)
-
-    def importByColumnNumber(self, csvfile, _numRowsToSkip, _SamColNum, _PrimerColNum, _CtColNum, tsv=False, **kargs):
-        """
-        (Internal)
-        This should probably be internal
-        Supply the known column numbers for the particular categories.
-        only CtCallColNum can be None
-        """
-        fh = open(csvfile, "rU")
-        if tsv:
-            csvr = csv.reader(fh, dialect=csv.excel_tab)
-        else:
-            csvr = csv.reader(fh)
-
-        lineno = 0
-        # and now iterate through the rest of the file and load in the data
-        for row in csvr:
-            lineno += 1
-            if lineno > _numRowsToSkip:
-                try:
-                    entry = self.contains(row[_PrimerColNum], row[_SamColNum]) # check if pre-exisiting entry
-                    if entry:
-                        entry.addCt(float(row[_CtColNum]))
-                    else: # not present so make a new element
-                        Ct = float(row[_CtColNum]) # I do this first as if it fails the Ct is empty and so it will fail to add a superfluous entry.
-                        a = assay(row[_SamColNum], row[_PrimerColNum])
-                        a.addCt(float(row[_CtColNum]))
-                        self.assayList.append(a)
+                Ct = missing_data_ct # What to do with missing data?
+            cond_data.append(Ct)
+            
+        newl.append({"name": p, "conditions": cond_data})
+    
+    if method is None: # Send back a genelist, an expression object will mangle the output
+        newgl = []
+        for p in primer_names:
+            i = {"name": primer_names[p]}
+            for s in sam_order:
+                if p in data[s]:
+                    i[sample_names[s]] = data[s][p]
+                else:
+                    i[sample_names[s]] = missing_data_ct
+            newgl.append(i)
+        gl = genelist()
+        gl.load_list(newgl)
+        return(gl)
+        
+    e = expression(loadable_list=newl, cond_names=sam_order)
+    e.sort_conditions()
+    return(e)
+        
+def load_expn(filename, missing_data_ct):
+    """
+    (Internal)
+    **Purpose**
+        Load a BioMark experimental Ct file.
+    """
+    table = {}
+    
+    with open(filename, "rU") as fh:
+        ft = csv.reader(fh)
+        
+        for row in ft:
+            if row:
+                if len(row[0]) == 7 and "S" in row[0] and "A" in row[0]: 
+                    # Check it passed:
+                
+                    # get the Ct
+                    sample = row[1]
+                    primer = row[4]
+                    Ct = float(row[6])
                     
-                    sample_name = row[_SamColNum]
-                    probe_name = row[_PrimerColNum]
+                    if row[8] == "Fail":
+                        Ct = float(missing_data_ct)
                     
-                    # is this a new sample type?
-                    if sample_name not in self.sampleList:
-                        self.sampleList.append(sample_name)
-                    # is this a new primer type?
-                    if probe_name not in self.primerList:
-                        self.primerList.append(probe_name)
-                        
-                except ValueError, IndexError:
-                    # Ct column is empty and this is an empty row, skip it.
-                    pass
+                    if sample not in table:
+                        table[sample] = {}
+                    if primer not in table[sample]:
+                        table[sample][primer] = []
+                    table[sample][primer].append(Ct)
+    
+    return(table)
+        
+def load_descriptors(filename, prefix, convert_under_scores):
+    """
+    (Internal)
+    **Purpose**
+        Load a descriptor file.
+    """
+    with open(filename, "rU") as fh:
+        ft = csv.reader(fh, dialect=csv.excel_tab)
+    
+        sample_names = {}
+        primer_names = {}
+        
+        for row in ft:
+            if len(row[0]) < 4 and "S" in row[0]: # Sample name
+                sam_name = row[1]
+                if prefix:
+                    sam_name = "%s_%s" % (prefix, row[1])
+                if convert_under_scores:
+                    sam_name = sam_name.replace("_", " ")
 
-        fh.close()
+                sample_names[row[0]] = sam_name
+                
+            if len(row[0]) < 4 and "A" in row[0]:
+                primer_names[row[0]] = row[1]
+            
+    return(sample_names, primer_names)
+    
+def norm_buganim(data, sample_names, primer_names, control_genes, missing_data_ct, fudge_factor=20, cull_samples_with_low_control_genes=False):
+    """
+    (Internal)
+    Code to process the data in the manner of Buganim
+    """
+    # Gene filter part 1:
+    for s in data:
+        for p in data[s]:
+            # 1d blank replicates that have >2.0 stdev.
+            stdev = numpy.std(data[s][p])
+            if abs(stdev) > 2.0:
+                data[s][p] = missing_data_ct
+            else:
+                data[s][p] = numpy.mean(data[s][p])               
+    
+    # Sample filter:
+    mark_s_for_del = [] # mark sample for deletion:
+    #inv_primer_names = {v:k for k, v in primer_names.items()}
+    newsample_names = []
+    for s in data:
+        for g in control_genes:
+            if data[s][p] >= missing_data_ct:
+                mark_s_for_del.append(s)
+            else:
+                newsample_names.append(s) # I will keep this sample
+    for s in set(mark_s_for_del):
+        del data[s]
+    sample_names = list(set(newsample_names)) # remove the failed samples, convert sample names into a list (not set as later I sort)
+    config.log.warning("process_biomark: Deleted %s samples: %s" % (len(set(mark_s_for_del)), list(set(mark_s_for_del))))
 
-    def calculate(self):
-        # these to be userset
-        found_PrimerRef = False
-        found_sampleRef = False
+    if cull_samples_with_low_control_genes:
+        mark_s_for_del = [] # mark sample for deletion:
+        newsample_names = []
+        for s in data:
+            for ctrl_gene in control_genes:
+                if data[s][ctrl_gene] > cull_samples_with_low_control_genes:
+                    mark_s_for_del.append(s)
+            if s not in mark_s_for_del: # For more than 1 ctrl gene;
+                newsample_names.append(s) # I will keep this sample
+        for s in set(mark_s_for_del):
+            del data[s]
+        sample_names = list(set(newsample_names)) # remove the failed samples, convert sample names into a list (not set as later I sort)
+        config.log.warning("process_biomark: Deleted %s samples: %s using cull_samples_with_low_control_genes=%s" % (len(set(mark_s_for_del)), list(set(mark_s_for_del)), cull_samples_with_low_control_genes))
+        #print sample_names
 
-        self.refList = []
-        # Am I a reference? If so add me to a new list
-        for item in self.assayList:
-            if item.primer == self.cRefPrimerName:
-                self.refList.append(item)
-                found_PrimerRef = True
-                #print "Add Primer:", item.primer
-            elif item.sample == self.cRefSampleName:
-                self.refList.append(item)
-                #print "Add Sample:", item.sample
-                found_sampleRef = True
-
-        if not found_sampleRef: # with the GUI, these *should* be impossible;
-            print "> Error: No reference Sample found:", self.cRefSampleName
-            return(False)
-        if not found_PrimerRef:
-            print "> Error: No reference Primer found: ", self.cRefPrimerName
-            return(False)
-
-        # now pair up the assays with their controls;
-        for i in self.assayList:
-            for t in self.refList:
-                if not t == i:
-                    if (t.primer == self.cRefPrimerName) and (t.sample == i.sample):
-                        # the corresponding reference primer;
-                        i.setPrimerReference(t)
-                    if (t.primer == i.primer) and (t.sample == self.cRefSampleName):
-                        i.setSampleReference(t)
-
-
-        # I have to make a special case for the reference samples:
-        # this assumes only one reference
-        for t in self.refList:
-            for i in self.refList:
-                if not t == i:
-                    if t.primer == self.cRefPrimerName:
-                        # the reference is itself in this instance
-                        t.setPrimerReference(t)
-                    t.setSampleReference(t)
-
-        for i in self.assayList:
-            i.calc_pass1()
-        # This is a bit weird, but I need to complete two loops.
-        for i in self.assayList:
-            i.calc_pass2() # requires two passes;
-
-        config.log.info("Calculated Ct data")
-        return(True)
-
-    def contains(self, primerName, sampleName):
-        for item in self.assayList:
-            if primerName == item.primer:
-                if sampleName == item.sample:
-                    return(item)
-        return(False)
-
-    def write_output_data(self, csvfile):
-        """
-        **Purpose**
-            write the output data to a csvfile.
-
-        **Arguments**
-            csvfile
-                the filename to save the data to.
-
-        **Returns**
-            None and a csv file containing
-        """
-        try:
-            self.assayList[0].mean_log10ddCt
-        except:
-            self.calculate()
-
-        f = open(csvfile, "w")
-        csvw = csv.writer(f, dialect=csv.excel_tab)
-
-        line = ["Sample", "Primer", "mean_log10ddCt", "err_log10ddCt", "mean_log2ddCt", "err_log2ddCt", "mean_percentddCt", "err_percentddCt"]
-        csvw.writerow(line)
-
-        for i in self.assayList:
-            line = [i.sample, i.primer, i.mean_log10ddCt, i.err_log10ddCt, i.mean_log2ddCt, i.err_log2ddCt, i.mean_percentddCt, i.err_percentddCt]
-            csvw.writerow(line)
-
-        f.close()
-        config.log.info("Saved file containing generated data '%s'" % csvfile)
-
-    def detectFileFormat(self, _filename):
-        """
-        **Purpose**
-            This will try to guess the file format based on a small
-            set of criteria.
-            To be honest this method does not work particularly well and
-            its use is not recommended
-
-        **Arguments**
-            filename
-                the filename to attempt to load
-
-        **Returns**
-            returns the type of file it thinks it finds.
-        """
-        ret = FF_UNKNOWN
-        fh = open(_filename, "rb")
-
-        # read the first few bytes from the file;
-        s = fh.readline()
-        if s.count("well") or s.count("Well"):
-            ret = FF_GENERIC
-        elif s.count("Chip Run Filename"):
-            ret = FF_BIOMARK
-        self.fileFormat = ret
-        fh.close()
-
-        if self.fileFormat == FF_GENERIC:
-            self.importGenericFilter(_filename)
-        elif self.fileFormat == FF_BIOMARK:
-            self.importBioMarkCSVFilter(_filename)
-        else:
-            return(False)
-
-        return(ret)
-
-    def set_reference_probe(self, probe_name):
-        """
-        **Purpose**
-            set the reference probe by probe_name
-
-        **Arguments**
-            probe_name
-                the name of the probe, must be present in the realtime data
-
-        **Returns**
-            True
-        """
-        assert probe_name in self.primerList, "probe not found in this data set"
-        self.cRefPrimerName = probe_name
-        config.log.info("Set Probe Reference to '%s'" % probe_name)
-        return(True)
-
-    def set_reference_sample(self, sample_name):
-        """
-        **Purpose**
-            set the reference sample by sample_name
-
-        **Arguments**
-            samples_name
-                the name of the sample, must be present in the realtime data
-
-        **Returns**
-            True
-        """
-        assert sample_name in self.sampleList, "probe not found in this data set"
-        self.cRefSampleName = sample_name
-        config.log.info("Set Sample Reference to '%s'" % sample_name)
-        return(True)
-
-    def __str__(self):
-        """
-        (Override)
-        print a nice summary of the data
-        """
-        ret = []
-        ret.append("Realtime data:")
-        ret.append("Primers: %s" % (", ".join(self.primerList)))
-        ret.append("Samples: %s" % (", ".join(self.sampleList)))
-        return("\n".join(ret))
-
-    def print_all_data(self):
-        """
-        **Purpose**
-            print all of the data contained in the realtime set
-
-        **Arguments**
-            None
-        """
-        print "Data:"
-        print self.__str__()
-        print
-        for item in self.assayList:
-            print item
+    # Gene filter part 2:
+    primer_names = set(primer_names.values()) # I only need the set of primer names now
+    mark_p_for_del = []
+    for p in set(primer_names) - set(control_genes):
+        # Can sometimes have missing values:
+        all_p = []
+        for s in data:
+            if p in data[s]:
+                all_p.append(data[s][p])
+        #print s, primer_names[p], [i >= missing_data_ct for i in all_p], all_p
+        if False not in [i >= missing_data_ct for i in all_p]: # If all > missing_data_ct then discard
+            mark_p_for_del.append(p)
+            
+    config.log.warning("process_biomark: Deleted %s primers: %s" % (len(set(mark_p_for_del)), list(set(mark_p_for_del))))
+    for p in set(mark_p_for_del):
+        primer_names.remove(p)
+        for s in data:
+            if p in data[s]: # Can contain missing values
+                del data[s][p]     
+    
+    newdata = copy.deepcopy(data)
+    # Convert to ACx 
+    for p in primer_names:
+        for s in data:
+            ctrl_expn = [data[s][ctrl] for ctrl in control_genes]
+            this_expn = data[s][p]
+            
+            #print this_expn
+            
+            res = []
+            for ctrl in ctrl_expn:
+                #for expn in this_expn:
+                ACx = fudge_factor + ctrl - this_expn # They have an arbitrary fudge factor.
+                res.append(ACx) 
+            #print res
+                    
+            newdata[s][p] = numpy.mean(res)
+    return(newdata, sample_names, primer_names)

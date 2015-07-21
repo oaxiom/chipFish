@@ -52,6 +52,8 @@ class delayedlist(genelist):
     
     def __init__(self, filename=None, format=None, force_tsv=False, **kargs):
         genelist.__init__(self) # no kargs though. I want the mpty version.
+        
+        self.__len_estimate = None
 
         assert filename, "No Filename"
         assert os.path.exists(filename), "%s not found" % (filename)
@@ -121,8 +123,18 @@ class delayedlist(genelist):
 
         return(genelist.overlap(self, genelist=gene_list, loc_key=kargs["loc_key"], delta=delta, merge=True))
 
+    def map(self):
+        raise AssertionError, 'delayedlists cannot be mapped in this direction, try the other way: genelist.map(genelist=delayedlist, key="...", ...)'
+
     def __len__(self):
-        return(0) # send back a dummy length, even though it's meaningless.
+        # I need to collect an estimate
+        if not self.__len_estimate:
+            with open(self.fullpath) as f:
+                for i, l in enumerate(f):
+                    pass
+            self.__len_estimate = i
+
+        return(self.__len_estimate) # 
 
     def __getitem__(self, index):
         """
@@ -150,7 +162,13 @@ class delayedlist(genelist):
                 
                 d = None
                 while not d:
-                    if column: # list is empty, so omit.
+                    if "commentlines" in self.format:
+                        if column[0][0] == self.format["commentlines"]: # csv will split the table and returns a list
+                            column = None # force a skip of this row, don't use continue it will just hang
+                        if column[0].startswith(self.format["commentlines"]):
+                            column = None
+                
+                    if column: # list is empty, so omit.                          
                         if "keepifxin" in self.format:
                             if True in [self.format["keepifxin"] in i for i in column]:
                                 if (not (column[0] in typical_headers)):
@@ -165,6 +183,14 @@ class delayedlist(genelist):
                     if not d: # d is bad, grab another
                         column = self.__reader.next()
                         self.cindex += 1
+                
+                # I do quoting = NONE now, so I need to manually deal with containing quotes.  
+                for k in d: # d must be valid to get here
+                    if isinstance(d[k], str): # only for strings 
+                        if d[k][0] == "'" and d[k][-1] == "'":
+                            d[k] = d[k].strip("'")
+                        if d[k][0] == '"' and d[k][-1] == '"': 
+                            d[k] = d[k].strip('"')
                 
                 yield d # d should be valid
                 column = self.__reader.next() # get the next item
@@ -187,11 +213,11 @@ class delayedlist(genelist):
         self.filehandle = open(self.fullpath, "rU")
         
         if "force_tsv" in self.format and self.format["force_tsv"]:
-            self.__reader = csv.reader(self.filehandle, dialect=csv.excel_tab)
+            self.__reader = csv.reader(self.filehandle, dialect=csv.excel_tab, quoting=csv.QUOTE_NONE)
         elif "dialect" in self.format:
-            self.__reader = csv.reader(self.filehandle, dialect=self.format["dialect"])
+            self.__reader = csv.reader(self.filehandle, dialect=self.format["dialect"], quoting=csv.QUOTE_NONE)
         else:
-            self.__reader = csv.reader(self.filehandle)
+            self.__reader = csv.reader(self.filehandle, quoting=csv.QUOTE_NONE)
 
         if "skiplines" in self.format:
             if self.format["skiplines"] != -1: # no skipped lines, good to go.

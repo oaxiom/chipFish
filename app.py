@@ -148,9 +148,13 @@ class app():
                                     g = genomes()
                                     if name in g:
                                         self.draw.bindTrack(g.get_genome(name))
+                                        continue
                                 except AssertionError:
                                     # Okay, that did'nt work. see If I can get a file in this dir:
                                     self.draw.bindTrack(glload(os.path.join(path, name)))
+                                    continue
+                                # Okay, assume the user knows what they are doing and just grab the file they asked for:
+                                self.draw.bindTrack(glload(name))
             oh.close()
 
         self.draw.setViewPortSize(opt.draw.view_port_width)
