@@ -33,6 +33,7 @@ import glbase.format as format
 # get the wrapped versions.
 from genelist import genelist
 from genome import genome
+from genome_sql import genome_sql
 from track import track
 from flat_track import flat_track
 

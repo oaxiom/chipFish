@@ -74,7 +74,8 @@ class gDraw:
             "graph_split_strand": self.__drawTrackGraph_split_strand,
             "bar": self.__drawTrackBar,
             "spot": self.__drawTrackSpot,
-            "genome": self.__drawGenome
+            "genome": self.__drawGenome,
+            "repeats": self.__drawRepeats,
             }
 
         self.delta = self.rbp - self.lbp
@@ -115,7 +116,6 @@ class gDraw:
                     resolution=self.bps_per_pixel, **track["options"])
                     
             elif track["type"] == "spot":
-                print track["options"]
                 item["array"] = track["data"].get_data("spot", location(loc=self.curr_loc), **track["options"])
                 
             elif track["type"] == "graph_split_strand":
@@ -124,6 +124,10 @@ class gDraw:
                 
             elif track["type"] == "genome":
                 item["array"] = track["data"].get_data("genome", location(loc=self.curr_loc))
+                print item["array"]
+
+            elif track["type"] == "repeats":
+                item["array"] = track["data"].get_data(location(loc=self.curr_loc))
 
             draw_data.append(item)
 
@@ -169,24 +173,6 @@ class gDraw:
         # any further (internal) drawing goes here.
         if opt.debug.draw_collision_boxes: self.__debug_draw_col_boxes()
         return(True)
-
-    def __drawGenome(self, track_data, **kargs):
-        # Draw a genome
-        draw_modes_dict = { # In case I ever add other drawing modes...
-            "gene": self.__drawGene,
-            "lncRNA": self.__drawGene,
-            "microRNA": self.__drawGene,
-            'LINE': self.__drawRepeat, 
-            'LTR': self.__drawRepeat, 
-            'SINE': self.__drawRepeat
-            }
-    
-        if opt.draw.double_lines_for_genome:
-            self.__drawChr(None)
-
-        # draw the genome:
-        for item in track_data["array"]:
-            draw_modes_dict[item["type"]](item, track_data)
 
     def __debug_draw_col_boxes(self):
         """
@@ -764,6 +750,21 @@ class gDraw:
             self.ctx.move_to(x - t[2], y) 
         self.ctx.show_text(str(text))
 
+    def __drawGenome(self, track_data, **kargs):
+        # Draw a genome
+        draw_modes_dict = { # In case I ever add other drawing modes...
+            "gene": self.__drawGene,
+            "lncRNA": self.__drawGene,
+            "microRNA": self.__drawGene,
+            }
+    
+        if opt.draw.double_lines_for_genome:
+            self.__drawChr(None)
+
+        # draw the genome:
+        for item in track_data["array"]:
+            draw_modes_dict[item["type"]](item, track_data)
+
     def __drawGene(self, data, track_data=None):
         """
         draw Features of the type "Gene"
@@ -778,7 +779,7 @@ class gDraw:
         if not track_data: # See if we are bound into a track slot.
             track_slot_base = 0
         else:
-            track_slot_base = track_data["track_location"]
+            track_slot_base = track_data["track_location"] - (opt.track.height_px['genome'] / 2.0)
 
         posLeft = self.__realToLocal(data["loc"]["left"], track_slot_base)[0]
         posBase = self.__realToLocal(data["loc"]["left"], track_slot_base)[1]
@@ -880,6 +881,32 @@ class gDraw:
 
         return(True)
 
+    def __drawRepeats(self, track_data, **kargs):
+        # Draw a genome
+        draw_modes_dict = { # In case I ever add other drawing modes...
+            'LINE': self.__drawRepeat, 
+            'LTR': self.__drawRepeat, 
+            'SINE': self.__drawRepeat
+            }
+
+        self.__drawTrackBackground(track_data["track_location"], "repeats")
+        
+        one_third = ((opt.track.height_px['repeats']) / 4.0)
+        # Three genome lines for the repeats
+        self.ctx.set_line_width(1)
+        self.__setPenColour((0.6, 0.6, 0.6))
+        for i in (1.0, 2.0, 3.0):
+            track_slot_base = track_data["track_location"] - (one_third * i)
+            loc = self.__realToLocal(0, track_slot_base)
+            self.ctx.move_to(0, loc[1])
+            self.ctx.line_to(self.w, loc[1])
+            self.ctx.stroke()
+
+        # draw the genome:
+        for item in track_data["array"]:
+            # Should assert here if not in draw_modes
+            draw_modes_dict[item["type"]](item, track_data)
+
     def __drawRepeat(self, data, track_data=None):
         """
         draw Features of the type "Repeat"
@@ -888,109 +915,75 @@ class gDraw:
         loc: location span of gene
         strand: strand of gene
         Class: 
-        """
-        if not track_data: # See if we are bound into a track slot.
-            track_slot_base = 0
-        else:
-            track_slot_base = track_data["track_location"]
+        """        
+        one_third = ((opt.track.height_px['repeats']) / 4.0)
+        # order = LINE, SINE, LTR
+        if data['type'] == 'LINE':
+            track_slot_base = track_data["track_location"] - one_third
+        elif data['type'] == 'SINE':
+            track_slot_base = track_data["track_location"] - (one_third * 2.0)
+        elif data['type'] == 'LTR':
+            track_slot_base = track_data["track_location"] - (one_third * 3.0)
 
         posLeft = self.__realToLocal(data["loc"]["left"], track_slot_base)[0]
         posBase = self.__realToLocal(data["loc"]["left"], track_slot_base)[1]
         posRight = self.__realToLocal(data["loc"]["right"], track_slot_base)[0]
-        self.ctx.set_line_width(1)
-        self.__setPenColour(opt.graphics.gene_colour)
 
         #---------------------------------------------------------------
-        # draw gene blocks.
-        tc = [] # build a list of the genome coordinates.
-        for item in data["exonStarts"]:
-            tc.append({"c": item ,"t": "es"})
-        for item in data["exonEnds"]:
-            tc.append({"c": item, "t": "ee"})
-        tc.append({"c": data["cds_loc"]["left"], "t": "cdss"})
-        tc.append({"c": data["cds_loc"]["right"], "t": "cdse"})
-
-        tc = sorted(tc, key=itemgetter("c"))
-
+        # draw repeat blocks.
+        self.ctx.set_line_width(1)
+        self.__setPenColour(opt.graphics.repeat_cols[data['type']])
         current_offset = opt.graphics.gene_height
         coords = []
-        coords.append(self.__realToLocal(data["loc"]["left"], track_slot_base))
-        coords.append(self.__realToLocal(data["loc"]["left"], track_slot_base + opt.graphics.gene_height))
-        for c in tc:
-            if c["t"] == "cdss":
-                current_offset = opt.graphics.cds_height
-                coords.append(self.__realToLocal(c["c"], track_slot_base + opt.graphics.gene_height))
-                coords.append(self.__realToLocal(c["c"], track_slot_base + opt.graphics.cds_height))
-            elif c["t"] == "cdse":
-                current_offset = opt.graphics.gene_height
-                coords.append(self.__realToLocal(c["c"], track_slot_base + opt.graphics.cds_height))
-                coords.append(self.__realToLocal(c["c"], track_slot_base + opt.graphics.gene_height))
-            elif c["t"] == "es":
-                coords.append(self.__realToLocal(c["c"], track_slot_base))
-                coords.append(self.__realToLocal(c["c"], track_slot_base + current_offset))
-            elif c["t"] == "ee":
-                coords.append(self.__realToLocal(c["c"], track_slot_base + current_offset))
-                coords.append(self.__realToLocal(c["c"], track_slot_base))
-
-        coords.append(self.__realToLocal(data["loc"]["right"], track_slot_base + opt.graphics.gene_height))
-        coords.append(self.__realToLocal(data["loc"]["right"], track_slot_base))
+        if data['strand'] == '+':
+            coords.append(self.__realToLocal(data["loc"]["left"], track_slot_base))
+            coords.append(self.__realToLocal(data["loc"]["left"], track_slot_base - opt.graphics.repeat_height))
+            coords.append(self.__realToLocal(data["loc"]["right"], track_slot_base - opt.graphics.repeat_height))
+            coords.append(self.__realToLocal(data["loc"]["right"], track_slot_base))
+        elif data['strand'] == '-':
+            coords.append(self.__realToLocal(data["loc"]["left"], track_slot_base))
+            coords.append(self.__realToLocal(data["loc"]["left"], track_slot_base + opt.graphics.repeat_height))
+            coords.append(self.__realToLocal(data["loc"]["right"], track_slot_base + opt.graphics.repeat_height))
+            coords.append(self.__realToLocal(data["loc"]["right"], track_slot_base))
 
         self.ctx.move_to(coords[0][0], coords[0][1])
         for index, item in enumerate(coords):
             self.ctx.line_to(item[0], item[1])
         self.ctx.move_to(coords[0][0], coords[0][1])
-
-        coords.reverse()
-        for item in coords:
-            self.ctx.line_to(item[0], posBase + (posBase - item[1]))
             
         self.ctx.line_to(coords[0][0], coords[0][1]) # Finish so fill works 
-        #self.ctx.stroke()
         self.ctx.fill()
 
         self.ctx.set_line_width(1)
+        self.__setPenColour(opt.graphics.repeat_cols[data['type']])
 
         #---------------------------------------------------------------
-        # Draw gene arrow
+        # Draw label (strand is indicated by position relative to the genome line)
 
         if data["strand"] == "+": # top strand
             loc = self.__realToLocal(data["loc"]["left"], track_slot_base)
             # arrow.
-            self.ctx.move_to(loc[0], loc[1]-20)
-            self.ctx.line_to(loc[0], loc[1]-20-opt.graphics.arrow_height_px)
-            self.ctx.line_to(loc[0] + opt.graphics.arrow_width_px, loc[1]-20)
-            self.ctx.line_to(loc[0], loc[1]-20+opt.graphics.arrow_height_px)
-            self.ctx.line_to(loc[0], loc[1]-20)
-            self.ctx.fill()
-            self.__drawText(loc[0]+opt.graphics.arrow_width_px+3, loc[1]-20+opt.graphics.arrow_height_px, "Arial", data["name"], size=opt.gene.font_size, style=opt.gene.font_style)
+            #self.ctx.move_to(loc[0], loc[1]-8)
+            #self.ctx.line_to(loc[0], loc[1]-8-opt.graphics.repeat_arrow_height_px)
+            #self.ctx.line_to(loc[0] + opt.graphics.arrow_width_px, loc[1]-8)
+            #self.ctx.line_to(loc[0], loc[1]-8+opt.graphics.repeat_arrow_height_px)
+            #self.ctx.line_to(loc[0], loc[1]-8)
+            #self.ctx.fill()
+            #self.__drawText(loc[0]+opt.graphics.arrow_width_px+3, loc[1]-8+opt.graphics.arrow_height_px, "Helvetica", data["name"], size=opt.graphics.repeat_label_font_size, style=opt.graphics.repeat_label_font_style)
+            self.__drawText(loc[0], loc[1]-12+opt.graphics.arrow_height_px, "Helvetica", data["name"], size=opt.graphics.repeat_label_font_size, style=opt.graphics.repeat_label_font_style)
         elif data["strand"] == "-":
             loc = self.__realToLocal(data["loc"]["right"], track_slot_base)
             # arrow.
-            self.ctx.move_to(loc[0], loc[1]+20)
-            self.ctx.line_to(loc[0], loc[1]+20-opt.graphics.arrow_height_px)
-            self.ctx.line_to(loc[0]-opt.graphics.arrow_width_px, loc[1]+20)
-            self.ctx.line_to(loc[0], loc[1]+20+opt.graphics.arrow_height_px)
-            self.ctx.line_to(loc[0], loc[1]+20)
-            self.ctx.fill()
-            self.__drawText(loc[0]+opt.graphics.arrow_width_px-13, loc[1]+22+opt.graphics.arrow_height_px, "Arial", data["name"], size=opt.gene.font_size, align="right", style=opt.gene.font_style)
+            #self.ctx.move_to(loc[0], loc[1]+8)
+            #self.ctx.line_to(loc[0], loc[1]+8-opt.graphics.repeat_arrow_height_px)
+            #self.ctx.line_to(loc[0]-opt.graphics.arrow_width_px, loc[1]+8)
+            #self.ctx.line_to(loc[0], loc[1]+8+opt.graphics.repeat_arrow_height_px)
+            #self.ctx.line_to(loc[0], loc[1]+8)
+            #self.ctx.fill()
+            #self.__drawText(loc[0]+opt.graphics.arrow_width_px-13, loc[1]+10+opt.graphics.arrow_height_px, "Helvetica", data["name"], size=opt.graphics.repeat_label_font_size, align="right", style=opt.graphics.repeat_label_font_style)
+            self.__drawText(loc[0], loc[1]+10+opt.graphics.arrow_height_px, "Helvetica", data["name"], size=opt.graphics.repeat_label_font_size, align="right", style=opt.graphics.repeat_label_font_style)
         else:
             raise ErrorInvalidGeneDefinition
-
-        if opt.draw.single_midline_in_introns: # draw a single line through the gene
-            # this looks best when the genome is not being drawn.
-            leftmost = self.__realToLocal(data["loc"]["left"], track_slot_base)
-            rightmost = self.__realToLocal(data["loc"]["right"], track_slot_base)
-            self.__setPenColour(opt.graphics.gene_colour)
-            self.ctx.set_line_width(1)
-            self.ctx.move_to(leftmost[0], leftmost[1])
-            self.ctx.line_to(rightmost[0], rightmost[1])
-            self.ctx.stroke()
-
-        if opt.draw.chevrons_inside_introns:
-            pass
-
-        if opt.draw.braces_between_exons:
-            pass
 
         return(True)
 

@@ -35,7 +35,7 @@ format_mm9_refgene = {
         "strand": 3,
         "name": 12,
         "refseq": 1,
-        #"tss_loc": {"code": "strandSorter(column[2], column[4], column[5], column[3])"}, # Broken in this version of glbase
+        "tss_loc": {"code": "strandSorter(column[2], column[4], column[5], column[3])"}, # Broken in this version of glbase
         "cds_loc": {"code": "location(chr=column[2], left=column[6], right=column[7])"},
         "exons_count": 8,
         "exonStarts": {"code": "[int(x) for x in column[9].strip(\",\").split(\",\")]"},
@@ -53,16 +53,17 @@ if os.path.exists("hg19_refGene.tsv"):
     hg19 = glbase_wrapper.genome(name="hg19", filename="hg19_refGene.tsv", format=format_mm9_refgene)
     print hg19
     hg19.save("hg19_refGene.glb")
-    print hg19._findByLabel("name", "Nanog")
+    print hg19._findByLabel("name", "NANOG")
 
 if os.path.exists("mm10_refGene.tsv"):
     mm10 = glbase_wrapper.genome(name="mm10", filename="mm10_refGene.tsv", format=format_mm9_refgene)
     print mm10
     mm10.save("mm10_refGene.glb")
     print mm10._findByLabel("name", "Nanog")
-    
+
 if os.path.exists("hg38_refGene.tsv"):
-    mm10 = glbase_wrapper.genome(name="mm10", filename="hg38_refGene.tsv", format=format_mm9_refgene)
-    print mm10
-    mm10.save("hg38_refGene.glb")
-    print mm10._findByLabel("name", "Nanog")
+    hg38 = glbase_wrapper.genome(name="hg38", filename="hg38_refGene.tsv", format=format_mm9_refgene)
+    print hg38
+    hg38.save("hg38_refGene.glb")
+    print hg38._findByLabel("name", "NANOG")
+    hg38.getFeatures('chr12:7,786,960-7,801,578')

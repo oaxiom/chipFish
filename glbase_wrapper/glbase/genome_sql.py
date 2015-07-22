@@ -2,7 +2,13 @@
 
 An SQL replacement for genome
 
-This loses a lot of the flexibility of 
+This loses a lot of the flexibility of genelists, but could potentially be abstracted into
+a genelist-like interface.
+
+TODO:
+-----
+. This should be abstracted down to a base_sql class which mimics the base functionality of base_genelist
+. This can be specified as putting the sql into memory, so not requireing an in disk store.
 
 """
 
@@ -83,7 +89,7 @@ class genome_sql(base_track):
 
         # make the new chromsome table:
         table_name = "chr_%s" % str(chromosome)
-        c.execute("CREATE TABLE %s (transcript_left INT, transcript_right INT, cds_left INT, cds_right INT, exonStarts TEXT, exonEnds TEXT, name TEXT, strand TEXT)" % (table_name, ))
+        c.execute("CREATE TABLE %s (transcript_left INT, transcript_right INT, cds_left INT, cds_right INT, exonStarts TEXT, exonEnds TEXT, name TEXT, strand TEXT, feature_type TEXT)" % (table_name, ))
 
         c.close()
         return(True)
@@ -104,7 +110,7 @@ class genome_sql(base_track):
             return(True)
         return(False)
 
-    def add_feature(self, loc, cds_loc, exonCounts, exonStarts, exonEnds, name, strand):
+    def add_feature(self, loc, cds_loc, exonCounts, exonStarts, exonEnds, name, strand, feature_type='gene'):
         """
         **Purpose**
             Add a location to the track.
@@ -140,8 +146,8 @@ class genome_sql(base_track):
         c.execute("UPDATE main SET num_features=? WHERE chromosome=?", (current_seq_reads+1, loc["chr"]))
 
         # add the location to the seq table:
-        insert_data = (loc['left'], loc['right'], cds_loc['left'], cds_loc['right'], str(exonStarts), str(exonEnds), str(name), str(strand))
-        c.execute("INSERT INTO %s VALUES (?, ?, ?, ?, ?, ?, ?, ?)" % table_name, insert_data)
+        insert_data = (loc['left'], loc['right'], cds_loc['left'], cds_loc['right'], str(exonStarts), str(exonEnds), str(name), str(strand), feature_type)
+        c.execute("INSERT INTO %s VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)" % table_name, insert_data)
 
         c.close()          
 
@@ -172,7 +178,22 @@ class genome_sql(base_track):
             (loc["left"], loc["right"]))
       
         result = result.fetchall() # safer for empty lists and reusing the cursor          
-
+        
+        if result:
+            # Repack item into a nice format:
+            # (57049987, 57050281, 57049987, 57050281, '[1]', '[1]', 'SINE-AluJb', '-', 'SINE')
+            newres = []
+            for r in result:
+                newr = {'loc': location(chr=loc['chr'], left=r[0], right=r[1]),
+                    'cds_loc': location(chr=loc['chr'], left=r[2], right=r[3]),
+                    'exonStarts': eval(r[4]),
+                    'exonEnds': eval(r[4]),
+                    'name': r[6], 'type': r[8], 'strand': r[7]}
+                newres.append(newr)
+            result = newres
+        if not result: # Compatability with chipFish
+            result = []
+        
         return(result)
 
     def get_chromosome_names(self):
@@ -376,10 +397,11 @@ class genome_sql(base_track):
 
 if __name__ == '__main__':
     gsql = genome_sql(new=True, filename='/tmp/test_genome_sql.sql')
-    gsql.add_feature(location(chr='chr1', left=111110, right=120000), 
-            location(chr='ch1', left=111110, right=120000), 
+    gsql.add_feature(location(chr='chr1', left=110, right=120), 
+            location(chr='chr1', left=110, right=120), 
             10, [1,2,3,4], [5,6,7,8], 
             'Nanog', '+')
     
-    print gsql.getFeatures(loc='chr1:100000-120000')
-        
+    print gsql.getFeatures(loc='chr1:100-130')
+    print gsql.getFeatures(loc='chr1:100-110')    # Should still return the entry
+    print gsql.getFeatures(loc='chr1:200-330')
