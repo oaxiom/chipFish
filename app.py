@@ -4,7 +4,7 @@ import sys, os, copy
 import opt, gDraw
 
 
-from glbase_wrapper import glload, track, location, format, flat_track, genelist
+from glbase_wrapper import glload, track, location, format, flat_track, genelist, genome_sql
 from error import *
 from genome_data import genomes
 
@@ -103,6 +103,8 @@ class app():
                             mode = "genome"
                         elif "flat:" in line:
                             mode = "flat"
+                        elif 'genome_sql:' in line:
+                            mode = 'genome_sql'
                         else:
                             raise ErrorUnrecognisedTrackMode, mode
                             
@@ -155,6 +157,8 @@ class app():
                                     continue
                                 # Okay, assume the user knows what they are doing and just grab the file they asked for:
                                 self.draw.bindTrack(glload(name))
+                            elif mode == "genome_sql": # must be a glb
+                                self.draw.bindTrack(genome_sql(filename=os.path.join(path, name)))
             oh.close()
 
         self.draw.setViewPortSize(opt.draw.view_port_width)
