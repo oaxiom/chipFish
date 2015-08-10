@@ -64,7 +64,7 @@ class graphics:
     cds_height = 12
     lncrna_height = 7
     microRNA_height = 6
-    repeat_height = 6 # Height of the repeats
+    repeat_height = 10 # Height of the repeats
 
     screen_colour = (1,1,1,1)
     gene_colour = (0,0,0) #Black
@@ -74,7 +74,7 @@ class graphics:
     # Font related defaults
     font = "Helvetica"
     default_font_size = 11 # Fall back font size
-    repeat_label_font_size = 10
+    repeat_label_font_size = 15
     repeat_label_font_style = 'normal'
 
     right_border_width = 0 # in pixels, size of rightmost click border.
@@ -127,7 +127,7 @@ class track:
         "bar": 30,
         "spot": 30,
         "genome": 70,
-        "repeats": 120} # height's of the tracks in pixels.
+        "repeats": 200} # height's of the tracks in pixels.
     spot_pixel_radius = 4 # Size of the spot circle
     spot_default_colour = (0.1, 0.1, 0.1) # The colour of the spot for spot tracks
     spot_filled = True # fill the spot circle?
