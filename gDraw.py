@@ -526,7 +526,7 @@ class gDraw:
             
         if opt.track.draw_scales:
             self.__drawText(self.w - 10, loc[1] - 5, opt.graphics.font, 
-                int(track_min+clamp), 
+                int(clamp), # Must be clamp
                 size=opt.track.scale_bar_font_size, align="right", colour=(0,0,0))
             self.__drawText(self.w - 10, loc[1] - opt.track.height_px["graph"] + opt.track.scale_bar_font_size + 5, 
                 opt.graphics.font, 
@@ -970,7 +970,7 @@ class gDraw:
             #self.ctx.line_to(loc[0], loc[1]-8)
             #self.ctx.fill()
             #self.__drawText(loc[0]+opt.graphics.arrow_width_px+3, loc[1]-8+opt.graphics.arrow_height_px, "Helvetica", data["name"], size=opt.graphics.repeat_label_font_size, style=opt.graphics.repeat_label_font_style)
-            self.__drawText(loc[0], loc[1]-12+opt.graphics.arrow_height_px, "Helvetica", data["name"], size=opt.graphics.repeat_label_font_size, style=opt.graphics.repeat_label_font_style)
+            self.__drawText(loc[0], loc[1]-opt.graphics.repeat_height-2, "Helvetica", data["name"], size=opt.graphics.repeat_label_font_size, style=opt.graphics.repeat_label_font_style)
         elif data["strand"] == "-":
             loc = self.__realToLocal(data["loc"]["right"], track_slot_base)
             # arrow.
@@ -981,7 +981,7 @@ class gDraw:
             #self.ctx.line_to(loc[0], loc[1]+8)
             #self.ctx.fill()
             #self.__drawText(loc[0]+opt.graphics.arrow_width_px-13, loc[1]+10+opt.graphics.arrow_height_px, "Helvetica", data["name"], size=opt.graphics.repeat_label_font_size, align="right", style=opt.graphics.repeat_label_font_style)
-            self.__drawText(loc[0], loc[1]+10+opt.graphics.arrow_height_px, "Helvetica", data["name"], size=opt.graphics.repeat_label_font_size, align="right", style=opt.graphics.repeat_label_font_style)
+            self.__drawText(loc[0], loc[1]+opt.graphics.repeat_height+opt.graphics.repeat_label_font_size-2, "Helvetica", data["name"], size=opt.graphics.repeat_label_font_size, align="right", style=opt.graphics.repeat_label_font_style)
         else:
             raise ErrorInvalidGeneDefinition
 
