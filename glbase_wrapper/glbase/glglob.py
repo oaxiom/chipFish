@@ -105,7 +105,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         config.log.error("glglobs cannot be written to")
 
     def compare(self, key=None, filename=None, method=None, delta=200, matrix_tsv=None, 
-        row_cluster=True, col_cluster=True, **kargs):
+        row_cluster=True, col_cluster=True, bracket=[-0.2, 1], **kargs):
         """
         **Purpose**
             perform a square comparison between the genelists according
@@ -255,7 +255,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         
         # draw the heatmap and save:
         ret = self.draw.heatmap(data=dict_of_lists, filename=filename,
-            colbar_label="correlation", bracket=[-0.2, 1],
+            colbar_label="correlation", bracket=bracket,
             square=True, cmap=cm.hot, cluster_mode="euclidean", row_cluster=row_cluster, col_cluster=col_cluster,
             row_names=row_names, col_names=row_names, aspect=aspect, **kargs)
 
@@ -747,7 +747,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             filename (Optional, default=None)
                 If set to a string a heatmap will be saved to filename.
                 
-            normalise (Optional, default=True)
+            normalise (Optional, default=False)
                 Normalize the read pileup data within each library to the size of the 
                 library to assist in cross-comparison of ChIP-seq libraries.
                                               
@@ -871,6 +871,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                         p1 = location(chr=p1["chr"], 
                             left=int((p1["left"]+p2[0])/2.0), 
                             right=int((p1["right"]+p2[1])/2.0)).pointify().expand(merge_peaks_distance)
+                        # Don't get confused here, p1 is added onto the block heap below:
                         break
                         
                 # modify binary to signify membership for this peaklist
@@ -1244,7 +1245,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
     def GO_heatmap(self, filename, p_value_limit=0.01, num_top=5, pvalue_key='pvalue',
             size=[8, 6], bracket=[1.3,4], row_cluster=True, col_cluster=False, # heatmap args
             heat_wid=0.15, cmap=cm.Reds, border=True, row_font_size=7, 
-            heat_hei=0.80, grid=True, 
+            heat_hei=0.80, grid=True, ontology=None, draw_numbers_fmt='%.1f',
             draw_numbers=True, draw_numbers_threshold=2.0, draw_numbers_font_size=5, **kargs):
         '''
         **Purpose**
@@ -1258,7 +1259,8 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 minimum p-value to include in list
             
             pvalue_key (Optional, default='p_value')
-                The key in your 
+                The key in your GO lists that contains some sort of significance 
+                result. 
             
             num_top (Optional, default=5)
                 Generally these heatmaps do not have much space to contain that
@@ -1270,7 +1272,11 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 However, this only occurs if your GO lists contain all GO terms. If
                 you have already truncated the lists for some p-value then glbase cannot
                 fill in the missing data.
-                
+            
+            ontology (Optional, default=False)
+                DAVID will give you a table containing all GO categories. Use this to specify using only
+                a single ontology to use. Assumes the genelists have a 'ontology' key.
+            
             This function will also accept all glbase heatmap arguments (see expression.heatmap). 
             A few args have altered defaults:
             
@@ -1299,8 +1305,13 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 continue
                 
             go.sort(pvalue_key)
-            top5 = go[0:num_top]
-   
+            
+            if ontology:
+                this_ont = go.getRowsByKey('ontology', ontology)
+                top5 = this_ont[0:num_top]
+            else:
+                top5 = go[0:num_top]
+      
             for item in top5:
                 if item[pvalue_key] < 0.01: 
                     if item['name'] not in go_store:
@@ -1318,22 +1329,20 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         newe = []
 
         for k in go_store:
-            newe.append({'name': k, 'conditions': go_store[k]})
+            newe.append({'name': k.replace("~", ":"), 'conditions': go_store[k]}) # REPAIR DAVID GO names
     
-        print cond_names_idx
         cond_names = sorted(zip(cond_names_idx.keys(), cond_names_idx.values()), key=itemgetter(1))
-        print cond_names
         cond_names = [i[0] for i in cond_names]
-        print cond_names
         
         goex = expression(loadable_list=newe, cond_names=cond_names)
         
         goex.heatmap(filename=filename, size=size, bracket=bracket, 
             row_cluster=row_cluster, col_cluster=col_cluster, 
-            heat_wid=heat_wid, cmap=cm.Reds, border=border,
+            heat_wid=heat_wid, cmap=cmap, border=border,
             row_font_size=row_font_size, heat_hei=heat_hei, grid=grid, 
             draw_numbers=draw_numbers, colbar_label='-log10(%s)' % pvalue_key, 
             draw_numbers_threshold=draw_numbers_threshold, 
+            draw_numbers_fmt=draw_numbers_fmt,
             draw_numbers_font_size=draw_numbers_font_size)
         return(None)
     

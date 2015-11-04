@@ -218,7 +218,7 @@ class pca:
         """
         self.cols = sample_colours
     
-    def pcloading(self, filename=None, **kargs):
+    def pcloading(self, filename=None, percent_variance=True, **kargs):
         """
         **Purpose**
             plot a graph of PC loading.
@@ -226,6 +226,9 @@ class pca:
         **Arguments**
             filename (Required)
                 The filename to save the image to.
+                
+            percent_variance (Optional, default=True)    
+                Report as the percent variance explained
                 
             <common figure arguments are supported>
         
@@ -237,18 +240,63 @@ class pca:
         if "aspect" not in kargs:
             kargs["aspect"] = "wide"
         
+        newd = self.__d
+        if percent_variance:
+            newd2 = numpy.array(self.__d) **2
+            newd = (newd2 / sum(newd2)) * 100.0
+        
         fig = self.__draw.getfigure(**kargs)
         ax = fig.add_subplot(111)
-        x = numpy.arange(len(self.__d))
-        ax.bar(x-0.4, self.__d, ec="black", color="grey")
+        x = numpy.arange(len(newd))
+        ax.bar(x-0.4, newd, ec="black", color="grey")
         ax.set_xlabel("Principal components")
-        ax.set_ylabel("Loading")
+        if percent_variance:
+            ax.set_ylabel('Percent Variance')
+        else:
+            ax.set_ylabel("Loading")
         ax.set_xticklabels(x+1)
         ax.set_xticks(x)
-        ax.set_xlim([-0.5, len(self.__d)-0.5])
+        ax.set_xlim([-0.5, len(newd)-0.5])
         self.__draw.do_common_args(ax, **kargs)
         real_filename = self.__draw.savefigure(fig, filename)
         config.log.info("loading(): Saved PC loading '%s'" % real_filename)
+
+    def get_loading_percents(self, exclude_first_pc=False, **kargs):
+        """
+        **Purpose**
+            Returns the percent of variance:
+            
+            d^2 / sum(d^2)                 
+            
+        **Arguments**
+            exclude_first_pc (Optional, default=False)
+                exclude the first PC. 
+                In a lot of my data I use unnormalised data, this usually means the first
+                PC contains the 'shape' of the data and can dominate the overall 
+                percent variance. Set this to True to ignore PC1.
+            
+        **Returns**
+            Returns a dict in the form:
+            {
+            PC1: float(percent), 
+            PC2: float(percent), ... 
+            }
+        """
+        res = {}
+        
+        if exclude_first_pc:
+            newd2 = numpy.array(self.__d[1:]) **2
+        else:
+            newd2 = numpy.array(self.__d) **2
+        newd = (newd2 / sum(newd2)) * 100.0
+        
+        for i, p in enumerate(newd):
+            if exclude_first_pc:
+                res[i+2] = p
+            else:
+                res[i+1] = p
+        
+        return(res)
         
     def scatter(self, x, y, filename=None, spot_cols=None, spots=True, label=False, alpha=0.8, 
         spot_size=40, label_font_size=7, cut=None, squish_scales=False, only_plot_if_x_in_label=None, **kargs): 

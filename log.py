@@ -13,20 +13,15 @@ log.error
 SILENT= False # silence all
 
 # set up the logger here.
+import logging, sys, os
 
 # set up logging to file - see previous section for more details
 logging.basicConfig(level=logging.DEBUG,
-                    format='%(asctime)s %(name)-8s %(levelname)-8s %(message)s',
-                    datefmt='%m-%d %H:%M',
-                    filename=os.path.join(os.path.expanduser("~"), "glbase.log"),
-                    filemode='w')
-console = logging.StreamHandler()
-console.setLevel(logging.INFO)
-console.setFormatter(logging.Formatter('\033[0;34m%(levelname)-8s\033[0;30m: %(message)s'))# # console
-logging.getLogger('').addHandler(console)
+                    format='%(levelname)-8s: %(message)s',
+                    datefmt='%m-%d %H:%M'),
 
 # use config.log. ... () to get to the logger
-log = logging.getLogger('glbase')
+log = logging.getLogger('chipFish')
 
 # helpers - a bunch of aliases
 info = log.info

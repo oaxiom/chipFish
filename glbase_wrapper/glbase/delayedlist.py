@@ -159,16 +159,18 @@ class delayedlist(genelist):
             self.cindex += 1
             
             while column:
-                
                 d = None
                 while not d:
-                    if "commentlines" in self.format:
-                        if column[0][0] == self.format["commentlines"]: # csv will split the table and returns a list
-                            column = None # force a skip of this row, don't use continue it will just hang
-                        if column[0].startswith(self.format["commentlines"]):
-                            column = None
-                
-                    if column: # list is empty, so omit.                          
+                    if column: # list is empty, so omit.  
+                        if "commentlines" in self.format:
+                            if column[0][0] == self.format["commentlines"]: # csv will split the table and returns a list
+                                column = None # force a skip of this row, don't use continue it will just hang
+                                d = None
+                            elif column[0].startswith(self.format["commentlines"]):
+                                column = None
+                                d = None
+                    
+                    if column:
                         if "keepifxin" in self.format:
                             if True in [self.format["keepifxin"] in i for i in column]:
                                 if (not (column[0] in typical_headers)):

@@ -205,7 +205,7 @@ class genome_sql(base_track):
             None
             
         **Returns**
-            A list of strings containing all of the chromosome names in the track
+            A list of strings containing all of the chromosome names in the genome_sql
         """
         if not self._c:
             self._c = self._connection.cursor()
@@ -228,10 +228,41 @@ class genome_sql(base_track):
         if not self._c:
             self._c = self._connection.cursor()
 
-        self._c.execute("SELECT chromosome, seq_reads FROM main")
+        self._c.execute("SELECT chromosome, num_features FROM main")
         r = [int(i[1]) for i in self._c.fetchall()]
         
         return(sum(r))
+
+    def __iter__(self):
+        """
+        (Override)
+        make the geneList behave like a normal iterator (list)
+        """
+        all_chrom_names = self.get_chromosome_names()
+        
+        for c in all_chrom_names:
+            table_name = "chr_%s" % c
+        
+            result = self._connection.execute("SELECT * FROM %s" % table_name)
+      
+            r = True # Survive first while
+      
+            while r:
+                r = result.fetchone() # safer for empty lists and reusing the cursor          
+        
+                if r:
+                    # This needs to be abstracted away
+                    # Repack item into a nice format:
+                    # (57049987, 57050281, 57049987, 57050281, '[1]', '[1]', 'SINE-AluJb', '-', 'SINE')
+                    r = {'loc': location(chr=c, left=r[0], right=r[1]),
+                        'cds_loc': location(chr=c, left=r[2], right=r[3]),
+                        'exonStarts': eval(r[4]),
+                        'exonEnds': eval(r[4]),
+                        'name': r[6], 'type': r[8], 'strand': r[7]}
+                    yield r
+                    
+    def __len__(self):
+        return(self.get_feature_count())
 
     def _debug__print_all_tables(self):
         c = self._connection.cursor()

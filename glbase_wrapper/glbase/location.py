@@ -43,6 +43,19 @@ class location:
                         return(True)
         return(False)
 
+    def __cmp__(self, other):
+        # Make locations sortable
+        if self.loc['chr'] < other.loc['chr']:
+            return -1
+        elif self.loc['chr'] == other.loc['chr']:
+            if self.loc['left'] < other.loc['left']:
+                return -1
+            elif self.loc['left'] == other.loc['left']:
+                return 0
+            return 1
+        #self.loc['chr'] > other.loc['chr']:
+        return 1
+
     def __hash__(self):
         return(hash(self._loc_string))
     

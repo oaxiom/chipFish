@@ -22,6 +22,7 @@ from operator import itemgetter
 from glbase_wrapper import location, track, utils
 from data import *
 from ruler import ruler
+from log import log
 
 MAX_TRACKS = 100 # maximum number of tracks This is kind of ludicrously high. 
 
@@ -152,9 +153,8 @@ class gDraw:
                                 
         # And finally draw:
         for item in draw_data:
-            #print item["kargs"]
-            colbox = draw_modes_dict[item["type"]](item, **item["options"])
             #print item
+            colbox = draw_modes_dict[item["type"]](item, **item["options"])
              
             # the collision boxes are not used. But I suppose in future...
             if colbox:
@@ -905,6 +905,9 @@ class gDraw:
         # draw the genome:
         for item in track_data["array"]:
             # Should assert here if not in draw_modes
+            if item['type'] not in draw_modes_dict:
+                log.warning('type=%s not found in draw modes, skipping.')
+                continue
             draw_modes_dict[item["type"]](item, track_data)
 
     def __drawRepeat(self, data, track_data=None):
