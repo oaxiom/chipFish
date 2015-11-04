@@ -79,12 +79,8 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             if "format" in kargs:
                 self.load(filename=filename, format=format)
             else:
-                # decide whether to respect the force_tsv arg.
-                if "force_tsv" in kargs and kargs["force_tsv"]:
-                    format = sniffer_tsv
-                else:
-                    format = sniffer
-                self.load(filename=filename, format=format)
+                raise AssertionError, 'Due to excessive ambiguity the sniffing function of genelists has been removed and you now MUST provide a format argument'
+
             config.log.info("genelist(): loaded '%s' found %s items" % (filename, len(self.linearData)))
         elif loadable_list:
             self.load_list(loadable_list)
@@ -141,21 +137,16 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                     self.linearData = self.__load_hmmer_tbl(filename)
                     self._optimiseData()
                     return(True)
+        else:
+            raise AssertionError, 'Due to excessive ambiguity the sniffing function of genelists has been removed and you now MUST provide a format argument'
 
         csv_headers = frozenset(["csv", "xls", "tsv", "txt", "bed"])
         if filename.split(".")[-1].lower() in csv_headers: # check the last one for a csv-like header
-            if not format:
-                self.loadCSV(filename=filename, format=sniffer, **kargs)
-            else:
-                self.loadCSV(filename=filename, format=format, **kargs)
+            self.loadCSV(filename=filename, format=format, **kargs)
         elif filename.split(".")[-1] in ["glb"]:
             self = glload(filename) # will this work?
         else:
-            # just pretend it's a csv or the like.
-            if not format:
-                self.loadCSV(filename=filename, format=sniffer, **kargs)
-            else:
-                self.loadCSV(filename=filename, format=format, **kargs)
+            self.loadCSV(filename=filename, format=format, **kargs)
                 
         if "force_tsv" not in kargs and "force_tsv" not in format and len(self.keys()) == 1:
             config.log.warning("List contains only a single key, are you sure this is not a tsv?")
@@ -1478,12 +1469,11 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                 labels=labels)
 
         if not silent:
-            if logic:
-                if logic == "notright":
-                    config.log.info("map: '%s' vs '%s', using '%s' via '%s', kept: %s items" % (self.name, gene_list.name, map_key, logic, len(newl)))
-            elif logic == 'and':
+            if logic == "notright":
+                config.log.info("map: '%s' vs '%s', using '%s' via '%s', kept: %s items" % (self.name, gene_list.name, map_key, logic, len(newl)))
+            else:
                 config.log.info("map: '%s' vs '%s', using '%s', found: %s items" % (self.name, gene_list.name, map_key, len(newl)))
-        
+    
         if len(newl.linearData):
             newl._optimiseData()
             return(newl)
@@ -2668,7 +2658,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         newl._optimiseData()
         return(newl)
 
-    def sample(self, number_to_get=None):
+    def sample(self, number_to_get=None, seed=None):
         """
         **Purpose**
             Sample n random samples from this genelist
@@ -2679,6 +2669,9 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         **Arguments**
             number_to_get
                 The number of samples to get from the list
+                
+            seed
+                Rand seed generator, set to a specific seed for code reproducibility
         
         **Returns**
             A new genelist containing the sampled list.
@@ -2686,6 +2679,9 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         assert number_to_get, "Invalid number of samples"
         assert number_to_get < len(self), "the number to get is larger than the list, not possible to sample"
         
+        if seed:
+            random.seed(seed)
+            
         shuf = range(len(self))
         random.shuffle(shuf)
         to_get = shuf[0:number_to_get]
@@ -2777,6 +2773,32 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         newgl._optimiseData()
         config.log.info("Renamed key '%s' to '%s'" % (old_key_name, new_key_name))
         return(newgl)
+
+    def repairKey(self, key_to_repair, fill_in_key, **kargs):
+        '''
+        **Purpose**
+            genelists will tolerate 'holes' (missing key:values) in individual entries. 
+            
+            A specific example is loading things like a gtf file, which in that format will tolerate missing attirbute tags
+            
+            glbase is quite happy with this, but it may cause problems downstream if you try to grab a single key from a genelist
+            
+            This method will fill in the holes in 'key_to_repair' by dragging data from 'fill_in key'
+        '''
+        assert key_to_repair in self.keys(), 'key_to_repair: "%s" not found' % key_to_repair
+        assert fill_in_key in self.keys(), 'fill_in_key: "%s" not found' % fill_in_key
+        
+        replaced = 0
+        newl = self.deepcopy()
+        for item in newl:
+            if key_to_repair not in item or not item[key_to_repair]:
+                item[key_to_repair] = item[fill_in_key]
+                replaced += 1
+        newl._optimiseData()
+            
+        config.log.info('repairKey: Repaired %s keys' % replaced)
+        return(newl)
+        
 
     def splitKeyValue(self, key, key_sep=" ", val_sep=":"):
         """

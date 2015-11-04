@@ -5,7 +5,7 @@ track, part of glbase
 
 from __future__ import division
 
-import cPickle, sys, os, struct, math, sqlite3, zlib, time, csv
+import cPickle, sys, os, struct, math, sqlite3, zlib, time, csv, zlib
 
 from operator import itemgetter
 
@@ -44,16 +44,52 @@ class track(base_track):
 
         norm_factor (Optional, default = 1.0)
             An optional normalization factor. Data is multiplied by this number before display
-
+            
+        mem_cache (Optional, default=False)
+            Instead of doing the whole thing from disk, first cache the DB in memory for
+            super fast access. Just make sure you have enough memory!
+            
+        pre_build (Optional, default=[100, 200])
+            prebuild genome arrays for various read_extend parameters for fast lookups.
+            By default glbase builds indexes for 100 and 200 bp read_extends
+            
     """
-    def __init__(self, name=None, new=False, filename=None, norm_factor=1.0, **kargs):
-        base_track.__init__(self, name, new, filename, norm_factor)
-        
+    def __init__(self, name=None, new=False, filename=None, norm_factor=1.0, mem_cache=False, pre_build=[100, 200], **kargs):
+        base_track.__init__(self, name, new, filename, norm_factor, mem_cache)
+                
         if new:
+            self.meta_data['norm_factor'] = str(norm_factor)
+            self.pre_build = pre_build
+            self.meta_data['pre_build'] = pre_build
             self.__setup_tables(filename)
+        
+        # if not new, get pre_build from the metadatum
+        self.pre_build =  self.meta_data['pre_build']
+        self.norm_factor = float(self.meta_data['norm_factor'])
+        #print norm_factor, self.norm_factor, str(norm_factor) != str(self.norm_factor)
+        
+        if norm_factor and str(norm_factor) != str(self.norm_factor):
+            config.log.error('the norm_factor supplied here does not match the norm_factor used during the creation of the track!')
+            raise AssertionError, 'norm_factor != norm_factor stored in the trk file.'
 
     def __repr__(self):
         return("glbase.track")
+
+    # I use these ones here as tracks prefer numpy arrays
+    # LATER: port the flat_tracks to use numpy arrays
+    def _format_data(self, data):
+        """
+        array('i', []) --> whatever it's stored as in db
+        """
+        return(sqlite3.Binary(zlib.compress(data.dumps())))
+
+    def _unformat_data(self, data):
+        """
+        whatever stored as in db --> array('i', [])
+        """
+        #print "ret:",[d for d in data], ":"
+        a = numpy.loads(zlib.decompress(data))
+        return(a)
 
     def __setup_tables(self, filename):
         """
@@ -63,10 +99,26 @@ class track(base_track):
         c = self._connection.cursor()
 
         c.execute("CREATE TABLE main (chromosome TEXT PRIMARY KEY, seq_reads INT)")
+        
+        c.execute("CREATE TABLE pre_build (chromosome TEXT, read_extend TEXT, array_blob TEXT)")
 
         self._connection.commit()
         c.close()
 
+    def finalise(self):
+        c = self._connection.cursor()
+    
+        # Do the prebuilds:
+        list_of_all_chroms_in_db = self.get_chromosome_names()
+        for read_extend in self.pre_build:
+            for chrom in list_of_all_chroms_in_db:
+                a = self.get_array_chromosome(chrom, read_extend=read_extend, _silent=True)
+                c.execute('INSERT INTO pre_build VALUES (?, ?, ?)', (chrom, read_extend, self._format_data(a)))
+                config.log.info('Cached chrom=%s, read_extend=%s' % (chrom, str(read_extend)))
+        #print self.meta_data
+        
+        base_track.finalise(self)
+        
     def __add_chromosome(self, chromosome):
         """
         add a chromosome to the main table.
@@ -133,21 +185,22 @@ class track(base_track):
         elif strand in negative_strand_labels:
             strand = "-"
 
-        c = self._connection.cursor()
+        if not self._c:
+            self._c = self._connection.cursor()
 
         # insert location into new array.
         table_name = "chr_%s" % str(loc["chr"])
 
         # get the old number of seq_reads
-        c.execute("SELECT seq_reads FROM main WHERE chromosome=?", (loc["chr"], ))
-        current_seq_reads = c.fetchone()[0] # always returns a tuple
+        self._c.execute("SELECT seq_reads FROM main WHERE chromosome=?", (loc["chr"], ))
+        current_seq_reads = self._c.fetchone()[0] # always returns a tuple
 
-        c.execute("UPDATE main SET seq_reads=? WHERE chromosome=?", (current_seq_reads+1, loc["chr"]))
+        self._c.execute("UPDATE main SET seq_reads=? WHERE chromosome=?", (current_seq_reads+1, loc["chr"]))
 
         # add the location to the seq table:
-        c.execute("INSERT INTO %s VALUES (?, ?, ?)" % table_name, (loc["left"], loc["right"], strand))
+        self._c.execute("INSERT INTO %s VALUES (?, ?, ?)" % table_name, (loc["left"], loc["right"], strand))
 
-        c.close()
+        #c.close()
 
     def get(self, loc, resolution=1, read_extend=0, kde_smooth=False, 
         view_wid=0, strand=False, **kargs):
@@ -288,8 +341,8 @@ class track(base_track):
             
         #reads = self._c.fetchall()
         return(result)                
-                
-    def get_array_chromosome(self, chromosome, strand=None, resolution=1, read_extend=0, **kargs):
+
+    def get_array_chromosome(self, chrom, read_extend=0, strand=None, resolution=1, _silent=False, **kargs):
         """
         **Purpose**
             get the entire array data for the chromosome
@@ -321,19 +374,32 @@ class track(base_track):
         """
         if strand: 
             raise NotImplementedError, "Eh... strand not supported yet..."
+        
+        c = self._connection.cursor()
 
+        # Find out if we already have this array:
+        c.execute("SELECT chromosome FROM pre_build WHERE (chromosome=? AND read_extend=?)", (chrom, read_extend))
+        result = c.fetchone()
+
+        if not result:
+            if not _silent: # It purposely misses the cache when building the track
+                config.log.warning('Cache miss on chromosome=%s, read_extend=%s' % (chrom, read_extend))
+            return(self.__cache_miss_get_array_chromosome(chromosome=chrom, read_extend=read_extend)) # Don't have... :(
+
+        # have a chacged copy:
+        c.execute("SELECT array_blob FROM pre_build WHERE (chromosome=? AND read_extend=?)", (chrom, read_extend))
+        return(self._unformat_data(c.fetchone()[0]))
+                
+    def __cache_miss_get_array_chromosome(self, chromosome, strand=None, resolution=1, read_extend=0, **kargs):
+        # Generate the chromosome array for a cache miss
         if not self._c:
             self._c = self._connection.cursor()
             
         table_name = "chr_%s" % chromosome
         self._c.execute("SELECT * FROM %s" % table_name)
-        reads = self._c.fetchall()
-
+        reads = sorted(self._c.fetchall(), key=itemgetter(0))
         # I need to find the right most read to estimate the size of the track array.
-        right_most = 0
-        for i in reads:
-            if right_most < i[1]+read_extend:
-                right_most = i[1]+read_extend
+        right_most = reads[-1][1]+read_extend+1
 
         # make an array.
         a = [0] * int( (right_most+resolution)/resolution ) # Fast list allocation
@@ -348,14 +414,20 @@ class track(base_track):
                 read_left -= read_extend
                 read_right += 1 # coords are open 
             
-            rel_array_left = int(read_left // resolution)
-            rel_array_right = int(read_right // resolution)        
+            rel_array_left = read_left
+            rel_array_right = read_right
+            if resolution != 1:
+                rel_array_left = int(read_left // resolution)
+                rel_array_right = int(read_right // resolution)        
             
             if rel_array_left <= 0:
                 rel_array_left = 0
             if rel_array_right > len_a:
                 rel_array_right = len_a
-            
+
+            # fold up to 1 liner           
+            # This one liner does not work for some reason.
+            #[a[array_relative_location] + 1 for array_relative_location in xrange(rel_array_left, rel_array_right, 1)]
             for array_relative_location in xrange(rel_array_left, rel_array_right, 1):
                 a[array_relative_location] += 1
 
@@ -376,6 +448,27 @@ class track(base_track):
         **Returns**
             a list containing all of the reads between loc.
         """
+        if self.gl_mem_cache: # Use the mem cache if available
+            # work out which of the buckets is required:
+            left_buck = int((loc["left"]-1-delta)/config.bucket_size)*config.bucket_size
+            right_buck = int((loc["right"]+delta)/config.bucket_size)*config.bucket_size
+            buckets_reqd = range(left_buck, right_buck+config.bucket_size, config.bucket_size) # make sure to get the right spanning and left spanning sites
+
+            # get the ids reqd.                
+            loc_ids = set()
+            if buckets_reqd:
+                for buck in buckets_reqd:
+                    if buck in self.gl_mem_cache.buckets[loc["chr"]]:
+                        loc_ids.update(self.gl_mem_cache.buckets[loc["chr"]][buck]) # set = unique ids
+       
+            # loc_ids is a set, and has no order. 
+            #print loc_ids
+            for index in loc_ids:
+                #print loc.qcollide(self.linearData[index]["loc"]), loc, self.linearData[index]["loc"]
+                if loc.qcollide(self.linearData[index]["loc"]):
+                    # result expected in form :read_left, read_right, strand
+                    result.append((self.linearData[index]["loc"]['left'], self.linearData[index]["loc"]['right'], self.linearData[index]["strand"])) 
+                           
         #if not isinstance(loc, location):
         #    loc = location(loc=loc)
 
@@ -417,18 +510,21 @@ class track(base_track):
                 a valid location or string location.
 
         **Returns**
-            an integer (or 0) containing the number of reads falling within
+            an float (or 0.0) containing the number of reads falling within
             the location string.
         """
         if not self._c:
             self._c = self._connection.cursor()
+            
+        if not isinstance(loc, location):
+            loc = location(loc=loc)
 
         table_name = "chr_%s" % loc["chr"]
 
         self._c.execute("SELECT left, right, strand FROM %s WHERE (right >= ? AND left <= ?)" % table_name,
             (loc["left"], loc["right"]))
             
-        return(len(self._c.fetchall()))
+        return(len(self._c.fetchall())*self.norm_factor)
 
     def get_chromosome_names(self):
         """
@@ -508,6 +604,7 @@ class track(base_track):
     def pileup(self, genelist=None, key="loc", filename=None, heatmap_filename=None, 
         bin_size=500, window_size=5000, read_extend=200, use_kde=False, simple_cleanup=False,
         only_do=False, stranded=False, respect_strand=True, raw_tag_filename=None,
+        norm_by_read_count=False, pointify=True,
         **kargs): 
         """
         **Purpose**
@@ -525,10 +622,19 @@ class track(base_track):
                 
             filename (Required)
                 the name of the image file to save the pileup graph to.
-                                       
+            
+            normalize (Optional, default=True)
+                IMPORTANT
+                
+                If you are using the norm_factor system, you MUST set this to False!
+            
             bin_size (Optional, default=500)
                 bin_size to use for the heatmap
                 
+            pointify (Optional, default=False)
+                convert ythe genomic locations in 'genelist' to a single point
+                (Usually used in combination with window_size).
+            
             window_size (Optional, default=5000)
                 The window size +- around the centre of the peak to build the tag density map
                 from
@@ -550,6 +656,11 @@ class track(base_track):
                 If available, respect the orientation of the strand from the genelist.
                 This is useful if you are, say, using the TSS's and want to maintain the
                 orientation with respect to the transcription direction.
+                
+            norm_by_read_count (Optional, default=False)
+                If you are not using a norm_factor for this library then you probably want to set this to True. 
+                It will divide the resulting number of reads by the total number of reads, 
+                i.e. it will account for differences in library sizes. 
                             
         **Returns**
             If succesful returns a list of lists containing the a single entry for each
@@ -562,10 +673,20 @@ class track(base_track):
         if stranded:
             return(self.__draw_pileup_stranded(genelist, filename, window_size, **kargs))
         else:
-            return(self.__draw_pileup_normal(genelist, key, filename, heatmap_filename, 
-                bin_size, window_size, read_extend, use_kde, simple_cleanup, 
-                only_do=only_do, raw_tag_filename=raw_tag_filename, respect_strand=respect_strand, **kargs))
-                
+            return(self.__draw_pileup_normal(genelist=genelist, key=key, filename=filename, 
+                heatmap_filename=heatmap_filename, 
+                bin_size=bin_size, window_size=window_size, read_extend=read_extend, use_kde=use_kde, 
+                simple_cleanup=simple_cleanup, pointify=pointify,
+                norm_by_read_count=norm_by_read_count, 
+                only_do=only_do, raw_tag_filename=raw_tag_filename, respect_strand=respect_strand, 
+                **kargs))
+    '''
+    def __draw_pileup_normal(self, genelist=None, key="loc", filename=None, heatmap_filename=None, 
+        bin_size=500, window_size=5000, read_extend=200, use_kde=False, simple_cleanup=False,
+        only_do=False, respect_strand=True, raw_tag_filename=None, mask_zero=False, 
+        norm_by_read_count=False, normalize=False,
+        **kargs): 
+    '''         
     def __draw_pileup_stranded(self, genelist=None, filename=None, bandwidth=300, **kargs):
         """
         **Purpose**
@@ -595,9 +716,13 @@ class track(base_track):
         
         hist = {"+": zeros(bandwidth+1), "-": zeros(bandwidth+1)}
         
+        # get a sorted list of all the locs I am going to use.
+        all_locs = genelist['loc']
+        all_locs.sort()        
+                
         p = progressbar(len(genelist))
-        for n, read in enumerate(genelist):
-            loc = read["loc"].pointify().expand(bandwidth//2)
+        for n, read in enumerate(all_locs):
+            loc = read.pointify().expand(bandwidth//2)
             for s in self.get_reads(loc): # get reads returns all overlapping reads. I need to trim 
                 # the edges to stop negative array positions
                 
@@ -628,10 +753,11 @@ class track(base_track):
         realfilename = self._draw._saveFigure(fig, filename)
         config.log.info("Saved shear_size_pileup '%s'" % realfilename)
         return(hist)
-    
+
     def __draw_pileup_normal(self, genelist=None, key="loc", filename=None, heatmap_filename=None, 
         bin_size=500, window_size=5000, read_extend=200, use_kde=False, simple_cleanup=False,
-        only_do=False, respect_strand=True, raw_tag_filename=None, mask_zero=False,
+        only_do=False, respect_strand=True, raw_tag_filename=None, mask_zero=False, 
+        norm_by_read_count=False, pointify=True,
         **kargs): 
         """
         The normal pileup views
@@ -644,28 +770,67 @@ class track(base_track):
         n = 0
         h = 0
         pileup = None
-        sampled = False
         binned_data = None
         setup_bins = False
+        number_of_tags_in_library = 1.0 # For code laziness
+        if norm_by_read_count:
+            number_of_tags_in_library = self.get_total_num_reads()
 
+        # get a sorted list of all the locs I am going to use.
+        all_locs = genelist[key]
+        all_locs.sort()        
+        strands = ['+'] * len(all_locs)
+        if respect_strand:
+            strands = genelist['strand']
+        
+        curr_cached_chrom = None
+        cached_chrom = None
+        
         p = progressbar(len(genelist))
-        for i, g in enumerate(genelist):
-            l = g[key].pointify().expand(window_size)
+        for i, read in enumerate(zip(all_locs, strands)):
+            l = read[0]
+            if pointify:
+                l = l.pointify()
+            if window_size:
+                l = l.expand(window_size)
+            
+            # I can dispose and free memory as the locations are now sorted:
+            # See if the read_extend is already in the cache:
+            if l['chr'] != curr_cached_chrom:
+                curr_cached_chrom = l['chr']
+                cached_chrom = self.get_array_chromosome(l['chr'], read_extend) # auto-deals with cahce issues
+            
+            # UseKDE is now unimplemented:
+            '''
             if not use_kde:
                 a = self.get(l, read_extend=read_extend) # read_extend=shear size
-            if use_kde:
+            else:
                 a = self.get(l, read_extend=read_extend, kde_smooth=True, view_wid=window_size) # read_extend=tag shift
+            '''
+                            
+            if l['right'] > cached_chrom.shape[0]:
+                # Trouble, need to fill in the part of the array with zeros
+                # Possible error here it l['left'] is also off the array?
+                expected_width = l['right'] - l['left']
+                actual_width = cached_chrom.shape[0] - l['left']
+                a = cached_chrom[l['left']:cached_chrom.shape[0]] # stop wrap around
+                a = numpy.pad(a, (0,expected_width-actual_width), mode='constant')
+                #print a, a.shape
+                #config.log.error('Asked for part of the chomosome outside of the array')
+            else:
+                a = cached_chrom[l['left']:l['right']]
                 
             if respect_strand:
                 # positive strand is always correct, so I leave as is.
                 # For the reverse strand all I have to do is flip the array.
-                if g["strand"] in negative_strand_labels:
+                if read[1] in negative_strand_labels:
                     a = a[::-1]
             
+            # It is possible to ask for an array longer than the length of the array:
+                        
             if sum(a) > simple_cleanup: # Only keep if tag count is > simple_cleanup
-                if not sampled: # numpy __nonzero__ retardedness
+                if pileup is None: # numpy __nonzero__ retardedness
                     pileup = a
-                    sampled = True
                 else:
                     pileup = pileup + a
 
@@ -684,7 +849,16 @@ class track(base_track):
        
         if not self._draw:
             self._draw = draw()
-
+        
+        #print pileup
+        
+        if pileup is None: # numpy iszero testing:
+            raise AssertionError, 'no data found, either the bed is empty, has no regions or the trk file is empty'
+        
+        if norm_by_read_count:
+            config.log.info('Normalized by read count')
+            pileup /= float(number_of_tags_in_library) # This one should not be used if norm_factor is also used
+        # This one SHOULD be used, even if norm_factor is True
         pileup /= float(len(genelist)) # convert it back to a relative tag density.
 
         # matplotlib pileup graph
@@ -730,7 +904,9 @@ class track(base_track):
         return(ret)
 
     def heatmap(self, filename=None, genelist=None, distance=1000, read_extend=200, log=2, 
-        bins=30, sort_by_intensity=True, raw_heatmap_filename=None, bracket=None, **kargs):
+        bins=30, sort_by_intensity=True, raw_heatmap_filename=None, bracket=None, 
+        pointify=True, respect_strand=False, cmap=cm.BuPu, 
+        **kargs):
         """
         **Purpose**
             Draw a heatmap of the seq tag density drawn from a genelist with a "loc" key.
@@ -749,11 +925,21 @@ class track(base_track):
             distance (Optional, default=1000)
                 Number of base pairs around the location to extend the search
                 
+            pointify (Optional, default=True)
+                Take the middle point of the 'loc' in the genelist, used in combination with distance
+                
+                You can set this to False and distance to 0 and heatmap will use whatever locations are specified in 
+                the genelist. Note that the locations must all be the same lengths.
+                
             bins (Optional, default=20)
                 Number of bins to use. (i.e. the number of columns)
                 
             read_extend (Optional, default=200)
                 number of base pairs to extend the sequence tag by. 
+                
+            respect_strand (Optional, default=False)
+                Use the strand in the genelist to orientate each genomic location (for example when doing TSS 
+                or TTS).
                 
             log (Optional, default=2)
                 log transform the data, optional, the default is to transform by log base 2.
@@ -763,6 +949,9 @@ class track(base_track):
             sort_by_intensity (Optional, default=True)
                 sort the heatmap so that the most intense is at the top and the least at 
                 the bottom of the heatmap.
+                
+            cmap (Optional, default=?)
+                A matplotlib cmap to use for coloring the heatmap
                 
         **Results**
             file in filename and the heatmap table
@@ -775,13 +964,51 @@ class track(base_track):
         table = []
         bin_size = int((distance*2) / bins)
         
-        p = progressbar(len(genelist.linearData))
-        for idx, item in enumerate(genelist.linearData):
-            l = item["loc"].pointify().expand(distance)
-            row = self.get(l, read_extend=read_extend) # You do not need to tell it to use the strand: It will use it knows to use strand if present.
+        # get a sorted list of all the locs I am going to use.
+        all_locs = genelist['loc']
+        all_locs.sort()        
+        strands = ['+'] * len(all_locs)
+        if respect_strand:
+            strands = genelist['strand']
+        
+        curr_cached_chrom = None
+        cached_chrom = None
+        
+        p = progressbar(len(genelist))
+        for idx, read in enumerate(zip(all_locs, strands)):
+            l = read[0]
+            if pointify:
+                l = l.pointify()
+            if distance:
+                l = l.expand(distance)
+            
+            # I can dispose and free memory as the locations are now sorted:
+            # See if the read_extend is already in the cache:
+            if l['chr'] != curr_cached_chrom:
+                curr_cached_chrom = l['chr']
+                cached_chrom = self.get_array_chromosome(l['chr'], read_extend) # Will hit the DB if not already in cache
+            
+            
+            if l['right'] > cached_chrom.shape[0]:
+                # Trouble, need to fill in the part of the array with zeros
+                # Possible error here it l['left'] is also off the array?
+                expected_width = l['right'] - l['left']
+                actual_width = cached_chrom.shape[0] - l['left']
+                a = cached_chrom[l['left']:cached_chrom.shape[0]] # stop wrap around
+                a = numpy.pad(a, (0,expected_width-actual_width), mode='constant')
+                #print a, a.shape
+                #config.log.error('Asked for part of the chomosome outside of the array')
+            else:
+                a = cached_chrom[l['left']:l['right']]
+                
+            if respect_strand:
+                # positive strand is always correct, so I leave as is.
+                # For the reverse strand all I have to do is flip the array.
+                if read[1] in negative_strand_labels:
+                    a = a[::-1]
        
             # bin the data
-            row = numpy.array(utils.bin_data(row, bin_size))
+            row = numpy.array(utils.bin_data(a, bin_size)) # appears to be slow?
             
             table.append(row)   
             p.update(idx)         
@@ -830,11 +1057,10 @@ class track(base_track):
             elif len(bracket) == 1: # Assume only minimum.
                 bracket = [bracket[0], data.max()]
             
-            filename = self._draw.heatmap2(data=data, filename=filename, bracket=bracket, **kargs)
+            filename = self._draw.heatmap2(data=data, filename=filename, bracket=bracket, colour_map=cmap, **kargs)
         
         if raw_heatmap_filename:
             numpy.savetxt(raw_heatmap_filename, data, delimiter="\t")
-            
             config.log.info("track.heatmap(): Saved raw_heatmap_filename to '%s'" % raw_heatmap_filename)
         
         config.log.info("track.heatmap(): Saved heatmap tag density to '%s'" % filename)
@@ -1019,5 +1245,13 @@ if __name__ == "__main__":
     p = pstats.Stats("profile.pro")
     p.strip_dirs().sort_stats("time").print_stats()
 
-    print t.heatmap(genelist=bed, raw_heatmap_filename="test.tsv", filename='test.png', bin_size=10, window_size=1000)
-    print t.heatmap(genelist=bed, raw_heatmap_filename="test.tsv", filename='test.png', bin_size=10, window_size=1000, log=None)
+    print t.pileup(genelist=bed, filename='/tmp/test2.png', respect_strand=True)
+    print t.pileup(genelist=bed, filename='/tmp/test2.png', pointify=False, respect_strand=True)
+    
+    print bed.all()
+    print t.pileup(genelist=bed, filename='/tmp/test2.png', pointify=False, window_size=0, respect_strand=True)
+
+    print t.heatmap(genelist=bed, raw_heatmap_filename="/tmp/test.tsv", filename='/tmp/test.png', bin_size=10, window_size=1000)
+    print t.heatmap(genelist=bed, raw_heatmap_filename="/tmp/test.tsv", filename='/tmp/test.png', bin_size=10, window_size=1000, log=None)
+    print t.heatmap(genelist=bed, raw_heatmap_filename="/tmp/test.tsv", filename='/tmp/test.png', bin_size=10, window_size=1000, log=None, respect_strand=True)
+    

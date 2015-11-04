@@ -96,8 +96,8 @@ class draw:
 
     def heatmap(self, filename=None, cluster_mode="euclidean", row_cluster=True, col_cluster=True, 
         vmin=0, vmax=None, colour_map=cm.RdBu_r, col_norm=False, row_norm=False, heat_wid=0.25, heat_hei=0.85,
-        highlights=None, digitize=False, border=False,draw_numbers=False, draw_numbers_threshold=-9e14,
-        draw_numbers_fmt='%.1f', draw_numbers_font_size=6,
+        highlights=None, digitize=False, border=False, draw_numbers=False, draw_numbers_threshold=-9e14,
+        draw_numbers_fmt='%.1f', draw_numbers_font_size=6, grid=False, 
         **kargs):
         """
         my own version of heatmap.
@@ -168,7 +168,7 @@ class draw:
                 optional ability to use images for the heatmap. Currently experimental it is
                 not always supported in the vector output files.
                 
-draw_numbers (Optional, default=False)
+            draw_numbers (Optional, default=False)
                 draw the values of the heatmaps in each cell see also draw_numbers_threshold
                 
             draw_numbers_threshold (Optional, default=-9e14)
@@ -404,15 +404,20 @@ draw_numbers (Optional, default=False)
                 origin='lower', extent=[0, data.shape[1], 0, data.shape[0]], 
                 interpolation='none')
         else:
-            hm = ax3.pcolormesh(data, cmap=colour_map, vmin=vmin, vmax=vmax, antialiased=False)
-            if draw_numbers:
-                for x in xrange(data.shape[0]):
-                    for y in xrange(data.shape[1]):
-                        if data[x, y] >= draw_numbers_threshold:
-                            ax3.text(y+0.5, x+0.5, draw_numbers_fmt % data[x, y], size=draw_numbers_font_size, 
-                                ha='center', va='center')
+            edgecolors = 'none'
+            if grid:
+                edgecolors = 'black'
+                
+            hm = ax3.pcolormesh(data, cmap=colour_map, vmin=vmin, vmax=vmax, antialiased=False, edgecolors=edgecolors, lw=0.5)
+            
+        if draw_numbers:
+            for x in xrange(data.shape[0]):
+                for y in xrange(data.shape[1]):
+                    if data[x, y] >= draw_numbers_threshold:
+                        ax3.text(y+0.5, x+0.5, draw_numbers_fmt % data[x, y], size=draw_numbers_font_size, 
+                            ha='center', va='center')
 
-        #ax3.set_frame_on(border)
+        ax3.set_frame_on(border)
         ax3.set_position(heatmap_location)
         if "col_names" in kargs and kargs["col_names"]:
             ax3.set_xticks(arange(len(kargs["col_names"]))+0.5)
@@ -475,6 +480,9 @@ draw_numbers (Optional, default=False)
                                                            
             colbar_label (Optional, default="expression")
                 the label to place beneath the colour scale bar
+                
+            colour_map (Optional, default=afmhot)
+                a matplotlib cmap for colour
                 
         **Returns**
             The actual filename used to save the image.
@@ -807,7 +815,8 @@ draw_numbers (Optional, default=False)
 
         return(self.savefigure(fig, filename))
 
-    def boxplot(self, data=None, filename=None, labels=None, showfliers=True, whis=1.5, **kargs):
+    def boxplot(self, data=None, filename=None, labels=None, showfliers=True, whis=1.5, 
+        tight_layout=False, grid=True, **kargs):
         """
         wrapper around matplotlib's boxplot
         """
@@ -818,15 +827,19 @@ draw_numbers (Optional, default=False)
 
         ax = fig.add_subplot(111)
         #ax.axhline(0, ls=":", color="grey") # add a grey line at zero for better orientation
-        ax.grid(axis="y", ls=":", color="grey", zorder=1000000)
+        if grid:
+            ax.grid(axis="y", ls=":", color="grey", zorder=1000000)
         r = ax.boxplot(data, showfliers=showfliers, whis=whis)
 
         plot.setp(r['medians'], color='red') # set nicer colours
-        plot.setp(r['whiskers'], color='black', lw=2)
-        plot.setp(r['boxes'], color='black', lw=2)
+        plot.setp(r['whiskers'], color='black', lw=1)
+        plot.setp(r['boxes'], color='black', lw=1)
         plot.setp(r['fliers'], color="grey")
 
         ax.set_xticklabels(labels)
+
+        if tight_layout:
+            fig.tight_layout()
 
         fig.autofmt_xdate() # autorotate labels
 
@@ -1800,7 +1813,7 @@ draw_numbers (Optional, default=False)
             the real filename, which may get modified depending upon the current drawing mode
             (usually results in a png)
         """
-        fig = self.getfigure(aspect="square")
+        fig = self.getfigure(**kargs)
         ax = fig.add_subplot(111)
         
         ax.scatter(x, y, s=spot_size, c="grey", alpha=0.2, edgecolors="none")

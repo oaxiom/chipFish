@@ -11,20 +11,14 @@ import os, logging, subprocess
 
 # -------------- Versioning data
 
-RELEASE = False
-
-if RELEASE:
-    # These will be finalised when (if?) I ever get around to releasing glbase
-    VERSION = "1.380"
-    DATE = ""
-else:        
-    try:
-        oh = open(os.path.join(os.path.split(__file__)[0], "version.num"), "rU")
-        VERSION = "1.%s" % oh.readline().strip().replace("+", "") # The hg hook will put a plus as I call just before committing.
-        oh.close()
-    except Exception:
-        VERSION = "version data not found"
-    DATE = ""
+   
+try:
+    oh = open(os.path.join(os.path.split(__file__)[0], "version.num"), "rU")
+    VERSION = "1.%s" % oh.readline().strip().replace("+", "") # The hg hook will put a plus as I call just before committing.
+    oh.close()
+except Exception:
+    VERSION = "version data not found"
+DATE = ""
     
 __version__ = VERSION # There's a lot of needless redundancy here...
 version = VERSION # this is the valid one I want to use in future.
@@ -78,7 +72,6 @@ def change_draw_aspect(aspect):
     draw_size = aspect
 
 # -------------- set up the logger here.
-# this needs to be moved to log.py
 # You can access it using config.log()
 logging.basicConfig(level=logging.DEBUG,
                     format='%(levelname)-8s: %(message)s',

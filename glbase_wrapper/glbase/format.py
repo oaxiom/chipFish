@@ -295,6 +295,11 @@ go_DAVID = fc(name="go_DAVID",
     format={"force_tsv": True, "ontology": 0, 'count': 2, "name": 1, "qvalue": 11, "pvalue": 4}
     )
 
+go_GOseq = fc(name="go_GOSeq",
+    description="GO table by GOSeq",
+    format={"force_tsv": True, "ontology": 7, 'count': 4, "name": {'code': 'cat_columns(column[1], column[6])'}, "qvalue": 2, "pvalue": 2} # no q-value?
+    )
+
 # --------------------- class container
 
 class fccatalogue():

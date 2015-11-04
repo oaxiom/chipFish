@@ -49,7 +49,7 @@ class glgo(genelist):
         pass
     
     def barh(self, filename, ontology=None, maximum=None, pad=1e-105, key="qvalue", 
-        label_fontsize=7, mark_significance=True, tight_layout=True, qvalue_limit=False, **kargs):
+        label_fontsize=7, mark_significance=True, tight_layout=True, qvalue_limit=0.1, **kargs):
         """
         **Purpose**
             Draw a barchart for some ontology

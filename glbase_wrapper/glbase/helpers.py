@@ -169,6 +169,10 @@ def XUp(data, names, normed = None, **kargs):
 def lst_find(lst, predicate): # I need a helper function to find the item
     return (i for i, j in enumerate(lst) if predicate(j)).next()
 
+def cat_columns(c1, c2, sep=' '):
+    # concatenate two columns together
+    return('%s%s%s' % (c1, sep, c2))
+
 def strandSorter(chr, left, right, strand):
     """
     A helper proc to extract the tss from a list of coords.

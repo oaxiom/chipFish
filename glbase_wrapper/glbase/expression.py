@@ -133,13 +133,15 @@ class expression(base_expression):
         
         # These work and do not reinit as it works like this:
         # expn.bayes.learn() 
-        #       First call of bayes, call __getattr__() and self.bayes = bayes() then call learn learn()
+        #       First call of bayes, calls __getattr__() and self.bayes = bayes() 
+        #       Subsequent calls will get the self.bayes slot instead of __getattr__()
         # expn.bayes.run() 
         #       second call of bayes, self.bayes is already an attrib, so it will do self.bayes.run()
         #       with not new init.
         
         if name == "network":
             assert config.NETWORKX_AVAIL, "Asking for a network object but networkx is not available"
+            assert config.PYDOT_AVAIL, "Asking for a network object but pydot is not available"
             self.network = network(self)
             return(self.network)
         elif name == "pca":
@@ -149,6 +151,7 @@ class expression(base_expression):
             return(self.stats)
         elif name == "mdsquish":
             assert config.NETWORKX_AVAIL, "Asking for mdsquish but networkx is not available"
+            assert config.PYDOT_AVAIL, "Asking for a mdsquish object but pydot is not available"
             self.mdsquish = mdsquish(self)
             return(self.mdsquish)
         elif name == "som":
@@ -563,14 +566,24 @@ class expression(base_expression):
         self.numpy_array_all_data = scipy.cluster.vq.whiten(self.numpy_array_all_data)
         self._load_numpy_back_into_linearData()
 
-    def convert_to_Z_score(self):
+    def convert_to_Z_score(self, row_wise_variance=True):
         """
         **Purpose**
-            Convert the expression to a rwo-wise Z-score
+            Convert the expression to a row-wise Z-score
+            
+        **Arguments**
+            row_wise_variance (Optional, default=True)
+                use a row_wise Z-score. If False then use the variance from all genes/rows
+                on the expression object
         """
         expn = self.numpy_array_all_data.T   
-        m = numpy.mean(expn, axis=0)
-        s = numpy.std(expn, axis=0) 
+        if row_wise_variance:
+            m = numpy.mean(expn, axis=0)
+            s = numpy.std(expn, axis=0) 
+        else:
+            m = numpy.mean(expn, axis=0)
+            s = numpy.std(expn) 
+            
         z = (expn - m) / s
         self.numpy_array_all_data = z.T
         self._load_numpy_back_into_linearData()
@@ -804,6 +817,25 @@ class expression(base_expression):
                 
             colbar_label (Optional, default="expression")
                 the label to place beneath the colour scale bar       
+
+            grid (Optional, default=False)
+                draw a grid around each cell in the heatmap.
+
+            imshow (Optional, default=False)
+                optional ability to use images for the heatmap. Currently experimental it is
+                not always supported in the vector output files.
+                
+            draw_numbers (Optional, default=False)
+                draw the values of the heatmaps in each cell see also draw_numbers_threshold
+                
+            draw_numbers_threshold (Optional, default=-9e14)
+                draw the values in the cell if > draw_numbers_threshold
+            
+            draw_numbers_fmt (Optional, default= '%.1f')
+                string formatting for the displayed values
+            
+            draw_numbers_font_size (Optional, default=7)
+                the font size for the numbers in each cell
                 
         **Result**
             saves an image to the 'filename' location and
@@ -2271,7 +2303,7 @@ class expression(base_expression):
                 **kargs) 
         
     def hist(self, filename=None, range=None, suppress_zeros=True, log=None, kde=False, 
-        covariance=0.2, bins=50, **kargs):
+        covariance=0.2, bins=50, color='grey', legend=True, **kargs):
         """
         **Purpose**
             Draw a normal histogram of the expression values
@@ -2300,6 +2332,12 @@ class expression(base_expression):
             log (Optional, default=False)
                 log transform the data.
                 At the moment only log2 is supported.
+            
+            color (Optional, default='grey')
+                color in the histogram
+            
+            legend (Optional, default=True)
+                Draw the legend.
         
             kde (Optional, default=False)
                 use kernel density estimation to smooth the data
@@ -2339,10 +2377,11 @@ class expression(base_expression):
                 expn_values = utils.kde(expn_values, range=range, covariance=covariance, bins=bins)
                 ax.plot(expn_values, label=k)
             else:
-                ax.hist(expn_values, bins=bins, range=range, normed=True, histtype='step', label=k)
+                ax.hist(expn_values, color=color, bins=bins, range=range, normed=True, histtype='stepfilled', label=k)
             all_data[k] = expn_values
-            
-        ax.legend(ncol=1)
+        
+        if legend:  
+            ax.legend(ncol=1)
                     
         self.draw.do_common_args(ax, **kargs)
         real_filename = self.draw.savefigure(fig, filename)
@@ -3269,17 +3308,21 @@ class expression(base_expression):
                 for i in seed_bundle:
                     col = self.index(key, i) # I need to know the column numbers for each item in seeds: 
                     expns.append(self[col]["conditions"])    
-                centroids.append({"name": ",".join(seed_bundle), "avg": numpy.average(expns, axis=0), "std": numpy.std(expns, axis=0), "members": []})
+                expn_data = numpy.average(expns, axis=0)
+                assert expn_data.std() > 0.0, 'Variance is too low for gene "%s"' % seed_bundle
+                centroids.append({"name": ",".join(seed_bundle), "avg": expn_data, "std": numpy.std(expn_data, axis=0), "members": []})
             else: # singlet
                 col = self.index(key, seed_bundle) # I need to know the column numbers for each item in seeds: 
-                centroids.append({"name": seed_bundle, "avg": numpy.array(self[col]["conditions"]), "std": stds, "members": []})
+                expn_data = numpy.array(self[col]["conditions"])
+                assert expn_data.std() > 0.0, 'Variance is too low for gene "%s"' % seed_bundle
+                centroids.append({"name": seed_bundle, "avg": expn_data, "std": stds, "members": []}) # Notice uses the entire array std
              
         # put all of the genes into a bundle:
         for gene in self:
             scores = []
             for cen in centroids:
                   
-                #variation = numpy.abs(gene["conditions"] - cen["avg"]) / cen["std"]
+                #variation = numpy.abs(gene["conditions"] - cen["avg"]) / cen["std"] # This would be better done with CV.
                 #score = numpy.sum(variation) / len(cen["avg"])
                 if mode == "pearsonr":
                     score = scipy.stats.pearsonr(cen["avg"], gene["conditions"])[0]

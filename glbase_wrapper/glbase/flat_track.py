@@ -228,12 +228,12 @@ class flat_track(base_track):
         c.execute("SELECT blockID FROM data WHERE blockID=?", (blockID, ))
         result = c.fetchone()
 
-        d = self.__format_data(data)
+        d = self._format_data(data)
 
         if result: # has a block already, modify it.
             # update the block data.
 
-            c.execute("UPDATE data SET array=? WHERE blockID=?", (self.__format_data(data), blockID))
+            c.execute("UPDATE data SET array=? WHERE blockID=?", (self._format_data(data), blockID))
         else:
             c.execute("INSERT INTO data VALUES (?, ?)", (blockID, d))
         c.close()
@@ -283,24 +283,9 @@ class flat_track(base_track):
         c.close()
 
         if result:
-            return(self.__unformat_data(result[0]))
+            return(self._unformat_data(result[0]))
         else:
             raise Exception, "No Block!"
-
-    def __format_data(self, data):
-        """
-        array('i', []) --> whatever it's stored as in db
-        """
-        return(sqlite3.Binary(zlib.compress(data.tostring())))
-
-    def __unformat_data(self, data):
-        """
-        whatever stored as in db --> array('i', [])
-        """
-        #print "ret:",[d for d in data], ":"
-        a = array(self.bin_format)
-        a.fromstring(zlib.decompress(data))
-        return(a)
 
     def get(self, loc, strand="+", mask_zero=False, **kargs):
         """

@@ -50,13 +50,15 @@ def seqToTrk(infilename=None, outfilename=None, name=None, stranded=True, format
     assert outfilename, "seqToTrk(): You must specify outfilename"
     assert name, "seqToTrk(): You must specify a name for the track"
     
+    __strand_checked = False
+    
     if not isinstance(infilename, list):
         infilename = [infilename]
 
     n = 0
     m = 0
     total = 0
-
+        
     t = track(filename=outfilename, stranded=stranded, new=True, name=name, **kargs)
 
     s = time.time()
@@ -64,7 +66,11 @@ def seqToTrk(infilename=None, outfilename=None, name=None, stranded=True, format
         #config.log.info("Started %s -> %s" % (file, outfilename)) # Don't need as the delayedlist binding will put some output
         seqfile = delayedlist(filename=os.path.realpath(file), format=format)
         for item in seqfile:
-            if "strand" in item and stranded:
+            if stranded: 
+                if not __strand_checked: # purposely throw an error
+                    assert 'strand' in item, 'stranded=True, but no "strand" key found'
+                    __strand_checked = True
+                    
                 t.add_location(item["loc"], strand=item["strand"])
             else:
                 t.add_location(item["loc"])
@@ -88,7 +94,8 @@ def seqToTrk(infilename=None, outfilename=None, name=None, stranded=True, format
     # track_new
     # 2.5 s # overhead is almost all delayedlist now...
 
-    config.log.info("Finalise library. Contains '%s' tags" % total)
+    config.log.info("Library contains '%s' tags" % total)
+    config.log.info('Building cache, finalizing...')
     t.finalise()
     config.log.info("Took: %.1f seconds" % (e-s))
     return(True)

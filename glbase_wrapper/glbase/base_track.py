@@ -6,16 +6,18 @@ base class for track-like objects (ie. tracks and flats)
 
 """
 
-import sys, os, sqlite3, time, math, numpy
+import sys, os, sqlite3, time, math, numpy, zlib
 
 import config, utils
 from draw import draw
 from operator import itemgetter
 
+from genelist import genelist
+from location import location
 from errors import FailedToMakeNewDBError
 
 class base_track:
-    def __init__(self, name=None, new=False, filename=None, norm_factor=1.0):
+    def __init__(self, name=None, new=False, filename=None, norm_factor=1.0, mem_cache=False):
         """
         base track only accepts three arguments, 
         the filename, name (this is a legacy thing) and new.
@@ -50,6 +52,51 @@ class base_track:
 
         self._c = None
         self._draw = None # Lazy set-up in track. Don't init draw unless needed.
+        
+        self.gl_mem_cache = None
+        if mem_cache:
+            config.log.info('caching the database "%s" into memory...' % filename)
+            
+            from StringIO import StringIO
+            
+            # This doens't give a very big speed up in reality:
+            self._connection = sqlite3.connect(filename)
+            self._connection.text_factory = sqlite3.OptimizedUnicode
+            tempfile = StringIO()
+            for line in self._connection.iterdump():
+                tempfile.write('%s\n' % line)
+            self._connection.close()
+            tempfile.seek(0)
+
+            # Create a database in memory and import from tempfile
+            self._connection = sqlite3.connect(":memory:")
+            self._connection.cursor().executescript(tempfile.read())
+            self._connection.commit()
+            self._connection.row_factory = sqlite3.Row
+        
+            self._c = self._connection.cursor()
+            
+            # Use an optional genelist-like variant instead
+            # This one consumes waaay too much memory. Even a single list murders 10Gb....
+            '''
+            self.gl_mem_cache = genelist()
+            
+            self._connection = sqlite3.connect(filename)
+            self._connection.text_factory = sqlite3.OptimizedUnicode
+            tempfile = StringIO()
+            for line in self._connection.iterdump():
+                if 'INSERT' in line:
+                    t = line.split(' ')
+                    pos = t[3].replace('VALUES', '').strip('();').split(',')
+                    chrom = t[2].strip('"').replace('chr_', '')
+                    left = int(pos[0])
+                    right = int(pos[1])
+                    strand = pos[2].strip("'")
+                    #print chrom, left, right, strand
+                    self.gl_mem_cache.linearData.append({'loc': location(chr=chrom, left=left, right=right), 'strand': strand})
+                    
+            self.gl_mem_cache._optimise()
+            '''
         
         config.log.info("Bound '%s'" % filename)
         
@@ -92,7 +139,10 @@ class base_track:
         # Okay, get all the other keys as normal
         c.execute("SELECT * FROM info")
         for item in c.fetchall():
-            self.meta_data[item[0]] = item[1]
+            if item[0] == 'pre_build': # Special unpacks
+                self.meta_data[item[0]] = list(item[1]) 
+            else:
+                self.meta_data[item[0]] = item[1]
 
         self._connection.commit()
         c.close()
@@ -112,7 +162,7 @@ class base_track:
             if key in db_known_keys:
                 c.execute("UPDATE info SET value=? WHERE rowid=?", (self.meta_data[key], key))
             else: # This is a new metadata_attribute, save it
-                c.execute("INSERT INTO info VALUES (?, ?)", (key, self.meta_data[key]))
+                c.execute("INSERT INTO info VALUES (?, ?)", (key, str(self.meta_data[key])))
 
         self._connection.commit()
         c.close()
@@ -156,6 +206,21 @@ class base_track:
         """
         self._connection = sqlite3.connect(filename)
         self._connection.text_factory = sqlite3.OptimizedUnicode
+
+    def _format_data(self, data):
+        """
+        array('i', []) --> whatever it's stored as in db
+        """
+        return(sqlite3.Binary(zlib.compress(data.tostring())))
+
+    def _unformat_data(self, data):
+        """
+        whatever stored as in db --> array('i', [])
+        """
+        #print "ret:",[d for d in data], ":"
+        a = array(self.bin_format)
+        a.fromstring(zlib.decompress(data))
+        return(a)
 
     def finalise(self):
         """
