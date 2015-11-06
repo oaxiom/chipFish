@@ -97,7 +97,7 @@ class draw:
     def heatmap(self, filename=None, cluster_mode="euclidean", row_cluster=True, col_cluster=True, 
         vmin=0, vmax=None, colour_map=cm.RdBu_r, col_norm=False, row_norm=False, heat_wid=0.25, heat_hei=0.85,
         highlights=None, digitize=False, border=False, draw_numbers=False, draw_numbers_threshold=-9e14,
-        draw_numbers_fmt='%.1f', draw_numbers_font_size=6, grid=False, 
+        draw_numbers_fmt='%.1f', draw_numbers_font_size=6, grid=False, row_color_threshold=None,
         **kargs):
         """
         my own version of heatmap.
@@ -332,7 +332,13 @@ class draw:
             else:
                 Y = pdist(data, metric=cluster_mode)
                 Z = linkage(Y, method='complete', metric=cluster_mode)
-            a = dendrogram(Z, orientation='right')
+                
+            if row_color_threshold:
+                row_color_threshold = row_color_threshold*((Y.max()-Y.min())+Y.min()) # Convert to local threshold.
+                a = dendrogram(Z, orientation='right', color_threshold=row_color_threshold)
+                ax1.axvline(row_color_threshold, color="grey", ls=":")
+            else:
+                a = dendrogram(Z, orientation='right')
 
             ax1.set_position(left_side_tree)
             ax1.set_frame_on(False)

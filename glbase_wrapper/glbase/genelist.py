@@ -2287,6 +2287,8 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             Remove duplicates in the list based on a location tag.
             Scans all of the loc tags and removes items that overlap.
             
+            Performs a pointify() and expand(delta) on the locations.
+            
             This method will keep the first encountered item of a particular duplicate.
             (i.e. it is a lazy search) As such this method is not expected to give identical 
             answers:
@@ -2303,7 +2305,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         **Returns**
             A new genelist containing only unique sites
         """
-        mask = numpy.zeros(len(self)) # keep track of masked entries
+        mask = [0] * len(self.linearData) # keep track of masked entries
         
         newl = []
         
