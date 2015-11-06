@@ -66,11 +66,12 @@ class track(base_track):
         # if not new, get pre_build from the metadatum
         self.pre_build =  self.meta_data['pre_build']
         self.norm_factor = float(self.meta_data['norm_factor'])
-        #print norm_factor, self.norm_factor, str(norm_factor) != str(self.norm_factor)
-        
-        if norm_factor and str(norm_factor) != str(self.norm_factor):
-            config.log.error('the norm_factor supplied here does not match the norm_factor used during the creation of the track!')
-            raise AssertionError, 'norm_factor != norm_factor stored in the trk file.'
+        if self.norm_factor != 1.0:
+            config.log.info('track: Using norm_factor=%.3f' % self.norm_factor)
+            #print norm_factor, self.norm_factor, str(norm_factor) != str(self.norm_factor)
+            #if str(norm_factor) != str(self.norm_factor):
+            #    config.log.error('the norm_factor supplied here does not match the norm_factor used during the creation of the track!')
+            #    raise AssertionError, 'norm_factor != norm_factor (%.2f != %.2f) stored in the trk file.' % (norm_factor, self.norm_factor)
 
     def __repr__(self):
         return("glbase.track")

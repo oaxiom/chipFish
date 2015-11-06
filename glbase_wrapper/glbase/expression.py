@@ -372,6 +372,12 @@ class expression(base_expression):
             A new expression object or if strip_expn=True then a genelist
         """
         assert isinstance(return_keys, list), "getColumns: return_keys must be a list"
+        not_found = []
+        for k in return_keys:
+            if k not in self.keys():
+                not_found.append(k)
+        assert False not in [k in self.keys() for k in return_keys], "key(s): '%s' not found" % (', '.join(not_found),)
+        assert len(return_keys) == len(set(return_keys)), 'return_keys list is not unique'
 
         if strip_expn:
             newl = genelist()
@@ -392,7 +398,7 @@ class expression(base_expression):
             newl.linearData.append(newd)
         newl._optimiseData()
         
-        config.log.info("getColumns: got only the columns: %s" % ", ".join(return_keys))
+        config.log.info("getColumns: got only the columns: %s" % (", ".join(return_keys),))
         return(newl)
 
     def strip_errs(self):
@@ -704,7 +710,7 @@ class expression(base_expression):
                 item["conditions"] = [new_type(i) for i in item["conditions"]]
         return(None)
     
-    def heatmap(self, filename=None, row_label_key="name", row_colour_threshold=None, **kargs):
+    def heatmap(self, filename=None, row_label_key="name", row_color_threshold=None, **kargs):
         """
         **Purpose**
 
@@ -742,8 +748,8 @@ class expression(base_expression):
             row_cluster (Optional, default = True)
                 cluster the rows? True or False
     
-            row_colour_threshold (Optional, default=None)
-                colour_threshold to color the rows clustering dendrogram. 
+            row_color_threshold (Optional, default=None)
+                color_threshold to color the rows clustering dendrogram. 
                 
                 See also scipy.hierarchy.dendrogram
     
@@ -862,7 +868,7 @@ class expression(base_expression):
         res = self.draw.heatmap(data=newdata,
             row_names=self[row_label_key], col_names=self.getConditionNames(),
             filename=filename, 
-            row_colour_threshold=row_colour_threshold, 
+            row_color_threshold=row_color_threshold, 
             **kargs)
             
         config.log.info("heatmap: Saved %s" % res["real_filename"])
@@ -2424,6 +2430,8 @@ class expression(base_expression):
                 The value should range from 0..1.0
                 
                 Note that if cut is used then row_name_key must also be valid
+                
+                Also note that the order of the clusters returned is random.
             
             bracket (Optional, default=False)
                 The min and max to bracket the data. This is mainly here for compatibility with heatmap()
@@ -2473,10 +2481,12 @@ class expression(base_expression):
         # from scipy;
         # generate the dendrogram
         dist = pdist(data, metric=cluster_mode)
-        if color_threshold:
+        if cut or color_threshold: # override color_threshold with cut
+            color_threshold = cut
             color_threshold = color_threshold*((dist.max()-dist.min())+dist.min()) # convert to local measure
+            
         link = linkage(dist, 'complete', metric=cluster_mode)
-        a = dendrogram(link, orientation='right', labels=row_names, color_threshold=color_threshold)               
+        a = dendrogram(link, orientation='right', labels=row_names, color_threshold=color_threshold, get_leaves=True)
                 
         ax.set_frame_on(False)
         ax.set_xticklabels("")
@@ -2484,10 +2494,19 @@ class expression(base_expression):
 
         if cut:
             ret = []
-            d = cut*((dist.max()-dist.min())+dist.min())
-            config.log.info("tree: Using local threshold '%.2f'" % d)
-            clus = scipy.cluster.hierarchy.fcluster(link, d, 'distance')
-            for i, net in enumerate(set(clus)):
+            color_threshold
+            config.log.info("tree: Using local cut threshold '%.2f'" % color_threshold)
+            clus = scipy.cluster.hierarchy.fcluster(link, color_threshold, 'distance')
+            
+            print clus
+            
+            # Complicated way to do, but required to maintain the set order:
+            uniq_clus_in_order_bottom_to_top = []
+            for i in clus:
+                if i not in uniq_clus_in_order_bottom_to_top: 
+                    uniq_clus_in_order_bottom_to_top.append(i)
+            
+            for net in uniq_clus_in_order_bottom_to_top:
                 # get all of the gene names back out.
                 idxs = [idx for idx, x in enumerate(clus) if x == net]
                 newl = [{row_name_key: row_names[idx]} for idx in idxs]
@@ -2495,7 +2514,7 @@ class expression(base_expression):
                 newgl.load_list(newl)
                 ret.append(newgl)
 
-            ax.axvline(d, color="grey", ls=":")
+            ax.axvline(color_threshold, color="grey", ls=":")
             config.log.info("tree: Found %s clusters" % len(ret))
 
         # Use the tree to reorder the data.
