@@ -425,7 +425,7 @@ class gDraw:
         # get an available track slot
         self.__setPenColour( (0.95,0.95,0.95) )
         base_loc = self.__realToLocal(0, track_location)
-        self.ctx.rectangle(0, base_loc[1]-opt.track.height_px[track_type], self.w, opt.track.height_px[track_type]-2) # 30 = half genomic track size
+        self.ctx.rectangle(0, base_loc[1]-opt.track.height_px[track_type]+4, self.w, opt.track.height_px[track_type]-4) # 30 = half genomic track size
         self.ctx.fill()
         return( (0, base_loc[1]-opt.track.height_px[track_type], self.w, opt.track.height_px[track_type]-2) )
 
