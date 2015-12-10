@@ -125,7 +125,7 @@ class gDraw:
                 
             elif track["type"] == "genome":
                 item["array"] = track["data"].get_data("genome", location(loc=self.curr_loc))
-                print item["array"]
+                #print item["array"]
 
             elif track["type"] == "repeats":
                 item["array"] = track["data"].get_data(location(loc=self.curr_loc))
