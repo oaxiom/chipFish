@@ -23,8 +23,6 @@ class AssertionError(Exception):
         Output the error message and tidy up the traceback, and perform other stuff.
         """
         config.log.critical("%s" % (message))
-        if not config.DEBUG: # this only works in Py3k right?
-            self.__traceback__ = None
 
 class DelayedListError(Exception):
     """
@@ -36,8 +34,6 @@ class DelayedListError(Exception):
         Output the error message and tidy up the traceback, and perform other stuff.
         """
         config.log.critical("%s" % (message))
-        if not config.DEBUG: # this only works in Py3k right?
-            self.__traceback__ = None
 
 class ArgumentError(Exception):
     """
@@ -51,8 +47,6 @@ class ArgumentError(Exception):
         Output the error message and tidy up the traceback, and perform other stuff.
         """
         config.log.critical("Function '%s' - argument '%s' not supported" % (function, argument))
-        if not config.DEBUG: # this only works in Py3k right?
-            self.__traceback__ = None
 
 def guessDataType(value):
     """
@@ -199,7 +193,7 @@ class UnrecognisedFileFormatError(Exception):
         else:
             print "Format Specifier: %s" % (" ".join(["%s:%s" % (key, format[key]) for key in format]))
         print "-----------------------"
-        print "Error: %s" % (message)
+        config.log.critical("%s" % (message,))
         print
 
 class NotSupportedError(Exception):
@@ -214,8 +208,6 @@ class NotSupportedError(Exception):
         Output the error message and tidy up the traceback, and perform other stuff.
         """
         config.log.critical("Not Supported: %s" % (message))
-        if not config.DEBUG: # this only works in Py3k right?
-            self.__traceback__ = None
 
 class NotImplementedError(Exception):
     """
@@ -227,8 +219,6 @@ class NotImplementedError(Exception):
         Output the error message and tidy up the traceback, and perform other stuff.
         """
         config.log.critical("Not Supported: %s" % (message))
-        if not config.DEBUG: # this only works in Py3k right?
-            self.__traceback__ = None
 
 class NoMatchingKeysError(Exception):
     """
@@ -239,12 +229,10 @@ class NoMatchingKeysError(Exception):
         """
         Output the error message and tidy up the traceback, and perform other stuff.
         """
-        print "Error: No suitable matching key between the two lists"
-        print "       valid keys are: refseq entrez loc tss_loc array_systematic_name"
-        print "       You can also specify your own key using the 'match_key' argument"
-        print "       Both the microarray and the peaklist must have both keys"
-        if not config.DEBUG: # this only works in Py3k right?
-            self.__traceback__ = None
+        config.log.critical("Error: No suitable matching key between the two lists")
+        config.log.critical("       valid keys are: refseq entrez loc tss_loc array_systematic_name")
+        config.log.critical("       You can also specify your own key using the 'match_key' argument")
+        config.log.critical("       Both the microarray and the peaklist must have both keys")
 
 class BadOperationError(Exception):
     """
@@ -255,11 +243,9 @@ class BadOperationError(Exception):
         """
         Output the error message and tidy up the traceback, and perform other stuff.
         """
-        print "Error: A bad operation was sent to act(), or act() was unable"
-        print "       to complete the action."
-        print "       Bad code: %s" % argument
-        if not config.DEBUG: # this only works in Py3k right?
-            self.__traceback__ = None
+        config.log.critical("Error: A bad operation was sent to act(), or act() was unable")
+        config.log.critical("       to complete the action.")
+        config.log.critical("       Bad code: %s" % argument)
 
 class GlglobDuplicateNameError(Exception):
     """
@@ -273,8 +259,6 @@ class GlglobDuplicateNameError(Exception):
         config.log.critical("glglob has two lists with the same name")
         config.log.critical("for glglob to work you must provide lists")
         config.log.critical("with unique names")
-        if not config.DEBUG: # this only works in Py3k right?
-            self.__traceback__ = None
 
 class FailedToMakeNewDBError(Exception):
     """
@@ -287,9 +271,7 @@ class FailedToMakeNewDBError(Exception):
         """
         config.log.critical("Failed to make the new database")
         config.log.critical("This path is not valid or is inaccesible?")
-        config.log.critical("Tried: '%s'" % message)
-        if not config.DEBUG: # this only works in Py3k right?
-            self.__traceback__ = None
+        config.log.critical("Tried to open: '%s'" % filename)
             
 class BadBinaryFileFormatError(Exception):
     """
@@ -301,5 +283,3 @@ class BadBinaryFileFormatError(Exception):
         Output the error message and tidy up the traceback, and perform other stuff.
         """
         config.log.critical("File '%s' is not a glbase binary file" % filename)
-        if not config.DEBUG: # this only works in Py3k right?
-            self.__traceback__ = None

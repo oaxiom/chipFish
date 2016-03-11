@@ -30,14 +30,23 @@ def draw_nodes(G, pos, ax=None, nodelist=None, node_size=300, node_col_override=
     
     Heavily modified these days though...
     """
-    if nodelist is None:
-        nodelist = G.nodes()
+    if nodelist is None: # set it to use all nodes in nodelist == None
+        nodelist = G.nodes(data=True)
+    elif isinstance(nodelist, list): # The node_boundary just sends back a list of node names
+        # Convert to a tuple-like list of nodes, to match the output from G.nodes()
+        nodelist = [(n, G.node[n]) for n in nodelist] # get the node back out from the full network
+    
+    #print nodelist
+    
+    #print G.nodes(data=True)
+    #print nodelist(data=True)
     
     # set the colors from the attributes if present:
-    if 'color' in G.node[nodelist[0]]:
+    if 'color' in nodelist[0][1]: # Test a node to see if color attrib present
         node_color = []
-        for n in G.nodes(data=True):
+        for n in nodelist:
             node_color.append(n[1]['color'])
+            #print n, n[1]['color']
     
     # override the colors set in the node attribs.
     if node_col_override:
@@ -45,15 +54,16 @@ def draw_nodes(G, pos, ax=None, nodelist=None, node_size=300, node_col_override=
     
     # Fill in some colors if got to here and still no colors
     if not node_color:
-        node_color = ["grey"] * len(xy[:,1])
+        #print pos
+        node_color = ["grey"] * len(nodelist)
     
     # Populate size from 'size attribute' if present.
-    if 'size' in G.node[nodelist[0]]:
+    if 'size' in nodelist[0][1]:
         node_size = []
-        for n in G.nodes(data=True):
+        for n in nodelist:
             node_size.append(n[1]['size'])
     
-    xy = numpy.asarray([pos[v] for v in nodelist])
+    xy = numpy.asarray([pos[v[0]] for v in nodelist])
 
     #print node_color
     #print node_size
@@ -118,17 +128,11 @@ def draw_edges(G, pos, ax, edgelist=None, width=1.0, width_adjuster=50, edge_col
 
     edge_collection = LineCollection(edge_pos, colors=edge_colors,
         linewidths=lw, antialiaseds=(1,), linestyle=style,
-        transOffset = ax.transData,)
-
-    edge_collection.set_zorder(zorder)  
+        transOffset = ax.transData, zorder=zorder)
+ 
     edge_collection.set_label(label)
     ax.add_collection(edge_collection)
 
-    # Note: there was a bug in mpl regarding the handling of alpha values for
-    # each line in a LineCollection.  It was fixed in matplotlib in r7184 and
-    # r7189 (June 6 2009).  We should then not set the alpha value globally,
-    # since the user can instead provide per-edge alphas now.  Only set it
-    # globally if provided as a scalar.
     if cb.is_numlike(alpha):
         edge_collection.set_alpha(alpha)
 
@@ -142,47 +146,8 @@ def draw_edges(G, pos, ax, edgelist=None, width=1.0, width_adjuster=50, edge_col
         else:
             edge_collection.autoscale()
 
-    arrow_collection = None
-
-    '''
-    if G.is_directed() and arrows:
-        # a directed graph hack
-        # draw thick line segments at head end of edge
-        # waiting for someone else to implement arrows that will work
-        arrow_colors = edge_colors
-        a_pos = []
-        p = 1.0-0.25  # make head segment 25 percent of edge length
-        for src, dst in edge_pos:
-            x1, y1 = src
-            x2, y2 = dst
-            dx = x2-x1   # x offset
-            dy = y2-y1   # y offset
-            d = numpy.sqrt(float(dx**2 + dy**2))  # length of edge
-            if d == 0:   # source and target at same position
-                continue
-            if dx == 0:  # vertical edge
-                xa = x2
-                ya = dy*p+y1
-            if dy == 0:  # horizontal edge
-                ya = y2
-                xa = dx*p+x1
-            else:
-                theta = numpy.arctan2(dy, dx)
-                xa = p*d*numpy.cos(theta)+x1
-                ya = p*d*numpy.sin(theta)+y1
-
-            a_pos.append(((xa, ya), (x2, y2)))
-
-        arrow_collection = LineCollection(a_pos,
-            colors=arrow_colors, linewidths=[4*ww for ww in lw],
-            antialiaseds=(1,), transOffset=ax.transData,)
-
-        arrow_collection.set_zorder(zorder)  # edges go behind nodes
-        arrow_collection.set_label(label)
-        ax.add_collection(arrow_collection)
-    '''
-
     # update view
+    '''
     minx = numpy.amin(numpy.ravel(edge_pos[:,:,0]))
     maxx = numpy.amax(numpy.ravel(edge_pos[:,:,0]))
     miny = numpy.amin(numpy.ravel(edge_pos[:,:,1]))
@@ -194,8 +159,9 @@ def draw_edges(G, pos, ax, edgelist=None, width=1.0, width_adjuster=50, edge_col
     corners = (minx-padx, miny-pady), (maxx+padx, maxy+pady)
     ax.update_datalim(corners)
     ax.autoscale_view()
+    '''
 
-    return edge_collection
+    return(edge_collection)
 
 def hierarchical_clusters(G, data_table, node_names, expected_group_number):
     """
@@ -225,7 +191,7 @@ def hierarchical_clusters(G, data_table, node_names, expected_group_number):
         {"cluster_1": [sam1, sam2 ...], "cluster_2": [sam1, sam2 ...] ... "cluster_n"}
         
     """
-    assert G, "hierarchical_clusters(): No network specified"
+    assert G, "hierarchical_clusters: No network specified"
     
     xs = numpy.arange(0.1, 1.1, 0.001)[::-1]
     
@@ -256,14 +222,15 @@ def hierarchical_clusters(G, data_table, node_names, expected_group_number):
 def longest_path(G, **kargs):
     """
     **Purpose**
-        return a list of node names and edgelists for the longest path in the network
+        return a list of node names and edgelists for the longest, most direct path
+        in the network
         
     **Arguments** 
         None
         
     **Returns**
     """
-    assert G, "longest_path(): No network specified"
+    assert G, "longest_path: No network specified"
     
     longest_path = []
     for node1 in G:
@@ -305,7 +272,7 @@ def branches(G, **kargs):
         
     **Returns**
     """
-    assert G, "branches(): No network specified"
+    assert G, "branches: No network specified"
     
     longest_nodes, longest_edges = longest_path(G) # first get the longest path
     longest_nodes = longest_nodes[0] # unpack
@@ -386,8 +353,8 @@ def unified_network_drawer(G, correlation_table, names, filename=None, low_thres
     max_links=9999999, labels=True, node_size=100, edges=True, save_gml=False, layout="neato",
     mark_clusters=False, cluster_alpha_back=0.8, cluster_node_size=3000, node_alpha=0.6, nodes=True,
     cluster_alpha_back2=1.0, mark_path=None, mark_paths=None, path_color='red', title=None, edge_pad=0.03, title_font_size=12,
-    traversal_weight=0.0, 
-    width_adjuster=50, # set to 50 to maintain default compatibility with mds
+    traversal_weight=0.0, draw_node_boundary=False, node_boundary=None,
+    width_adjuster=20, # default for MDSquish 
     layout_data=None, # preexisting layout data
     **kargs): 
     """
@@ -413,8 +380,10 @@ def unified_network_drawer(G, correlation_table, names, filename=None, low_thres
     # Kargs and defaults:
     edge_color = 'grey'
     edge_width = 1.0
-    if 'edge_color' in kargs and kargs['edge_color']: edge_color = kargs['edge_color']
-    if 'edge_width' in kargs and kargs['edge_width']: edge_width = kargs['edge_width']
+    if 'edge_color' in kargs and kargs['edge_color']: 
+        edge_color = kargs['edge_color']
+    if 'edge_width' in kargs and kargs['edge_width']: 
+        edge_width = kargs['edge_width']
     
     # optional return data
     ret_groups = None
@@ -442,9 +411,12 @@ def unified_network_drawer(G, correlation_table, names, filename=None, low_thres
         cols = [sam_map[cond] for cond in G]
     else:
         cols = "grey"
-        
+    
+    if node_boundary: # Make the background nodes not in the node boundary more transparent
+        node_alpha = 0.1
+    
     if nodes:
-        draw_nodes(G, pos, ax=ax, node_size=node_size, node_color=cols, alpha=node_alpha, linewidths=0, zorder=2)
+        draw_nodes(G, pos, ax=ax, node_size=node_size, node_color=cols, alpha=node_alpha, linewidths=0, zorder=5)
     
     #print 'univerted:', [2.0-(i[2]['weight']) for i in G.edges(data=True)]
     elarge = [(u,v,d) for (u,v,d) in G.edges(data=True) if ((traversal_weight+1.0)-d['weight']) >= hi_threshold] # I pad and invert the weight so that pathfinding works correctly
@@ -480,17 +452,17 @@ def unified_network_drawer(G, correlation_table, names, filename=None, low_thres
         
     # edges
     if edges: 
-        draw_edges(G, pos, ax, edgelist=elarge, width=edge_width, width_adjuster=width_adjuster, alpha=edge_alpha, edge_color=edge_color, traversal_weight=traversal_weight)
-        draw_edges(G, pos, ax, edgelist=esmall, width=edge_width, width_adjuster=width_adjuster, alpha=edge_alpha/2.0, edge_color=edge_color, traversal_weight=traversal_weight, style='--')
+        draw_edges(G, pos, ax, edgelist=elarge, width=edge_width, width_adjuster=width_adjuster, alpha=edge_alpha, edge_color='#666666', traversal_weight=traversal_weight, zodrder=3)
+        draw_edges(G, pos, ax, edgelist=esmall, width=edge_width, width_adjuster=width_adjuster, alpha=edge_alpha/2.0, edge_color='#bbbbbb', traversal_weight=traversal_weight, zorder=2)
 
     # labels
     if labels:
-        nx.draw_networkx_labels(G, pos, font_size=label_fontsize, font_family='sans-serif')
+        nx.draw_networkx_labels(G, pos, font_size=label_fontsize, font_family='sans-serif', zorder=6)
 
     if mark_path:       
         if isinstance(mark_path, list): # ou are probably sending your own path
             draw_edges(G, pos, ax, edgelist=mark_path, width=5.0, alpha=1.0, edge_color=path_color, 
-                width_adjuster=200, traversal_weight=traversal_weight, zorder=3) # in front of nodes
+                width_adjuster=width_adjuster*2.0, traversal_weight=traversal_weight, zorder=6) # in front of nodes
         else:
             ret_nodes, ret_edges = path_func_mapper[mark_path](G, **kargs) # call the appropriate function
             cmap = cm.get_cmap("gist_ncar", len(ret_edges)) 
@@ -498,19 +470,33 @@ def unified_network_drawer(G, correlation_table, names, filename=None, low_thres
             color = [utils.rgba_to_hex(cmap[i]) for i, e in enumerate(ret_edges)]
             
             for i, e in enumerate(ret_edges):
-                draw_edges(G, pos, ax, edgelist=e, width=3.0, alpha=1.0, edge_color=color[i], traversal_weight=traversal_weight)
+                draw_edges(G, pos, ax, edgelist=e, width=3.0, alpha=1.0, edge_color=color[i], traversal_weight=traversal_weight, zorder=6)
                 # Don't draw the nodes, you also would need to get out the node name and properly reorder the node_size
+            mark_path = ret_nodes # For compatibility with network_boundary
     elif mark_paths:
         for p in mark_paths:
             draw_edges(G, pos, ax, edgelist=mark_path, width=5.0, alpha=0.5, edge_color=path_color, 
-                width_adjuster=300, traversal_weight=traversal_weight, zorder=3) # in front of nodes
+                width_adjuster=300, traversal_weight=traversal_weight, zorder=6) # in front of nodes
+    
+    # node_boundary
+    if draw_node_boundary:
+        if node_boundary:
+            boundary = node_boundary # I assume it is already a boundary
+        elif mark_path: # use a path if no network_boundary sent
+            boundary = nx.node_boundary(G, mark_path) 
+        else:
+            raise AssertionError, 'asked to draw a boundary, but no network_boundary or path available'
+        draw_nodes(G, pos, ax=ax, 
+            nodelist=boundary,
+            node_size=node_size*1.2, #don't use node_color, see if the draw_nodes can pick it up from the attributes
+            alpha=0.9, linewidths=0.0, zorder=3)  
 
     # clean up matplotlib gubbins:
     ax.set_position([0,0,1,1])
     ax.set_frame_on(False)
     ax.get_xaxis().set_visible(False)
     ax.get_yaxis().set_visible(False)
-    # make nice edges (by default it chooses far too generous borders:
+    # make nice edges (by default it chooses far too generous borders):
     xy = numpy.asarray([pos[v] for v in G.nodes()])
     x_min, x_max = min(xy[:,0]), max(xy[:,0])
     y_min, y_max = min(xy[:,1]), max(xy[:,1])
@@ -525,7 +511,7 @@ def unified_network_drawer(G, correlation_table, names, filename=None, low_thres
            
     if save_gml:
         nx.write_gml(G, save_gml)
-        config.log.info("network.conditions(): saved GML '%s'" % save_gml)
+        config.log.info("network_drawer: saved GML '%s'" % save_gml)
     
     actual_filename = gldraw.savefigure(fig, filename)
     

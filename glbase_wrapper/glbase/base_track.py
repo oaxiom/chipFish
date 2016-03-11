@@ -7,6 +7,7 @@ base class for track-like objects (ie. tracks and flats)
 """
 
 import sys, os, sqlite3, time, math, numpy, zlib
+from array import array
 
 import config, utils
 from draw import draw

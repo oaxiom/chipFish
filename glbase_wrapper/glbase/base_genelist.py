@@ -255,7 +255,7 @@ class _base_genelist:
         """
         return a list of all the valid keys for this geneList
         """
-        return([key for key in self.linearData[0]])
+        return([key for key in self.linearData[0]]) # Not exhaustive
      
     def _guessDataType(self, value):
         """

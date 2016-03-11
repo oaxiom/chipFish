@@ -81,11 +81,11 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 self.__list_name_lookback[item.name] = index
 
     def loadCSV(self):
-        config.log.error("glglobs cannot be sensibly represented as a CSV file, use glload() to load binary copies")
+        config.log.error("glglobs cannot be represented as a CSV/TSV file, use glload() to load binary files")
         return(False)
 
     def saveCSV(self):
-        config.log.error("glglobs cannot be sensibly represented as a CSV file, use .save() to save binary copies")
+        config.log.error("glglobs cannot be represented as a CSV/TSV file, use .save() to save binary files")
         return(False)
 
     def __getitem__(self, value):
@@ -259,10 +259,10 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             square=True, cmap=cm.hot, cluster_mode="euclidean", row_cluster=row_cluster, col_cluster=col_cluster,
             row_names=row_names, col_names=row_names, aspect=aspect, **kargs)
 
-        config.log.info("Saved Figure to '%s'" % ret["real_filename"])
+        config.log.info("compare: Saved Figure to '%s'" % ret["real_filename"])
         return(dict_of_lists)
 
-    def venn(self, key=None, filename=None, **kargs):
+    def venn(self, key=None, filename=None, mode='map', **kargs):
         """
         **Purpose**
             draw 2, 3 or 4 venn Diagrams
@@ -287,6 +287,16 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             filename
                 save the venn diagram to this filename
 
+            mode (Optional, default='map')
+                set to 'collide' if you prefer to use the glbase location
+                collide() to map the Venn.
+                
+                Note that 'key' should point to a location key, and you can pass an optional 
+                'delta' command
+                
+                Also note that location Venn overlaps are only partly accurate, as it is 
+                possible to have multiple overlaps .
+
             title (Optional)
                 title for the figures
                 defaults to <list> vs <list> vs ...
@@ -301,8 +311,11 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
 
         assert len(self.linearData) <= 5, "currently glglob venn diagrams only support at most 5 overlaps"
         assert len(self.linearData) >= 2, "you must send at least two lists"
-        assert key, "Must specify a 'key' to map the two lists"
         assert filename, "no filename specified for venn_diagrams to save to"
+        assert key, "Must specify a 'key' to map the two lists"
+        
+        if mode == 'collide': # Deflect to the collide routine
+            return(self.__venn_collide(key=key, filename=filename))
 
         proportional = False
         if "experimental_proportional_venn" in kargs and kargs["experimental_proportional_venn"]:
@@ -446,7 +459,50 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             
             realfilename = self.draw.venn5(lists, labs, filename, **kargs)
         
-        config.log.info("Saved Figure to '%s'" % realfilename)
+        config.log.info("venn: Saved Figure to '%s'" % realfilename)
+        return(None)
+
+    def __venn_collide(self, key, filename, delta=200, **kargs):
+        #assert key in self.keys()
+        assert len(self.linearData) >= 3, "currently glglob venn diagrams only support at least 3-way overlaps"
+        assert len(self.linearData) <= 3, "currently glglob venn diagrams only support at most 3-way overlaps"
+        
+        if len(self.linearData) == 3:
+            A = self.linearData[0]
+            B = self.linearData[1]
+            C = self.linearData[2]
+            
+            AB = A.collide(genelist=B, key=key, delta=delta)
+            AC = A.collide(genelist=C, key=key, delta=delta)
+            BC = B.collide(genelist=C, key=key, delta=delta)
+            
+            ABC = AB.collide(genelist=BC, key=key, delta=delta)
+            
+            # check for none's:
+            if AB:
+                AB = len(AB)
+            else:
+                AB = 0
+            
+            if AC:
+                AC = len(AC)
+            else:
+                AC = 0
+                
+            if BC:
+                BC = len(BC)
+            else:
+                BC = 0
+                
+            if ABC:
+                ABC = len(ABC)
+            else:
+                ABC = 0         
+            
+            # You only need to provide the lengths, the overlaps are calculated in venn3:
+            realfilename = self.draw.venn3(len(A), len(B), len(C), AB, AC, BC, ABC, 
+                self.linearData[0].name, self.linearData[1].name, self.linearData[2].name, 
+                filename, **kargs)
         return(None)
 
     def moving_average_maps(self, mode="graph", compare_array=None, filename=None, key=None,
@@ -549,7 +605,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             real_filename = self.draw._heatmap(data=res, filename=filename, col_names=colnames, row_names=compare_array["name"],
                 row_cluster=False, col_cluster=True, colour_map=cm.Blues, #vmax=1,
                 colbar_label=scalebar_name, aspect="square")
-        config.log.info("Saved image to '%s'" % real_filename)
+        config.log.info("moving_average_maps: Saved image to '%s'" % real_filename)
 
     def overlap_heatmap(self, filename=None, score_key=None, resolution=1000, optics_cluster=True):
         """
@@ -679,12 +735,12 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         ret = self.draw.heatmap(data=tab, filename=filename, col_names=[gl.name for gl in self.linearData], row_names=None,
                 row_cluster=False, col_cluster=True, colour_map=cm.Reds, heat_wid=0.7, heat_hei=0.7, bracket=[0,tab.max()])
                 
-        config.log.info("overlap_heatmap(): Saved overlap heatmap to '%s'" % ret["real_filename"])
+        config.log.info("overlap_heatmap: Saved overlap heatmap to '%s'" % ret["real_filename"])
         return(tab)
         
     def chip_seq_cluster_heatmap(self, list_of_peaks, list_of_trks, filename=None, normalise=False, bins=20, 
         pileup_distance=1000, merge_peaks_distance=400, sort_clusters=True, cache_data=False, log=2, bracket=None,
-        range_bracket=None, frames=False, titles=None, read_extend=200, **kargs):
+        range_bracket=None, frames=False, titles=None, read_extend=200, imshow=False, **kargs):
         """
         **Purpose**
             Combine and merge all peaks, extract the read pileups then categorize the peaks into
@@ -707,7 +763,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             
             1. Join all of the peaks into a redundant set of coordinates
 
-            2. Merge all of the bins to produce a single list of unique genomic regions 
+            2. Merge all of the genomic regions to produce a single list of unique genomic regions 
             (this is what it means by "chip_seq_cluster_heatmap(): Found <number> unique 
             genomic regions")
 
@@ -816,6 +872,12 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             frames (Optional, default=False)
                 Draw black frames around the heatmaps and category maps. I prefer without,
                 so that is the default!
+
+            imshow (Optional, default=False)
+                Embed the heatmap as an image inside a vector file. (Uses matplotlib imshow 
+                to draw the heatmap part of the figure. Allows very large matrices to
+                be saved as an svg, with the heatmap part as a raster image and all other elements
+                as vectors).
                 
         **Returns**
             Returns a list of genelists, one genelist for each major category. The genelist
@@ -845,7 +907,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         # Make a super list of all the peaks.
         mega_list_of_peaks = sum([gl["loc"] for gl in list_of_peaks], [])
         mega_list_of_peaks = [p.pointify().expand(merge_peaks_distance) for p in mega_list_of_peaks]
-        config.log.info("chip_seq_cluster_heatmap(): Started with %s redundant peaks" % len(mega_list_of_peaks))
+        config.log.info("chip_seq_cluster_heatmap: Started with %s redundant peaks" % len(mega_list_of_peaks))
         
         # Merge overlapping peaks   
         merged_peaks = {}
@@ -886,7 +948,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
 
             p.update(idx)
             
-        config.log.info("chip_seq_cluster_heatmap(): Found %s unique genomic regions" % total_rows)
+        config.log.info("chip_seq_cluster_heatmap: Found %s unique genomic regions" % total_rows)
             
         # Get the size of each library if we need to normalize the data.
         if normalise:
@@ -902,16 +964,18 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             oh = open(os.path.realpath(cache_data), "rb")
             chr_blocks = cPickle.load(oh)
             oh.close()
-            config.log.info("chip_seq_cluster_heatmap(): Reloaded previously cached pileup data: '%s'" % cache_data)
+            config.log.info("chip_seq_cluster_heatmap: Reloaded previously cached pileup data: '%s'" % cache_data)
             # this_loc will not be valid and I test it for length below, so I need to fake one.
 
         else:
             # No cahced data, so we have to collect ourselves.
+            config.log.info('chip_seq_cluster_heatmap: Collecting pileup data...')
             p = progressbar(len(list_of_trks))
             # New version that grabs all data and does the calcs in memory, uses more memory but ~2-3x faster
             for pindex, trk in enumerate(list_of_trks):
                 for index, chrom in enumerate(chr_blocks):
-                    data = trk.get_array_chromosome(chrom, read_extend=read_extend)
+                    # The chr_blocks iterates across all chromosomes, so this only hits the db once per chromosome:
+                    data = trk.get_array_chromosome(chrom, read_extend=read_extend) # This will use the fast cache version if available.
 
                     for block_id in chr_blocks[chrom]:
                         left = block_id[0] - pileup_distance 
@@ -937,27 +1001,12 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                             pil_data /= read_totals[pindex]
                         chr_blocks[chrom][block_id]["pil"][pindex] = pil_data 
                 p.update(pindex)
-            """
-            # Older version which relies on trk. Potentially this might be faster in future:
-            for pindex, chrom in enumerate(chr_blocks):
-                for block_id in chr_blocks[chrom]:
-                    this_loc = location(loc="chr%s:%s-%s" % (chrom, int(block_id.split(":")[1])-pileup_distance, int(block_id.split(":")[1])+resolution+pileup_distance))
-                    for index, trk in enumerate(list_of_trks):
-                        # ignore pileup_distance for now
-                        pil_data = numpy.array(utils.bin_sum_data(trk.get(loc=this_loc, read_extend=200), bin_size), dtype=numpy.float32)
 
-                        if normalise:
-                            # normalise before or after bin?
-                            pil_data /= read_totals[index]
-                            
-                        chr_blocks[chrom][block_id]["pil"][index] = pil_data 
-                p.update(pindex)
-            """
             if cache_data: # store the generated data for later.
                 oh = open(cache_data, "wb")
                 cPickle.dump(chr_blocks, oh, -1)
                 oh.close()
-                config.log.info("chip_seq_cluster_heatmap(): Saved pileup data to cache file: '%s'" % cache_data)
+                config.log.info("chip_seq_cluster_heatmap: Saved pileup data to cache file: '%s'" % cache_data)
             
         # assign each item to a group and work out all of the possible groups
         cluster_ids = []
@@ -980,7 +1029,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             pass
             #URK!
         
-        # build the super big heatmap table (later should be multi_heatmap()?)
+        # build the super big heatmap table 
         tab_wid = block_len * len(list_of_peaks)
         tab_spa = len(list_of_peaks) # distance between each set of blocks.
         tab = None
@@ -1031,7 +1080,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         self.__pileup_groups_membership = sorted_clusters
         self.__pileup_group_sizes = [groups.count(i) for i in xrange(0, len(sorted_clusters)+1)]
         
-        config.log.info("chip_seq_cluster_heatmap(): There are %s groups" % len(sorted_clusters))             
+        config.log.info("chip_seq_cluster_heatmap: There are %s groups" % len(sorted_clusters))             
         
         # I will need the max of all the tables for some calcs below:
         tab_max = max([tab.max() for tab in list_of_tables])         
@@ -1065,24 +1114,24 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         tab_mean = numpy.average([numpy.average(tab) for tab in list_of_tables])
         tab_stdev = numpy.std(numpy.array([tab for tab in list_of_tables]))    
         
-        config.log.info("chip_seq_cluster_heatmap(): min=%.2f, max=%.2f, median=%.2f, mean=%.2f, stdev=%.2f" % (tab_min, tab_max, tab_median, tab_mean, tab_stdev))   
+        config.log.info("chip_seq_cluster_heatmap: min=%.2f, max=%.2f, median=%.2f, mean=%.2f, stdev=%.2f" % (tab_min, tab_max, tab_median, tab_mean, tab_stdev))   
         if range_bracket:
             bracket = [tab_max*range_bracket[0], tab_max*range_bracket[1]]
         elif bracket:
             bracket = bracket # Fussyness for clarity.
         else: # guess a range: This should really be done on a per-heatmap basis.
             bracket = [tab_median+tab_stdev, tab_median+(tab_stdev*2.0)] 
-            config.log.info("chip_seq_cluster_heatmap(): suggested bracket = [%s, %s]" % (bracket[0], bracket[1]))   
+            config.log.info("chip_seq_cluster_heatmap: suggested bracket = [%s, %s]" % (bracket[0], bracket[1]))   
      
         #real_filename = self.draw.heatmap2(filename=filename, row_cluster=False, col_cluster=False, 
         #    data=tab, colbar_label=colbar_label, bracket=bracket)
         if filename:
             if not titles:
                 titles = [p.name for p in list_of_peaks]
-            real_filename = self.draw.multi_heatmap(filename=filename, groups=groups, titles=titles,
-                list_of_data = list_of_tables, colbar_label=colbar_label, bracket=bracket, frames=frames)        
+            real_filename = self.draw.multi_heatmap(filename=filename, groups=groups, titles=titles, imshow=imshow,
+                list_of_data=list_of_tables, colbar_label=colbar_label, bracket=bracket, frames=frames)        
 
-        config.log.info("chip_seq_cluster_heatmap(): Saved overlap heatmap to '%s'" % real_filename)   
+        config.log.info("chip_seq_cluster_heatmap: Saved overlap heatmap to '%s'" % real_filename)   
         return(ret_data)
             
     def chip_seq_cluster_pileup(self, filename=None, multi_plot=True, **kargs):
@@ -1187,8 +1236,8 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         
         """    
         
-        assert genome[0], "genome_dist_radial(): genome appears to be empty"
-        assert "tss_loc" in genome.keys(), "genome_dist_radial(): genome does not have a 'tss_loc' key"
+        assert genome[0], "genome_dist_radial: genome appears to be empty"
+        assert "tss_loc" in genome.keys(), "genome_dist_radial: genome does not have a 'tss_loc' key"
         # check layout == len(self.linearData)
 
         annotation = genome
@@ -1240,7 +1289,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             ax.set_yticklabels(["%s%%" % i for i in range(int(l[0]), int(l[1]+5), int(l[1]//len(ax.get_yticklabels())))][1:])
     
         actual_filename = self.draw.savefigure(fig, filename)
-        config.log.info("genome_dist_radial(): Saved '%s'" % actual_filename)
+        config.log.info("genome_dist_radial: Saved '%s'" % actual_filename)
 
     def GO_heatmap(self, filename, p_value_limit=0.01, num_top=5, pvalue_key='pvalue',
             size=[8, 6], bracket=[1.3,4], row_cluster=True, col_cluster=False, # heatmap args
@@ -1301,7 +1350,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         for idx, go in enumerate(self.linearData):     
             cond_names_idx[go.name] = idx
             if not go:
-                config.log.warning("GO list '%s' was empty, skipping" % go.name)
+                config.log.warning("GO_heatmap: GO list '%s' was empty, skipping" % go.name)
                 continue
                 
             go.sort(pvalue_key)
@@ -1344,5 +1393,6 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             draw_numbers_threshold=draw_numbers_threshold, 
             draw_numbers_fmt=draw_numbers_fmt,
             draw_numbers_font_size=draw_numbers_font_size)
+        config.log.warning("GO_heatmap: Saved heatmap '%s'" % filename)
         return(None)
     

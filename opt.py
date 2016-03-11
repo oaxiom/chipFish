@@ -70,7 +70,8 @@ class graphics:
     gene_colour = (0,0,0) #Black
     lncrna_colour = (0.1, 0.8, 0.1)
     microRNA_colour = (0.6, 0.1, 0)
-
+    repeat_cols = {"LINE": (0, 0, 1), "SINE": (0,1,0), "LTR": (1,0,0), "DNA": (0.5, 0.5, 0.5)}
+        
     # Font related defaults
     font = "Helvetica"
     default_font_size = 11 # Fall back font size
@@ -83,10 +84,6 @@ class graphics:
     arrow_width_px = 4 # For genes
     arrow_height_px = 4
     repeat_arrow_height_px = 6 # Fore repeats
-    
-    repeat_cols = {"LINE": (0, 0, 1),
-        "SINE": (0,1,0),
-        "LTR": (1,0,0)}
 
 class draw:
     """
@@ -97,10 +94,10 @@ class draw:
     chevrons_inside_introns = False # not implemented draws chevrons inside the gene indicating direction
     braces_between_exons = False # not implemented draws braces across the exons
     scale_bar = True # The scale bar at the top right of the image just below the ruler
-    scale_bar_fontsize = 16 # scale bars font size. 
+    scale_bar_fontsize = 16 # scale bar font size. 
     view_port_width = 1000 # The width of the genome view in pixels
-    genomic_location = True # draw the chrX:nnnnnn-nnnnnn label just above the first track
-    genomic_location_font_size = 28 # font size for hte genomic location label
+    genomic_location = True # draw the chrN:nnnnnn-nnnnnn label just above the first track
+    genomic_location_font_size = 28 # font size for the genomic location label
 
 class gene:
     font_size = 26
@@ -128,7 +125,7 @@ class track:
         "spot": 30,
         "genome": 70,
         "repeats": 200} # height's of the tracks in pixels.
-    spot_pixel_radius = 4 # Size of the spot circle
+    spot_pixel_radius = 8 # Size of the spot circle
     spot_default_colour = (0.1, 0.1, 0.1) # The colour of the spot for spot tracks
     spot_filled = True # fill the spot circle?
     spot_shape = "circle" # supported = circle, triangle
@@ -140,4 +137,4 @@ class track:
     scale_bar_font_size = 14
     label_fontsize = 22
     min_scale = 2 # The minimum x axis value for tracks. 
-    lock_scales = True # Lock all scales on the Tracks together. Make this per trk file settable?
+    lock_scales = False # Lock all scales on the Tracks together. Make this per trk file settable?

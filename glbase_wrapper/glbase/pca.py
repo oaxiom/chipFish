@@ -7,248 +7,142 @@ PCA analysis for glbase expression objects.
 from operator import itemgetter
 
 import numpy
-import numpy.linalg as LA
 import matplotlib.pyplot as plot
 import matplotlib.patches
-from mpl_toolkits.mplot3d import Axes3D, art3d # not always available?
+from mpl_toolkits.mplot3d import Axes3D, art3d 
 import scipy.cluster.vq 
+from sklearn.decomposition import PCA
 
 import config
 from draw import draw
 from genelist import genelist
 
 class pca:
-    def __init__(self, parent=None, rowwise=False, label_key=None, whiten=False, mean_subtraction=False, **kargs):
+    def __init__(self, parent=None, rowwise=False, feature_key_name=None, whiten=False, **kargs):
         """
         **Purpose**
-            A custom class for PCA analysis of (at the moment) expression object data.
-            
-            Not recommended to use directly, but if you must then:
-            
-            expn = expression(...)
-            expn_pca = pca(expn)
-            
-            expn_pca.loading(...)
-            ...
+            A custom class for PCA analysis of expression object data.
             
         **Arguments**
             parent (Required)
                 The parent expression/genelist object.
-                
+
+            feature_key_name (ORequired)
+                The key to use in the genelist to label.
+                                
             whiten (Optional, default=False)
-                'Normalise' the data. Each feature is divided by its standard deviation 
-                across all observations to give it unit variance
-                    
-            mean_subtraction (Optional, default=False)
-                subtract the mean from the matrix before PCA. Performed BEFORE Whitening
+                [From sklearn]
+                When True (False by default) the components_ vectors are divided by 
+                n_samples times singular values to ensure uncorrelated outputs with 
+                unit component-wise variances.
+                
+                Whitening will remove some information from the 
+                transformed signal (the relative variance scales of the components) but 
+                can sometime improve the predictive accuracy of the downstream estimators 
+                by making there data respect some hard-wired assumptions.
                 
             rowwise (Optional, default=False)
                 Perform PCA on the columns or the rows
                 
-            label_key (Optional, Required if rowwise=True)
-                The key to use in the genelist to label. Required if rowwise=True
         """
-        if rowwise: 
-            assert label_key, "You must specifiy 'label_key' if rowwise=True"
+        assert feature_key_name, "You must specifiy 'feature_key_name' from the original list to label the features"
         
         self.parent = parent
         
-        matrix = numpy.array(parent.serialisedArrayDataList)
+        self.matrix = numpy.array(parent.serialisedArrayDataList) # get a copy
                
         self.__draw = draw()
         self.cols = "black"
         self.rowwise = rowwise
-                               
-        if rowwise:
-            if mean_subtraction:
-                config.log.info("pca(): mean subtract")
-                matrix -= numpy.mean(matrix, axis=0)
-            if whiten:
-                config.log.info("pca(): whiten")
-                matrix = scipy.cluster.vq.whiten(matrix)
-            #print matrix
-            self.__u, self.__d, self.__v = LA.svd(matrix, full_matrices=False)
-            self.labels = parent[label_key]
-            self.label_key = label_key
-        else:
-            matrix = matrix.T
-            if mean_subtraction:
-                config.log.info("pca(): mean subtract")
-                matrix -= numpy.mean(matrix, axis=0)
-            if whiten:
-                config.log.info("pca(): whiten")
-                matrix = scipy.cluster.vq.whiten(matrix)
-            #print matrix
-            self.__u, self.__d, self.__v = LA.svd(matrix, full_matrices=False)
-            self.labels = parent.getConditionNames() # It makes more sense to get a copy incase someone 
-            # does something that reorders the list in between 
-            self.label_key = label_key
-            
-        self.__u = numpy.array(self.__u)
-        self.valid = True # Just check it's all calc'ed.
+        self.__model = None
+        self.whiten = whiten
+        self.feature_labels = parent[feature_key_name]
+        self.labels = parent.getConditionNames() # It makes more sense to get a copy incase someone does something that reorders the list in between 
+        self.valid = False # Just check it's all calc'ed.
 
+    def train(self, number_of_componenets):
+        '''
+        **Purpose**
+            Train the PCA on some array
+            
+        **Arguments**
+            number_of_componenets (Required)
+                the number of PC to collect
+        
+        **Returns**
+            None
+        
+        '''
+        self.__model = PCA(n_components=number_of_componenets, whiten=self.whiten)
+        self.__transform = self.__model.fit_transform(self.matrix) # U, sample loading
+        self.__components = self.__model.components_.T # V, The feature loading
+        #self.__transform = self.__model.transform(self.matrix) # project the data into the PCA
+        #self.__inverse_transform = self.__model.inverse_transform(self.matrix)
+        self.valid = True
+        
     def __repr__(self):
         return("<glbase.pca>")
         
     def __str__(self):
         ret = ["PCA object",
             "    Expression: %s" % self.parent.name,
-            "    Dimensions: %s" % len(self.__d),
-            "    u: %s" % str(self.__u.shape),
-            "    v: %s" % str(self.__v.shape)
+            "    Trained   : %s" % self.valid,
             ]
         return("\n".join(ret))
 
+    '''
     def __len__(self):
         """
         (Override)
         return the number of dimensions.
         """
         return(len(self.__d))
+    '''
 
     def project(self, new_expn):
-        """
-        THIS IS CURRENTLY NOT WORKING
-        
+        """        
         **Purpose**
             Give me a new expression object containing a new set of conditions and
             project those new conditions into the previously generated PCA. 
             
+            Note that it must have the same rows and row_names as the original data.
+            
         **Arguments**
             new_expn (Required)
-                a new expression object with at least one condition.
+                a new expression object with at least one (new) condition.
                 
         **returns**
             True if successful, and all subsequent pca methods will use the new projected data.
         """
-        """
-        data = numpy.array(self.parent.serialisedArrayDataList)
-        import sklearn
-        skpca = sklearn.decomposition.PCA()
-        X_r = skpca.fit(data).transform(data)
-        
-        self.__v = X_r
-        """
-        # old martrisx
-        matrix = numpy.array(self.parent.serialisedArrayDataList)
-        U, S, V = numpy.linalg.svd(matrix.T, full_matrices=False)
-        
-        print "matrix", matrix.shape
-        
-        # set-ups
-        self.parent = new_expn
-        if self.rowwise:
-            self.labels = new_expn[self.label_key]
-        else:
-            self.labels = new_expn.getConditionNames()
-        
-        matrix = numpy.array(self.parent.serialisedArrayDataList)
-        S = numpy.diag(S)
-        print "U", U.shape
-        print "V", V.shape
-        print "S", S.shape
-        print "matrix", matrix.shape
-        
-        #data = np.dot(U, np.dot(S, V))
-        #X_transformed = np.dot(X_transformed, self.V.T)
-        print numpy.dot(S, V).shape
-
-        pr = numpy.dot(matrix, S)
-        print "pr", pr.shape
-        #y = x*W;
-        #y0 = Y(1,:);
-        #sum(abs(y0 - y)) %
-        
-        # I want a new v. U and D are the same.
-        
-        self.__v = pr
-        
-        print U
-        print
-        print pr
-        
-        print numpy.allclose(U, pr)    
-        print numpy.allclose(matrix.T, numpy.dot(U, numpy.dot(S, V)))
-        return(True)           
-        
-    def get_uvd(self):
-        """
-        **Purpose**
-            Get the u, v, d matrices.
-            
-        **Arguments**
-            None
-            
-        **Returns**
-            A dict, containing:
-            {"u": u,
-            "v": v,
-            "d": d}
-        """
-        ret = {"u": self.__u,
-            "v": self.__v,
-            "d": self.__d}
-        return(ret)
+        raise AsserionError, 'Not implemented'
+        return(False)           
     
-    def max(self):
+    def explained_variance(self, filename=None, percent_variance=True, **kargs):
         """
         **Purpose**
-            Return the maximum number of PC for this experiment.
-        
-        **Arguments**
-            None
-            
-        **Returns**
-            The number of PCs. Strictly, len(d)
-        """
-        return(len(self.__d))
-
-    def set_cols(self, sample_colours):
-        """
-        **Purpose**
-            Set the colours for the individual samples.
-            
-        **Arguments**
-            sample_colours (Required)
-                A list of sample colours (or None) for scatter plots and the like.
-                Must be the same length as the number of conditions.
-                
-        **Returns**
-            None
-        """
-        self.cols = sample_colours
-    
-    def pcloading(self, filename=None, percent_variance=True, **kargs):
-        """
-        **Purpose**
-            plot a graph of PC loading.
+            plot a graph of PC loading, percent variance for each componenet
             
         **Arguments**
             filename (Required)
                 The filename to save the image to.
-                
-            percent_variance (Optional, default=True)    
-                Report as the percent variance explained
                 
             <common figure arguments are supported>
         
         **Returns**
             None.
         """
-        assert filename, "loading(): Must provide a filename"
+        assert filename, "explained_variance: Must provide a filename"
+        assert self.valid, 'model has not been trained, use pca.train()'
         
         if "aspect" not in kargs:
             kargs["aspect"] = "wide"
         
-        newd = self.__d
-        if percent_variance:
-            newd2 = numpy.array(self.__d) **2
-            newd = (newd2 / sum(newd2)) * 100.0
+        expn_var = numpy.array(self.__model.explained_variance_ratio_) * 100.0
         
         fig = self.__draw.getfigure(**kargs)
         ax = fig.add_subplot(111)
-        x = numpy.arange(len(newd))
-        ax.bar(x-0.4, newd, ec="black", color="grey")
+        x = numpy.arange(len(expn_var))
+        ax.bar(x-0.4, expn_var, ec="black", color="grey")
         ax.set_xlabel("Principal components")
         if percent_variance:
             ax.set_ylabel('Percent Variance')
@@ -256,47 +150,24 @@ class pca:
             ax.set_ylabel("Loading")
         ax.set_xticklabels(x+1)
         ax.set_xticks(x)
-        ax.set_xlim([-0.5, len(newd)-0.5])
+        ax.set_xlim([-0.5, len(expn_var)-0.5])
         self.__draw.do_common_args(ax, **kargs)
         real_filename = self.__draw.savefigure(fig, filename)
-        config.log.info("loading(): Saved PC loading '%s'" % real_filename)
+        
+        config.log.info("explained_variance: Saved PC loading '%s'" % real_filename)
 
     def get_loading_percents(self, exclude_first_pc=False, **kargs):
         """
         **Purpose**
-            Returns the percent of variance:
-            
-            d^2 / sum(d^2)                 
+            Returns the percent of variance  
             
         **Arguments**
-            exclude_first_pc (Optional, default=False)
-                exclude the first PC. 
-                In a lot of my data I use unnormalised data, this usually means the first
-                PC contains the 'shape' of the data and can dominate the overall 
-                percent variance. Set this to True to ignore PC1.
+            None
             
         **Returns**
-            Returns a dict in the form:
-            {
-            PC1: float(percent), 
-            PC2: float(percent), ... 
-            }
-        """
-        res = {}
-        
-        if exclude_first_pc:
-            newd2 = numpy.array(self.__d[1:]) **2
-        else:
-            newd2 = numpy.array(self.__d) **2
-        newd = (newd2 / sum(newd2)) * 100.0
-        
-        for i, p in enumerate(newd):
-            if exclude_first_pc:
-                res[i+2] = p
-            else:
-                res[i+1] = p
-        
-        return(res)
+            Returns an array for each PC and it's percent variance
+        """        
+        return(numpy.array(self.__model.explained_variance_ratio_) * 100.0)
         
     def scatter(self, x, y, filename=None, spot_cols=None, spots=True, label=False, alpha=0.8, 
         spot_size=40, label_font_size=7, cut=None, squish_scales=False, only_plot_if_x_in_label=None, **kargs): 
@@ -324,6 +195,8 @@ class pca:
             only_plot_if_x_in_label (Optional, default=None)
                 Only plot an individual scatter if X is in the label name.
                 
+                This must be a list or tuple of names
+                
                 Allows you to effectively remove points from the PCA plot.
             
             spots (Optional, default=True)
@@ -347,16 +220,17 @@ class pca:
         
         **Returns**
             None
-            You can get PC data from pca.get_uvd()
         """
-        assert filename, "scatter(): Must provide a filename"     
+        assert filename, "scatter: Must provide a filename"     
 
         labels = self.labels 
-        xdata = self.__v[x-1]
-        ydata = self.__v[y-1]
+        xdata = self.__transform[:,x-1]
+        ydata = self.__transform[:,y-1]
         
-        return_data = self.__unified_scatter(labels, xdata, ydata, x=x, y=y, filename=filename, spot_cols=spot_cols, spots=spots, label=label, alpha=alpha, 
-        spot_size=spot_size, label_font_size=label_font_size, cut=cut, squish_scales=squish_scales, only_plot_if_x_in_label=only_plot_if_x_in_label, **kargs)
+        return_data = self.__unified_scatter(labels, xdata, ydata, x=x, y=y, filename=filename, 
+            spot_cols=spot_cols, spots=spots, label=label, alpha=alpha, 
+            spot_size=spot_size, label_font_size=label_font_size, cut=cut, squish_scales=squish_scales, 
+            only_plot_if_x_in_label=only_plot_if_x_in_label, **kargs)
         
         return(return_data)
         
@@ -365,7 +239,8 @@ class pca:
         '''
         Unified for less bugs, more fun!        
         '''
-                
+        perc_weights = self.get_loading_percents()
+        
         ret_data = None  
         
         if not "aspect" in kargs:
@@ -373,7 +248,7 @@ class pca:
         
         fig = self.__draw.getfigure(**kargs)
         ax = fig.add_subplot(111)
-        
+                
         cols = self.cols
         if spot_cols:
             cols = spot_cols            
@@ -384,7 +259,7 @@ class pca:
             newlab = []
             newcols = []
             for i, lab in enumerate(labels):
-                if only_plot_if_x_in_label in lab:
+                if True in [l in lab for l in only_plot_if_x_in_label]:
                     newx.append(xdata[i])
                     newy.append(ydata[i])
                     newlab.append(labels[i])
@@ -399,8 +274,10 @@ class pca:
         else:
             # if spots is false then the axis limits are set to 0..1. I will have to send my
             # own semi-sensible limits:
-            ax.set_xlim([min(xdata), max(xdata)])
-            ax.set_ylim([min(ydata), max(ydata)])
+            dx = (max(xdata) - min(xdata)) * 0.05
+            dy = (max(ydata) - min(ydata)) * 0.05
+            ax.set_xlim([min(xdata)-dx, max(xdata)+dx])
+            ax.set_ylim([min(ydata)-dy, max(ydata)+dy])
             
         if label:
             for i, lab in enumerate(labels):
@@ -411,14 +288,14 @@ class pca:
         
         # Tighten the axis
         if squish_scales:
-            if not "xlims" in kargs:
-                ax.set_xlim([min(xdata), max(xdata)])
+            # do_common_args will override these, so don't worry
+            dx = (max(xdata) - min(xdata)) * 0.05
+            dy = (max(ydata) - min(ydata)) * 0.05
+            ax.set_xlim([min(xdata)-dx, max(xdata)+dx])
+            ax.set_ylim([min(ydata)-dy, max(ydata)+dy])
         
-            if not "ylims" in kargs:
-                ax.set_ylim([min(ydata), max(ydata)])
-        
-        ax.set_xlabel("PC%s" % (x,)) # can be overridden via do_common_args()
-        ax.set_ylabel("PC%s" % (y,))
+        ax.set_xlabel("PC%s (%.1f%%)" % (x, perc_weights[x-1])) # can be overridden via do_common_args()
+        ax.set_ylabel("PC%s (%.1f%%)" % (y, perc_weights[y-1]))
         
         if "logx" in kargs and kargs["logx"]:
             ax.set_xscale("log", basex=kargs["logx"])
@@ -449,12 +326,11 @@ class pca:
         config.log.info("scatter: Saved 'PC%s' vs 'PC%s' scatter to '%s'" % (x, y, real_filename)) 
         return(ret_data)
 
-    def loading_scatter(self, x, y, label_key, filename=None, spot_cols=None, spots=True, label=False, alpha=0.8, 
-        topbots=False,
-        spot_size=40, label_font_size=7, cut=None, squish_scales=False, **kargs): 
+    def feature_scatter(self, x, y, filename=None, spot_cols=None, spots=True, label=False, alpha=0.8, 
+        topbots=False, spot_size=40, label_font_size=7, cut=None, squish_scales=False, **kargs): 
         """
         **Purpose**
-            plot a scatter plot of the loading values for PCx and PCy
+            plot a scatter plot of the loading for the features for PCx and PCy
         
         **Arguments**
             x, y (Required)
@@ -501,84 +377,19 @@ class pca:
         **Returns**
             None
             You can get PC data from pca.get_uvd()
-        """
-        assert filename, "loading_scatter: Must provide a filename"     
-        assert label_key, "loading_scatter: Must provide a label_key for the label names"
-        assert label_key in self.parent, "loading_scatter(): I can't find '%s' label_key in the original genelist" % label_key
-
-        ret_data = None      
-        xdata = self.__u[:,x-1]
-        ydata = self.__u[:,y-1]
+        """       
+        assert filename, "feature_scatter: Must provide a filename"     
         
-        if topbots:
-            xdata = xdata[0:topbots]
-            ydata = ydata[0:topbots]
-            labs = self.parent[label_key][0:topbots]
+        labels = self.feature_labels 
+        xdata = self.__components[:,x-1]
+        ydata = self.__components[:,y-1]
         
-        #print xdata, ydata
+        return_data = self.__unified_scatter(labels, xdata, ydata, x=x, y=y, filename=filename, 
+            spot_cols=spot_cols, spots=spots, label=label, alpha=alpha, 
+            spot_size=spot_size, label_font_size=label_font_size, cut=cut, squish_scales=squish_scales, 
+            only_plot_if_x_in_label=False, **kargs)
         
-        if not "aspect" in kargs:
-            kargs["aspect"] = "square"
-        
-        fig = self.__draw.getfigure(**kargs)
-        ax = fig.add_subplot(111)
-        
-        cols = self.cols
-        if spot_cols:
-            cols = spot_cols            
-        
-        if spots:
-            ax.scatter(xdata, ydata, s=spot_size, alpha=alpha, edgecolors="none", c=cols)
-        else:
-            # if spots is false then the axis limits are set to 0..1. I will have to send my
-            # own semi-sensible limits:
-            ax.set_xlim([min(xdata), max(xdata)])
-            ax.set_ylim([min(ydata), max(ydata)])
-        
-        labs = self.parent[label_key]
-        
-        if label:
-            for i, lab in enumerate(labs):
-                if not spots and isinstance(spot_cols, list):
-                    ax.text(xdata[i], ydata[i], lab, size=label_font_size, ha="center", va="top", color=spot_cols[i])
-                else:
-                    ax.text(xdata[i], ydata[i], lab, size=label_font_size, ha="center", va="top", color="black")
-        
-        # Tighten the axis
-        if squish_scales:
-            if not "xlims" in kargs:
-                ax.set_xlim([min(xdata), max(xdata)])
-        
-            if not "ylims" in kargs:
-                ax.set_ylim([min(ydata), max(ydata)])
-        
-        ax.set_xlabel("PC%s" % (x,)) # can be overridden via do_common_args()
-        ax.set_ylabel("PC%s" % (y,))
-        
-        if "logx" in kargs and kargs["logx"]:
-            ax.set_xscale("log", basex=kargs["logx"])
-        if "logy" in kargs and kargs["logy"]:
-            ax.set_yscale("log", basey=kargs["logy"])
-        
-        if cut:
-            rect = matplotlib.patches.Rectangle(cut[0:2], cut[2]-cut[0], cut[3]-cut[1], ec="none", alpha=0.2, fc="orange")
-            ax.add_patch(rect)
-
-            tdata = []
-            labels = self.parent[label_key] # Just get once or big hit!
-            for i in xrange(0, len(xdata)):
-                if xdata[i] > cut[0] and xdata[i] < cut[2]:
-                    if ydata[i] < cut[1] and ydata[i] > cut[3]:
-                        tdata.append({"name": labels[i], "pcx": xdata[i], "pcy": ydata[i]})
-            if tdata:
-                ret_data = genelist()
-                ret_data.load_list(tdata)
-            
-        self.__draw.do_common_args(ax, **kargs)
-        
-        real_filename = self.__draw.savefigure(fig, filename)
-        config.log.info("loading_scatter: Saved 'PC%s' vs 'PC%s' scatter to '%s'" % (x, y, real_filename)) 
-        return(ret_data)
+        return(return_data)
 
     def scatter3d(self, x, y, z, filename=None, spot_cols=None, label=False, stem=False, 
         label_font_size=6, rotation=134, elevation=48, interactive=False, squish_scales=False, 
@@ -622,18 +433,15 @@ class pca:
                 
                 You will need to fiddle around with matplotlib.use() before importing glbase         
             
-            squish_scales (Optional, default=False)
-                set the limits very aggressively to [minmax(x), minmax(y), minmax(z)]
-        
         **Returns**
             None
-            You can get PC data from pca.get_uvd()
         """
-        assert filename, "scatter(): Must provide a filename"     
+        assert filename, "scatter: Must provide a filename"     
       
-        xdata = self.__v[x-1]
-        ydata = self.__v[y-1]
-        zdata = self.__v[z-1]
+        xdata = self.__transform[:,x-1]
+        ydata = self.__transform[:,y-1]
+        zdata = self.__transform[:,z-1]
+        perc_weights = self.get_loading_percents()
             
         fig = self.__draw.getfigure(**kargs)
         ax = Axes3D(fig, rect=[0, 0, .95, 1], elev=elevation, azim=rotation)
@@ -653,24 +461,24 @@ class pca:
                 line = art3d.Line3D(*zip((x_, y_, z_min), (x_, y_, z_)), marker=None, c="grey", alpha=0.1)
                 ax.add_line(line)
         
-        ax.set_xlabel("PC%s" % (x,)) # can be overridden via do_common_args()
-        ax.set_ylabel("PC%s" % (y,))
-        ax.set_zlabel("PC%s" % (z,))
+        ax.set_xlabel("PC%s (%.1f%%)" % (x, perc_weights[x])) # can be overridden via do_common_args()
+        ax.set_ylabel("PC%s (%.1f%%)" % (y, perc_weights[y]))
+        ax.set_zlabel("PC%s (%.1f%%)" % (z, perc_weights[z]))
         
         if "logx" in kargs and kargs["logx"]:
             ax.set_xscale("log", basex=kargs["logx"])
         if "logy" in kargs and kargs["logy"]:
             ax.set_yscale("log", basey=kargs["logy"])
         
-        if squish_scales:   
-            # Don't worry about kargs, do_common_args will overwrite.
-            ax.set_xlim([min(xdata), max(xdata)])
-            ax.set_ylim([min(ydata), max(ydata)])
-            ax.set_zlim([min(zdata), max(zdata)])
+        # squish_scales must be True as there seems to be a bug in 3D plots in guessing the scales
+        # Don't worry about kargs, do_common_args will overwrite.
+        ax.set_xlim([min(xdata), max(xdata)])
+        ax.set_ylim([min(ydata), max(ydata)])
+        ax.set_zlim([min(zdata), max(zdata)])
         
-        self.__draw.do_common_args(ax, **kargs)
-        if "zlims" in kargs:
-            ax.set_zlim([kargs["zlim"][0], kargs["zlim"][1]])
+        print [min(xdata), max(xdata)]
+        
+        #self.__draw.do_common_args(ax, **kargs)
         
         if interactive:
             fig.show() # hope you are not on a cluster!
@@ -679,89 +487,11 @@ class pca:
         
         config.log.info("scatter3d(): Saved 'PC%s' vs 'PC%s' vs 'PC%s' scatter to '%s'" % (x, y, z, real_filename))     
 
-    def condition_loading(self, filename=None, PC=-1, top=50, bot=50, label_key='PC-score', all=False, **kargs):
-        '''
-        **Purpose**
-            Get the column loading
-            
-        **Arguments**
-            Filename (Required)
-            
-            PC (Required)
-                The PC to get the condition loading for
-        **Returns**
-            A list of conditions, sorted in the same orientation as the 
-        '''
-        assert filename, 'condition_loading: You must specifiy a filename'
-        assert PC >= 0, "condition_loading: PC of <1 specified"
-        
-        if "aspect" not in kargs:
-            kargs["aspect"] = "long"
-        
-        data = self.__v[PC-1]
-        labs = self.parent._conditions
-        packed_data = [{label_key: i[0], "l": i[1]} for i in zip(labs, data)]
-        #print packed_data
-        
-        sorted_data = sorted(packed_data, key=itemgetter("l"))
-        data = [i["l"] for i in sorted_data]
-        labs = [i[label_key] for i in sorted_data]
-        
-        if all:
-            data = data
-            labs = labs
-        else:
-            if bot > 0 and top > 0: # data[-0:] returns the entire list and data[0:0] returns [] !
-                data = data[0:top] + data[-bot:]
-                labs = labs[0:top] + labs[-bot:]
-            elif top > 0:
-                data = data[0:top]
-                labs = labs[0:top]             
-            elif bot > 0:
-                data = data[-bot:]
-                labs = labs[-bot:]        
-        
-        if filename:
-            fig = self.__draw.getfigure(**kargs)
-            ax = fig.add_subplot(111)
-            ax.set_position([0.3,0.03,0.6,0.96])
-        
-            x = numpy.arange(len(data))
-            ax.barh(x-0.4, data, ec="black", color="grey")
-            ax.set_ylabel("Columns")
-            ax.set_xlabel("Loading")
-            ax.set_yticklabels(labs)
-            ax.set_yticks(x)
-            ax.set_ylim([-0.5, len(data)-0.5])
-            [t.set_fontsize(6) for t in ax.get_yticklabels()]
-        
-            self.__draw.do_common_args(ax, **kargs)
-            real_filename = self.__draw.savefigure(fig, filename)
-        
-            config.log.info("loading(): Saved PC loading '%s'" % real_filename)
-        
-        # work out the list to return
-        newgl = genelist()
-        newgl.load_list([{"name": i[0], "pc_loading": i[1]} for i in zip(labs, data)]) # relist it so that top bot are used
-        newgl.sort("pc_loading")
-        return(newgl)
-
-    def gene_loading(self, filename=None, PC=-1, top=50, bot=50, label_key=None, **kargs):
-        """
-        Deprecated.
-        
-        NOTE: This is an alias of loading(), please use loading() and NOT gene_loading()
-        in future this method will be deleted.
-        """
-        return(self.loading(filename=filename, PC=PC, top=top, bot=bot, label_key=label_key, **kargs))
-
     def loading(self, filename=None, PC=-1, top=50, bot=50, label_key=None, all=None, **kargs):
         """
         **Purpose**
             Get the loading for the items for a particular PC
-            
-            (technically, get u for a particular PC)
-            
+                        
         **Arguments**
             filename(Optional)
                 filename to save the loading barchart to. This is optional, so you can use this function
@@ -791,6 +521,8 @@ class pca:
             new_expn.boxplot()
             
         """
+        raise AsserionError, 'Not implemented'
+        
         PC -= 1 # Pad the PC so that the expected PC is returned rather than the zero-based PC.
         
         if not self.rowwise:
@@ -811,7 +543,7 @@ class pca:
         data = self.__u[:,PC]
         labs = self.parent[label_key]
         packed_data = [{label_key: i[0], "l": i[1]} for i in zip(labs, data)]
-        
+                
         sorted_data = sorted(packed_data, key=itemgetter("l"))
         data = [i["l"] for i in sorted_data]
         labs = [i[label_key] for i in sorted_data]

@@ -13,7 +13,7 @@ import matplotlib.cm as cm
 from operator import itemgetter
 
 import numpy
-import numpy.linalg as LA
+from sklearn.decomposition import PCA
 import networkx as nx # Should only be possible to get here if networkx is available.
 import scipy.cluster.vq
 import scipy.stats
@@ -43,7 +43,8 @@ class mdsquish:
         self.__layout_data = None
         self.__last_thresholds = (-1,-1,-1)
         
-    def squish(self, pcas=None, whiten=False, traversal_weight=1.0, mean_subtraction=False, normalise_scales=True, invert_scales=True, log_transform=True):
+    def squish(self, pcas=None, whiten=False, traversal_weight=1.0, mean_subtraction=False, 
+        normalise_scales=True, invert_scales=True, log_transform=False, scale_by_percent_variance=False):
         """
         **Purpose**
             Calculate the mdsquish, using the specified PCAs
@@ -52,13 +53,20 @@ class mdsquish:
             pcas (Required)
                 The range of PCAs to use for the squish.
                 
-                You should probably explore the most useful PCAs before deciding on the PCAs to use
+                You should probably explore the most useful PCAs before deciding on the PCAs to use,
+                mdsquish uses the same PCA system as expression.pca (it does not use svd)
                 
                 PCAs begin at 1, and not at 0 as might be expected.
                 
-            log_transform (Optinal, default=True)
+            log_transform (Optinal, default=False)
                 log transform before normalising between 0 and 1. This has the effect of flattening the curve out.
                 Check the output from hist() to make sure this is doing what you expect.
+            
+            scale_by_percent_variance (Optional, default=False)
+                scale each PC so that it is scaled to its percent variance. This leads to 
+                reduced influence on the mdsquish plot from lower PCs.
+                
+                It's not clear exactly why, but you are advised to leave this as False
             
             normalise_scales (Optional, default=True)
                 normalise the euclidean distances to 0 ... 1.0 range
@@ -73,52 +81,53 @@ class mdsquish:
                 'Normalise' the data. Each feature is divided by its standard deviation 
                 across all observations to give it unit variance.
                 If your samples have a lot of really big outliers this may help.
-                    
-            mean_subtraction (Optional, default=False)
-                subtract the mean from the matrix before PCA. Performed BEFORE Whitening.
-                If your samples have a lot of really big outliers this may help.
     
             traversal_weight (Optional, default=1.0)
                 This specifies the cost/weight of moving from one cell to another in the network.
-                
+                Use it as a penalty for excessive cell-cell movement when you are path finding
     
         """
         assert pcas, "You must specify the PCA dimensions to use for the squish"
         
-        self.matrix = numpy.array(self.parent.serialisedArrayDataList).T
+        self.matrix = numpy.array(self.parent.serialisedArrayDataList)
         
-        if mean_subtraction:
-            self.matrix -= numpy.mean(self.matrix, axis=0)
-            
-        if whiten:
-            self.matrix = scipy.cluster.vq.whiten(self.matrix)
-
-        self.__u, self.__d, self.__v = LA.svd(self.matrix, full_matrices=False)
+        self.__model = PCA(n_components=max(pcas)+1, whiten=whiten)
+        self.__model.fit(self.matrix)
+        self.__transform = self.__model.transform(self.matrix) # project the data into the PCA
+        self.__explained_variance = numpy.array(self.__model.explained_variance_ratio_) * 100.0
         self.data = True
         
+        # I still need to collect the appropriate PCAs incase user skips some PCs:  
+                     
         pcs = []
         for pc in pcas:
-            pcs.append(self.__v[pc-1])
+            if scale_by_percent_variance:
+                pcs.append(self.__transform[:,pc-1] * self.__explained_variance[pc-1])
+            else:
+                pcs.append(self.__transform[:,pc-1])
         pcs = numpy.array(pcs)
+        
+        #print pcs
         
         res = numpy.zeros((pcs.shape[1], pcs.shape[1]))
         
         # Iterate over dimensions
-        for item1 in xrange(pcs.shape[1]):
+        # TODO : Scale the data by percent variance.
+        for item1 in xrange(pcs.shape[1]): # each row is a PC, this is iterating the columns (samples)
             for item2 in xrange(pcs.shape[1]):
                 if item1 != item2:
                     sample1 = pcs[:,item1]
                     sample2 = pcs[:,item2]
                     #print "s", sample1, sample2, [(i[0], i[1]) for i in zip(sample1, sample2)]
-                    deltas = [abs(i[0] - i[1])**2 for i in zip(sample1, sample2)]
+                    deltas = [abs(i[0] - i[1])**2 for i in zip(sample1, sample2)] # This is sqeuclidean...
                     euclidean_distance = reduce(operator.add, deltas, 0)
                     #print self.names[item1], self.names[item2], 1-euclidean_distance, [((i[0], i[1])) for i in (sample1, sample2)]
-                    res[item1, item2] = euclidean_distance
+                    res[item1, item2] = math.sqrt(euclidean_distance) # now is actual euclidean distance
         
         if log_transform:
             res = numpy.log10(res+0.1)
         
-        if normalise_scales:
+        if normalise_scales: # Shouldn't this be column-wise?
             res = res - res.min()
             res = res / res.max()
 
@@ -128,7 +137,8 @@ class mdsquish:
         self.traversal_weight = traversal_weight
 
         self.distances = res
-        config.log.info("mdsquish.squish(): done squishing %s..." % pcas)
+        
+        config.log.info("mdsquish.squish: done squishing %s..." % pcas)
     
     def hist(self, filename, **kargs):
         """
@@ -154,7 +164,7 @@ class mdsquish:
         self.parent.draw.do_common_args(ax, **kargs)
         real_filename = self.parent.draw.savefigure(fig, filename)
         
-        config.log.info("mdsquish.hist(): Saved '%s'" % real_filename)                
+        config.log.info("mdsquish.hist: Saved '%s'" % real_filename)                
     
     def network(self, filename=None, low_threshold=0.5, hi_threshold=0.9, cols=None, label_fontsize=8,
         max_links=9999999, labels=True, node_size=100, edges=True, save_gml=False, layout="neato",
@@ -277,7 +287,13 @@ class mdsquish:
             
             edge_pad (Optional, default=0.03)
                 Fraction to pad around the edge of the network
-                                                
+                        
+            draw_node_boundary (Optional, default=False)
+                draw a boundary of nodes on the network. The nodes must be specifed by either node_coundary
+                or you must have some sort of mark_path 
+                
+            node_boundary (Optional, default=None)
+                a list of nodes to mark on the boundary.
         """
         assert self.data, "mdsquish.network(): run squish() first"
         if cols: assert len(cols) == len(self.names), "'cols' is not the same length as the number of conditions"
@@ -286,14 +302,13 @@ class mdsquish:
         if (not self.__layout_data) or self.__last_thresholds != (low_threshold, hi_threshold, max_links):# Must regenerate if any of these change
             self.G = nx.Graph()
             for cind, row in enumerate(self.distances):
-                self.G.add_node(self.names[cind])
+                self.G.add_node(self.names[cind], color=cols[cind])
         
             for cind, row in enumerate(self.distances):           
                 scores = zip(self.names, row) # The highest will always be self.
             
                 scores.sort(key=operator.itemgetter(1), reverse=True)
-            
-                done = 0
+                
                 for item in scores:
                     rind, t = (self.names.index(item[0]), item[1])
                     if rind != cind: # stop self edges:
@@ -302,7 +317,7 @@ class mdsquish:
                                 this_links = len(self.G.neighbors(self.names[rind]))
                                 that_links = len(self.G.neighbors(self.names[cind]))
                                 if (this_links < max_links and that_links < max_links): # or (this_links < min_links or that_links < min_links): 
-                                    self.G.add_edge(self.names[rind], self.names[cind], weight=self.traversal_weight+(1.0-t))   # This is really for pathfinding. Penalty 1.0 for moving each 1 cell.
+                                    self.G.add_edge(self.names[rind], self.names[cind], weight=self.traversal_weight+(1.0-t))   # This is really for pathfinding. Penalty self.traversal_weight for moving each 1 cell.
         
             self.__last_thresholds = (low_threshold, hi_threshold, max_links)
             self.__layout_data = nx.graphviz_layout(self.G, layout) 
@@ -318,7 +333,7 @@ class mdsquish:
             assert ee, "'%s' not found" % node_size
             assert ee["conditions"], "no expression data found"
 
-            if not title:
+            if title is None or title is False: # If you want to remove the title by sending an empty string the empty string will pass an if not title: test. 
                 title = node_size
             node_size = ee["conditions"]
         
@@ -363,11 +378,11 @@ class mdsquish:
             mark_clusters=mark_clusters, cluster_alpha_back=cluster_alpha_back, cluster_node_size=cluster_node_size,
             node_alpha=node_alpha, nodes=nodes, cluster_alpha_back2=cluster_alpha_back2, mark_path=mark_path,
             expected_branches=expected_branches, title=title, title_font_size=title_font_size, 
-            traversal_weight=self.traversal_weight,
+            traversal_weight=self.traversal_weight, width_adjuster=5,
             edge_pad=edge_pad, layout_data=self.__layout_data,
             **kargs)
         
-        config.log.info("mdsquish.conditions: saved '%s'" % return_data["actual_filename"])
+        config.log.info("mdsquish.network: saved '%s'" % return_data["actual_filename"])
         
         return(return_data)
         
@@ -510,7 +525,7 @@ class mdsquish:
                 mark_clusters=mark_clusters, cluster_alpha_back=cluster_alpha_back, cluster_node_size=cluster_node_size,
                 node_alpha=node_alpha, nodes=nodes, cluster_alpha_back2=cluster_alpha_back2, mark_path=direct_path,
                 expected_branches=expected_branches, title=title, title_font_size=title_font_size, 
-                edge_pad=edge_pad, layout_data=self.__layout_data,
+                edge_pad=edge_pad, layout_data=self.__layout_data, width_adjuster=5,
                 traversal_weight=self.traversal_weight,
                 **kargs)
                 
@@ -588,7 +603,7 @@ class mdsquish:
         # Build a new network from the subset of the old.
         # get all nodes that appear in at least t% of 
         must_appear_in_at_least_n_percent_of_paths = must_appear_in_at_least_n_percent_of_paths/100.0
-        unwound = [item for sublist in least_weighted_paths for item in sublist] # I still have no idea how this works... flatten a 2D list to 1D           
+        unwound = [item for sublist in least_weighted_paths for item in sublist] # flatten a 2D list to 1D           
         counted = collections.Counter(unwound)
         set_of_nodes_for_tree = []
         max_paths = len(end_nodes) * len(start_nodes)
@@ -606,7 +621,7 @@ class mdsquish:
         
         # I have the nodes, but I need to put them back into order.
         # Cut out the appropriate part of the main network and then
-        # make a minimum spanning tree
+        # get the longest, most direct path across the subnetwork
         newG = nx.Graph()
         # put in all the nodes
         for node in set_of_nodes_for_tree:
@@ -615,14 +630,13 @@ class mdsquish:
         for node1 in set_of_nodes_for_tree:
             for node2 in set_of_nodes_for_tree:
                 if node1 != node2:
-                    if self.G.has_edge(node1, node2):
+                    if self.G.has_edge(node1, node2) and not newG.has_edge(node1, node2):
                         newG.add_edge(node1, node2, self.G.get_edge_data(node1, node2))
         #print newG.nodes()
         #print newG.edges()
         #mst = nx.minimum_spanning_tree(newG, weight='weight')
         # Get the final best path:
-        #nx.dijkstra_path(self.G, s, target=e, weight='weight')
-        best_path_nodes, best_path_edges = network_support.longest_path(newG)
+        best_path_nodes, best_path_edges = network_support.longest_path(newG) # Djikstra
         if neighbours: # Add neighbours back in if being used
             best_path_nodes, best_path_edges = network_support.populate_path_neighbours(self.G, best_path_nodes, degree=neighbours)
 
@@ -643,12 +657,12 @@ class mdsquish:
                 max_links=max_links, labels=labels, node_size=node_size, edges=edges, save_gml=save_gml, layout=layout,
                 mark_clusters=mark_clusters, cluster_alpha_back=cluster_alpha_back, cluster_node_size=cluster_node_size,
                 node_alpha=node_alpha, nodes=nodes, cluster_alpha_back2=cluster_alpha_back2, mark_path=best_path_edges,
-                traversal_weight=self.traversal_weight,
+                traversal_weight=self.traversal_weight, width_adjuster=5,
                 expected_branches=expected_branches, title=title, title_font_size=title_font_size, 
                 edge_pad=edge_pad, layout_data=self.__layout_data, 
                 **kargs)
                 
-            config.log.info("mdsquish.get_path: saved '%s'" % return_data["actual_filename"])
+            config.log.info("mdsquish.get_sum_of_paths: saved '%s'" % return_data["actual_filename"])
         
         return(best_path_nodes)
 
@@ -716,11 +730,11 @@ class mdsquish:
             None
             You can get PC data from pca.get_uvd()
         """
-        assert filename, "scatter(): Must provide a filename"     
+        assert filename, "scatter: Must provide a filename"     
 
         ret_data = None      
-        xdata = self.__v[x-1]
-        ydata = self.__v[y-1]
+        xdata = self.__transform[x-1]
+        ydata = self.__transform[y-1]
         
         if not "aspect" in kargs:
             kargs["aspect"] = "square"
@@ -774,5 +788,5 @@ class mdsquish:
         self.parent.draw.do_common_args(ax, **kargs)
         
         real_filename = self.parent.draw.savefigure(fig, filename)
-        config.log.info("scatter(): Saved 'PC%s' vs 'PC%s' scatter to '%s'" % (x, y, real_filename)) 
+        config.log.info("scatter: Saved 'PC%s' vs 'PC%s' scatter to '%s'" % (x, y, real_filename)) 
         return(ret_data)   

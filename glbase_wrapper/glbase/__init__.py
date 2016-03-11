@@ -47,7 +47,7 @@ try:
     import sklearn
     config.SKLEARN_AVAIL = True
 except Exception:
-    pass # pass silently as sklearn is currently optional.
+    raise LibraryNotFoundError, "Fatal - sklearn not available or not installed"
  
 try:
     import networkx

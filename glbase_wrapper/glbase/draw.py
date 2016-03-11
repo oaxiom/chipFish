@@ -98,6 +98,7 @@ class draw:
         vmin=0, vmax=None, colour_map=cm.RdBu_r, col_norm=False, row_norm=False, heat_wid=0.25, heat_hei=0.85,
         highlights=None, digitize=False, border=False, draw_numbers=False, draw_numbers_threshold=-9e14,
         draw_numbers_fmt='%.1f', draw_numbers_font_size=6, grid=False, row_color_threshold=None,
+        col_names=None,
         **kargs):
         """
         my own version of heatmap.
@@ -188,11 +189,11 @@ class draw:
         # preprocess data
         if isinstance(kargs["data"], dict):
             # The data key should be a serialised Dict, I need to make an array.
-            data = array([kargs["data"][key] for key in kargs["col_names"]]).T 
+            data = array([kargs["data"][key] for key in col_names]).T 
             # If the lists are not square then this makes a numpy array of lists. 
             # Then it will fail below with a strange error.
             # Let's check to make sure its square:
-            ls = [len(kargs["data"][key]) for key in kargs["col_names"]]
+            ls = [len(kargs["data"][key]) for key in col_names]
 
             if not all(x == ls[0] for x in ls):  
                 raise Exception, "Heatmap data not Square"
@@ -303,8 +304,10 @@ class draw:
                 vmin = me - mi
                 vmax = me + mi
 
-        if "row_cluster" in kargs: row_cluster = kargs["row_cluster"]
-        if "col_cluster" in kargs: col_cluster = kargs["col_cluster"]
+        if "row_cluster" in kargs: 
+            row_cluster = kargs["row_cluster"]
+        if "col_cluster" in kargs: 
+            col_cluster = kargs["col_cluster"]
         if not "colbar_label" in kargs: 
             kargs["colbar_label"] = ""
         if "cmap" in kargs: 
@@ -393,44 +396,52 @@ class draw:
 
             order = a["ivl"]
             # resort the data by order;
-            if "col_names" in kargs and kargs["col_names"]: # make it possible to cluster without names
+            if col_names: # make it possible to cluster without names
                 newd = []
                 new_col_names = []
                 for index in order:
                     newd.append(transposed_data[int(index)])
-                    new_col_names.append(kargs["col_names"][int(index)])
+                    new_col_names.append(col_names[int(index)])
                 data = array(newd).T # transpose back orientation
-                kargs["col_names"] = new_col_names
+                col_names = new_col_names
 
         # ---------------- Second plot (heatmap) -----------------------
         ax3 = fig.add_subplot(143)
         if 'imshow' in kargs and kargs['imshow']:
             ax3.set_position(heatmap_location) # must be done early for imshow
-            hm = ax3.imshow(data, cmap=colour_map, vmin=vmin, vmax=vmax, aspect="auto",
-                origin='lower', extent=[0, data.shape[1], 0, data.shape[0]], 
-                interpolation='none')
+            if config.draw_mode in ("svg", 'pdf', 'eps', 'ps'):
+                hm = ax3.imshow(data, cmap=colour_map, vmin=vmin, vmax=vmax, aspect="auto",
+                    origin='lower', extent=[0, data.shape[1], 0, data.shape[0]], 
+                    interpolation='nearest') # Yes, it really is nearest. Otherwise it will go to something like bilinear
+            else:
+                hm = ax3.imshow(data, cmap=colour_map, vmin=vmin, vmax=vmax, aspect="auto",
+                    origin='lower', extent=[0, data.shape[1], 0, data.shape[0]], 
+                    interpolation='none')
         else:
             edgecolors = 'none'
             if grid:
                 edgecolors = 'black'
-                
             hm = ax3.pcolormesh(data, cmap=colour_map, vmin=vmin, vmax=vmax, antialiased=False, edgecolors=edgecolors, lw=0.5)
             
         if draw_numbers:
             for x in xrange(data.shape[0]):
                 for y in xrange(data.shape[1]):
                     if data[x, y] >= draw_numbers_threshold:
-                        ax3.text(y+0.5, x+0.5, draw_numbers_fmt % data[x, y], size=draw_numbers_font_size, 
-                            ha='center', va='center')
+                        if '%' in draw_numbers_fmt:
+                            ax3.text(y+0.5, x+0.5, draw_numbers_fmt % data[x, y], size=draw_numbers_font_size, 
+                                ha='center', va='center')
+                        else:
+                            ax3.text(y+0.5, x+0.5, draw_numbers_fmt, size=draw_numbers_font_size, 
+                                ha='center', va='center')
 
         ax3.set_frame_on(border)
         ax3.set_position(heatmap_location)
-        if "col_names" in kargs and kargs["col_names"]:
-            ax3.set_xticks(arange(len(kargs["col_names"]))+0.5)
-            ax3.set_xticklabels(kargs["col_names"], rotation="vertical")
-            ax3.set_xlim([0, len(kargs["col_names"])])
+        if col_names:
+            ax3.set_xticks(arange(len(col_names))+0.5)
+            ax3.set_xticklabels(col_names, rotation="vertical")
+            ax3.set_xlim([0, len(col_names)])
             if "square" in kargs and kargs["square"]:
-                ax3.set_xticklabels(kargs["col_names"], rotation="vertical")
+                ax3.set_xticklabels(col_names, rotation="vertical")
         else:
             ax3.set_xlim([0,data.shape[1]])
 
@@ -455,11 +466,12 @@ class draw:
         cb.set_label(kargs["colbar_label"])
         [label.set_fontsize(5) for label in ax0.get_xticklabels()]
 
-        return({"real_filename": self.savefigure(fig, filename), "reordered_cols": kargs["col_names"], "reordered_rows": kargs["row_names"],
+        return({"real_filename": self.savefigure(fig, filename), "reordered_cols": col_names, "reordered_rows": kargs["row_names"],
             "reordered_data": data})
 
     def heatmap2(self, filename=None, cluster_mode="euclidean", row_cluster=True, col_cluster=True, 
         vmin=0, vmax=None, colour_map=cm.YlOrRd, col_norm=False, row_norm=False, heat_wid=0.25,
+        imshow=False, 
         **kargs):
         """
         **Purpose**
@@ -489,6 +501,10 @@ class draw:
                 
             colour_map (Optional, default=afmhot)
                 a matplotlib cmap for colour
+            
+            imshow (Optional, default=False)
+                optional ability to use images for the heatmap. Currently experimental it is
+                not always supported in the vector output files.
                 
         **Returns**
             The actual filename used to save the image.
@@ -534,7 +550,19 @@ class draw:
 
         # ---------------- (heatmap) -----------------------
         ax3 = fig.add_subplot(111)
-        hm = ax3.pcolormesh(data, cmap=colour_map, vmin=vmin, vmax=vmax, antialiased=False)
+        
+        if imshow:
+            ax3.set_position(heatmap_location) # must be done early for imshow
+            if config.draw_mode in ("svg", 'pdf', 'eps', 'ps'):
+                hm = ax3.imshow(data, cmap=colour_map, vmin=vmin, vmax=vmax, aspect="auto",
+                    origin='lower', extent=[0, data.shape[1], 0, data.shape[0]], 
+                    interpolation='nearest') # Yes, it really is nearest. Otherwise it will go to something like bilinear
+            else:
+                hm = ax3.imshow(data, cmap=colour_map, vmin=vmin, vmax=vmax, aspect="auto",
+                    origin='lower', extent=[0, data.shape[1], 0, data.shape[0]], 
+                    interpolation='none')
+        else:
+            hm = ax3.pcolormesh(data, cmap=colour_map, vmin=vmin, vmax=vmax, antialiased=False)
 
         #ax3.set_frame_on(True)
         ax3.set_position(heatmap_location)
@@ -705,7 +733,7 @@ class draw:
 
     def multi_heatmap(self, list_of_data=None, filename=None, groups=None, titles=None,
         vmin=0, vmax=None, colour_map=cm.YlOrRd, col_norm=False, row_norm=False, heat_wid=0.25,
-        frames=False, **kargs):
+        frames=False, imshow=False, **kargs):
         """
         **Purpose**
             Draw a multi-heatmap figure, i.e. containing multiple heatmaps. And also supports a 
@@ -757,7 +785,18 @@ class draw:
                 vmin = list_of_data[index].min()
                 vmax = list_of_data[index].max()
 
-            hm = ax.pcolormesh(list_of_data[index], cmap=colour_map, vmin=vmin, vmax=vmax, antialiased=False)
+            if imshow:
+                print imshow
+                if config.draw_mode in ("svg", 'pdf', 'eps', 'ps'):
+                    hm = ax.imshow(list_of_data[index], cmap=colour_map, vmin=vmin, vmax=vmax, aspect="auto",
+                        origin='lower', extent=[0, list_of_data[index].shape[1], 0, list_of_data[index].shape[0]], 
+                        interpolation='nearest') # Yes, it really is nearest. Otherwise it will go to something like bilinear
+                else:
+                    hm = ax.imshow(list_of_data[index], cmap=colour_map, vmin=vmin, vmax=vmax, aspect="auto",
+                        origin='lower', extent=[0, list_of_data[index].shape[1], 0, list_of_data[index].shape[0]], 
+                        interpolation='none')
+            else:
+                hm = ax.pcolormesh(list_of_data[index], cmap=colour_map, vmin=vmin, vmax=vmax, antialiased=False)
 
             ax.set_frame_on(frames)
             ax.set_position(heatmap_locations[index])
@@ -786,7 +825,19 @@ class draw:
             ax.set_position(right_most)
 
             dd = np.vstack((np.array(groups), np.array(groups))).T
-            ax.pcolormesh(dd, vmin=min(groups), vmax=max(groups), antialiased=False, cmap=cm.Paired)
+            if imshow:
+                print imshow
+                if config.draw_mode in ("svg", 'pdf', 'eps', 'ps'):
+                    hm = ax.imshow(dd, cmap=cm.Paired, vmin=min(groups), vmax=max(groups), aspect="auto",
+                        origin='lower', extent=[0, dd.shape[1], 0, dd.shape[0]], 
+                        interpolation='nearest') # Yes, it really is nearest. Otherwise it will go to something like bilinear
+                else:
+                    hm = ax.imshow(dd, cmap=cm.Paired, vmin=min(groups), vmax=max(groups), aspect="auto",
+                        origin='lower', extent=[0, dd.shape[1], 0, dd.shape[0]], 
+                        interpolation='none')
+            else:
+                ax.pcolormesh(dd, vmin=min(groups), vmax=max(groups), antialiased=False, cmap=cm.Paired)
+                
             ax.set_frame_on(frames)
 
             ax.set_xlim([0,dd.shape[1]])
@@ -1582,6 +1633,7 @@ class draw:
                 title  - title
                 xlims - x axis limits
                 ylims - y-axis limits
+                zlims - z-axis limits (For 3D plots only)
                 xticklabels -list (or not) of labels for the x axis
                 logx - set the x scale to a log scale argument should equal the base
                 logy - set the y scale to a log scale
@@ -1617,6 +1669,8 @@ class draw:
             ax.set_xlim(kargs["xlims"])
         if "ylims" in kargs:
             ax.set_ylim(kargs["ylims"])      
+        if "zlims" in kargs: # For 3D plots
+            ax.set_zlim([kargs["zlim"][0], kargs["zlim"][1]])
         if "logx" in kargs:
             ax.set_xscale("log", basex=kargs["logx"])
         if "logy" in kargs:
@@ -2099,7 +2153,7 @@ class draw:
             # Check that there is some variation. If no variation then utils.kde will break
             if numpy.std(data[d]) > 0:
                 y_violin = utils.kde(data[d], range=(min(data[d]), max(data[d])), bins=bins, covariance=0.2)
-                y_violin = ((y_violin / max(y_violin)) / 2.1) # normalise
+                y_violin = ((y_violin / max(y_violin)) * 0.4) # normalise
                 y_violin = numpy.insert(y_violin, 0, 0)
                 y_violin = numpy.append(y_violin, 0)
             
