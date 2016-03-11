@@ -79,7 +79,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             if "format" in kargs:
                 self.load(filename=filename, format=format)
             else:
-                raise AssertionError, 'Due to excessive ambiguity the sniffing function of genelists has been removed and you now MUST provide a format argument'
+                raise AssertionError, 'Due to excessive ambiguity the sniffing function of genelists has been removed and you now MUST provide a format argument, you can reenable this feature by specifying the sniffer: format=format.sniffer'
 
             config.log.info("genelist(): loaded '%s' found %s items" % (filename, len(self.linearData)))
         elif loadable_list:
@@ -1142,7 +1142,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             # assumes all keys are in the dict
                     
         newl._optimiseData()
-        config.log.info("getColumns(): got only the columns: %s" % ", ".join(return_keys))
+        config.log.info("getColumns: got only the columns: %s" % ", ".join(return_keys))
         return(newl)
 
     def getGeneSet(self, key=None, list_of_items=None, use_re=True, **kargs):
@@ -1178,7 +1178,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         **Returns**
             A new genelist containing only those items.
         """
-        assert values, "getRowsByKey(): 'values' argument cannot be None"
+        assert values, "getRowsByKey: 'values' argument cannot be None"
         
         if not isinstance(values, list):
             values = [values]
@@ -1221,10 +1221,10 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         if newl:
             newl._optimiseData()
         else:
-            config.log.info("getRowsByKey(): Found 0 items")
+            config.log.info("getRowsByKey: Found 0 items")
             return(None)
             
-        config.log.info("getRowsByKey(): Found %s items" % len(newl))
+        config.log.info("getRowsByKey: Found %s items" % len(newl))
         return(newl)
 
     def filter_by_value(self, key=None, evaluator=None, value=None, **kargs):
@@ -1286,7 +1286,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         ret = self.shallowcopy()
         ret.load_list(new_expn) # In case I make optimisations to load_list()
         
-        config.log.info("filter_by_value(): Filtered expression for ['%s' %s %s], found: %s" % (key, evaluator, value, len(ret)))
+        config.log.info("filter_by_value: Filtered expression for ['%s' %s %s], found: %s" % (key, evaluator, value, len(ret)))
         return(ret)     
 
     def map(self, genelist=None, peaklist=None, microarray=None, genome=None, key=None, 
@@ -1624,7 +1624,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
 
             however::
 
-                result = microarry.map(chip_list, "loc")
+                result = expression.map(chip_list, "loc")
 
             result will be a chip_list
 
@@ -1778,7 +1778,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
 
         newl = self.deepcopy()
         for item in newl:
-            item["loc"] = item["loc"].pointify()
+            item[key] = item[key].pointify()
             
         newl._optimiseData()
         
@@ -1865,11 +1865,11 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         newl = self.deepcopy()
         for item in newl:
             if side == "both":
-                item["loc"] = item["loc"].expand(base_pairs)
+                item[key] = item[key].expand(base_pairs)
             elif side == "left":
-                item["loc"] = item["loc"].expandLeft(base_pairs)
+                item[key] = item[key].expandLeft(base_pairs)
             elif side == "right":
-                item["loc"] = item["loc"].expandRight(base_pairs)
+                item[key] = item[key].expandRight(base_pairs)
             
         newl._optimiseData()
         
@@ -1896,7 +1896,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
 
         newl = self.deepcopy()
         for item in newl:
-            item["loc"] = item["loc"].pointLeft()
+            item[key] = item[key].pointLeft()
             
         newl._optimiseData()
         
@@ -1922,7 +1922,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
 
         newl = self.deepcopy()
         for item in newl:
-            item["loc"] = item["loc"].pointRight()
+            item[key] = item[key].pointRight()
             
         newl._optimiseData()
         
@@ -2372,9 +2372,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             
             1: name: Stat3, score: 20, splicing: canonical
             2: name: Stat3, score: 30, splicing: alternate            
-        
-            NOTE: The order of the list returned may be pretty random
-        
+                
         **Arguments**
             key
                 The key in which to make search for duplicates.
@@ -2382,12 +2380,8 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         **Returns**
             The new list with the duplicates removed.
         """
-        valid_args = ["key"] # enforce arguments
-        for k in kargs:
-            if not k in valid_args:
-                raise ArgumentError, (self.removeDuplicates, k)
-
         assert key, "No key specified"
+        assert key in self.keys(), "the key '%s' was not found in this genelist" % key
 
         newl = self.shallowcopy()
         newl.linearData = []
@@ -2751,6 +2745,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         assert old_key_name, "you must specify an old key name"
         assert new_key_name, "you must specify a new key name"
         assert old_key_name in self.linearData[0], "old_key_name '%s' not found in the list" % old_key_name
+        assert old_key_name != new_key_name, 'Cannot replace the old key with the same new key'
         if not replace_exisiting_key:
             assert new_key_name not in self.linearData[0], "new_key_name '%s' is present in the list already! You might want to set replace_exisiting_key=True if you are sure" % new_key_name
         

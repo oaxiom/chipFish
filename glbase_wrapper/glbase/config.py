@@ -50,7 +50,7 @@ DEFAULT_DPI = 150 # not working?
 draw_mode = "png"
 draw_size = "medium"
 draw_aspect = "normal"
-valid_draw_modes = frozenset(["png", "ps", "eps", "svg"])
+valid_draw_modes = frozenset(["png", "ps", "eps", "svg", 'pdf', 'tiff'])
 
 # -------------- Start of the new-style options:
 

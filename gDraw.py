@@ -477,7 +477,7 @@ class gDraw:
         track_min = min(data)
 
         if scaled:
-            scaling_value = max(min_scaling, track_max) / float(opt.track.height_px["graph"])
+            scaling_value = max(min_scaling+clamp, track_max) / float(opt.track.height_px["graph"])
             data = data / scaling_value
         #print ":", track_max, scaling_value, min_scaling,  max(min_scaling, track_max) 
 
@@ -530,7 +530,7 @@ class gDraw:
                 size=opt.track.scale_bar_font_size, align="right", colour=(0,0,0))
             self.__drawText(self.w - 10, loc[1] - opt.track.height_px["graph"] + opt.track.scale_bar_font_size + 5, 
                 opt.graphics.font, 
-                int(max(min_scaling, track_max)+clamp), 
+                int(max(min_scaling, track_max)), # Don't add the clamp, scaling is now done with the clamp
                 size=opt.track.scale_bar_font_size, align="right", colour=(0,0,0))
 
         return(colbox)# collision box dimensions
@@ -703,7 +703,7 @@ class gDraw:
         self.ctx.set_line_width(10)
 
         currValue = new_array[0]
-        col = 1.0 - (currValue / track_max)
+        col = 1.0# - (currValue / track_max)
         self.__setPenColour( (col,col,col) )
         self.ctx.move_to(posLeft[0], posLeft[1]-9) # start x,y
 
@@ -716,7 +716,7 @@ class gDraw:
                 self.ctx.stroke()
 
                 #change the colour to the new value:
-                col = 1.0 - (value / track_max)
+                col = 1.0# - (value / track_max)
                 self.__setPenColour( (col,col,col) )
 
                 # move to the new start of the lien:

@@ -73,7 +73,7 @@ class location:
 
     def __len__(self):
         # work out the span.
-        return(self.loc["right"] - self.loc["left"])
+        return(max([0, self.loc["right"] - self.loc["left"]]))
 
     def split(self, value=None):
         # ignores the 'value' argument completely and returns a three-ple

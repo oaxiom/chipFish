@@ -41,6 +41,9 @@ def seqToTrk(infilename=None, outfilename=None, name=None, stranded=True, format
         stranded (Optional, default=True)
             expects a "strand" key and will store the strand.
 
+        norm_factor (Optional, default = 1.0)
+            An optional normalization factor. Data is multiplied by this number before display
+
     **Returns**
         True on completion
         and a trk file in outfilename

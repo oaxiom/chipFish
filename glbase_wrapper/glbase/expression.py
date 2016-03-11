@@ -27,18 +27,21 @@ from progress import progressbar
 from errors import AssertionError, ArgumentError
 from genelist import genelist
 from location import location
-from pca import pca
+from svd import svd
 from stats import stats
 
 if config.NETWORKX_AVAIL:
     from network import network
-    from mdsquish import mdsquish
     if config.PYDOT_AVAIL:
         from bayes import bayes # Actually requires graphviz, but will probably port it later.
 
 if config.SKLEARN_AVAIL:
     from som import SOM
     from somde import somde
+    from pca import pca
+
+if config.NETWORKX_AVAIL and config.SKLEARN_AVAIL:
+    from mdsquish import mdsquish
 
 class expression(base_expression):
     def __init__(self, loadable_list=None, filename=None, format=None, expn=None, **kargs):
@@ -124,12 +127,9 @@ class expression(base_expression):
 
     def __getattr__(self, name):
         """
-        
         Confers this idiom:
         
         expn.network.genes(...)
-        
-        """
         
         # These work and do not reinit as it works like this:
         # expn.bayes.learn() 
@@ -139,12 +139,17 @@ class expression(base_expression):
         #       second call of bayes, self.bayes is already an attrib, so it will do self.bayes.run()
         #       with not new init.
         
+        """
+        
         if name == "network":
             assert config.NETWORKX_AVAIL, "Asking for a network object but networkx is not available"
             assert config.PYDOT_AVAIL, "Asking for a network object but pydot is not available"
             self.network = network(self)
             return(self.network)
+        elif name == "svd":
+            return(self.get_svd())
         elif name == "pca":
+            assert config.SKLEARN_AVAIL, "Asking for pca but sklearn not available"
             return(self.get_pca())
         elif name == "stats":
             self.stats = stats(self)
@@ -152,6 +157,7 @@ class expression(base_expression):
         elif name == "mdsquish":
             assert config.NETWORKX_AVAIL, "Asking for mdsquish but networkx is not available"
             assert config.PYDOT_AVAIL, "Asking for a mdsquish object but pydot is not available"
+            assert config.SKLEARN_AVAIL, "Asking for mdsquish but sklearn not available"
             self.mdsquish = mdsquish(self)
             return(self.mdsquish)
         elif name == "som":
@@ -208,18 +214,66 @@ class expression(base_expression):
             
             You can get the pca object again in expn.pca
         """
-        self.pca = pca(self, rowwise=rowwise, label_key=label_key, **kargs)
-        return(self.pca)
+        # This is currently hidden:
+        self.__pca = pca(self, rowwise=rowwise, label_key=label_key, **kargs)
+        return(self.__pca)
 
-    def sort_sum_expression(self):
+    def get_svd(self, rowwise=False, label_key=None, **kargs):
+        """
+        **Purpose**
+            Get the svd object for this expression data. For performing principal 
+            component analysis (PCA/SVD) on the expression data set.
+            
+            A typical workflow for PCA of expression data would go something like:
+            
+            expn = expression(filename="...", ...)
+            svd = expn.get_svd()
+            print svd.max() # maximum number of PCs.
+            svd.loading(filename="...") # PC loading bar chart.
+            svd.plot(1,2, filename="...") # PC 
+            
+        **Arguments**
+            whiten (Optional, default=False)
+                'Normalise' the data. Each feature is divided by its standard deviation 
+                across all observations to give it unit variance
+                    
+            mean_subtraction (Optional, default=False)
+                subtract the mean from the matrix.
+                
+            rowwise (Optional, default=False)
+                Perform svd on the rows (probably genes), instead of on the conditions (the default)
+                
+            label_key (Optional, Required if rowwise=True)
+                The key to use in the genelist to use as a label on plots, etc. 
+                
+                Ignored if rowwise=False
+            
+        **Returns**
+            A 'svd' object.
+            See the documentation for svd for more details. 
+            
+            You can get the svd object again in expn.svd
+        """
+        self.svd = svd(self, rowwise=rowwise, label_key=label_key, **kargs)
+        return(self.svd)
+
+    def sort_sum_expression(self, selected_conditions=None):
         """
         sort by the sum of conditions
 
         **Arguments**
-            None
+            selected_conditions (Optional, default=None)
+                You can send a list of condition names to use for the sum if you want. 
+                
+                If this is none, then it uses all conditions
             
         """
-        self.linearData = sorted(self.linearData, cmp=lambda x, y: cmp(sum(x["conditions"]), sum(y["conditions"]))) 
+        if selected_conditions:
+            selected_condition_indeces = [self._conditions.index(i) for i in selected_conditions]
+            comparator = lambda x, y: cmp(sum([x["conditions"][i] for i in selected_condition_indeces]), sum([y["conditions"][i] for i in selected_condition_indeces]))
+            self.linearData = sorted(self.linearData, cmp=comparator) 
+        else:        
+            self.linearData = sorted(self.linearData, cmp=lambda x, y: cmp(sum(x["conditions"]), sum(y["conditions"]))) 
         self._optimiseData()
         return(True)
 
@@ -447,7 +501,7 @@ class expression(base_expression):
         """
         assert key, "merge: You must specify a key"
         lls = [len(i) for i in tables]
-        assert len(set(lls)) == 1, "merge: the expression objects are different sizes"
+        assert len(set(lls)) == 1, "merge: the expression objects must be identically sized"
         
         newgl = self.deepcopy()
         newgl._conditions = sum([gl._conditions for gl in tables], self._conditions)
@@ -455,7 +509,7 @@ class expression(base_expression):
         for item in newgl:
             others = [i._findDataByKeyLazy(key=key, value=item[key]) for i in tables]
             if None in others:
-                raise AssertionError, "merge() %s:%s not found in table" % (key, item[key])
+                raise AssertionError, "merge: %s:%s not found in table" % (key, item[key])
             others = [i["conditions"] for i in others]
             item["conditions"] = sum(others, item["conditions"])
             if "err" in item:
@@ -576,6 +630,8 @@ class expression(base_expression):
         """
         **Purpose**
             Convert the expression to a row-wise Z-score
+            
+            This is an IN PLACE function
             
         **Arguments**
             row_wise_variance (Optional, default=True)
@@ -826,10 +882,6 @@ class expression(base_expression):
 
             grid (Optional, default=False)
                 draw a grid around each cell in the heatmap.
-
-            imshow (Optional, default=False)
-                optional ability to use images for the heatmap. Currently experimental it is
-                not always supported in the vector output files.
                 
             draw_numbers (Optional, default=False)
                 draw the values of the heatmaps in each cell see also draw_numbers_threshold
@@ -839,9 +891,18 @@ class expression(base_expression):
             
             draw_numbers_fmt (Optional, default= '%.1f')
                 string formatting for the displayed values
+                
+                You can also send arbitrary text here, (for example, if you wanted to 
+                mark significane with a '*' then you could set draw_numbers_fmt='*').
             
             draw_numbers_font_size (Optional, default=7)
                 the font size for the numbers in each cell
+
+            imshow (Optional, default=False)
+                Embed the heatmap as an image inside a vector file. (Uses matplotlib imshow 
+                to draw the heatmap part of the figure. Allows very large matrices to
+                be saved as an svg, with the heatmap part as a raster image and all other elements
+                as vectors).
                 
         **Result**
             saves an image to the 'filename' location and
@@ -866,7 +927,8 @@ class expression(base_expression):
             newdata[name] = data[index] # get the particular column
 
         res = self.draw.heatmap(data=newdata,
-            row_names=self[row_label_key], col_names=self.getConditionNames(),
+            row_names=self[row_label_key], 
+            col_names=self.getConditionNames(),
             filename=filename, 
             row_color_threshold=row_color_threshold, 
             **kargs)
@@ -1028,6 +1090,7 @@ class expression(base_expression):
             A new expression object.
         """
         assert conds.keys(), "norm_multi_fc: 'conds' must be a dictionary-like object"
+        assert conds.values(), "norm_multi_fc: 'conds' must be a dictionary-like object"
         #if "err" in self.linearData[0]:
         #    config.log.warning("'err' key in this data, norm_multi_fc() will not correct the errors, I will delete this key")
         
@@ -1113,7 +1176,7 @@ class expression(base_expression):
         #print [c in self._conditions for c in all_reps], self._conditions
         if False in [c in self._conditions for c in all_reps]:
             missing_conds = [c for c in all_reps if c not in self._conditions]
-            raise AssertionError, "mean_replicates: '%s' condition names not found" % (", ".join(missing_conds),)
+            raise AssertionError, "mean_replicates: '%s' condition names not found" % (", ".join(sorted(missing_conds)),)
         
         threshold = 0.8
         if "threshold" in kargs and kargs["threshold"]:
@@ -2493,9 +2556,22 @@ class expression(base_expression):
         ax.tick_params(top="off", bottom="off", left="off", right="off")
 
         if cut:
+            # I believe that the old code is actually correct
+            ret = []
+            config.log.info("tree: Using local threshold '%.2f'" % color_threshold)
+            clus = scipy.cluster.hierarchy.fcluster(link, color_threshold, 'distance')
+            for i, net in enumerate(sorted(set(clus))):
+                # get all of the gene names back out.
+                idxs = [idx for idx, x in enumerate(clus) if x == net]
+                newl = [{row_name_key: row_names[idx]} for idx in idxs]
+                newgl = genelist()
+                newgl.load_list(newl)
+                ret.append(newgl)
+        
+            '''
             ret = []
             color_threshold
-            config.log.info("tree: Using local cut threshold '%.2f'" % color_threshold)
+            config.log.info("tree: Using local cut threshold '%.3f'" % color_threshold)
             clus = scipy.cluster.hierarchy.fcluster(link, color_threshold, 'distance')
             
             print clus
@@ -2513,6 +2589,7 @@ class expression(base_expression):
                 newgl = genelist()
                 newgl.load_list(newl)
                 ret.append(newgl)
+            '''
 
             ax.axvline(color_threshold, color="grey", ls=":")
             config.log.info("tree: Found %s clusters" % len(ret))

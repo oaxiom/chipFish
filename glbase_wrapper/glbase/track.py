@@ -12,6 +12,7 @@ from operator import itemgetter
 from progress import progressbar
 from errors import AssertionError
 from location import location
+import genelist as Genelist
 import utils, config
 from data import positive_strand_labels, negative_strand_labels
 from draw import draw
@@ -43,7 +44,8 @@ class track(base_track):
             doing then this will generate a new (empty) db.
 
         norm_factor (Optional, default = 1.0)
-            An optional normalization factor. Data is multiplied by this number before display
+            An optional normalization factor. Data is multiplied by this number before display.
+            Can only be specified at creation time, cannot be modified later.
             
         mem_cache (Optional, default=False)
             Instead of doing the whole thing from disk, first cache the DB in memory for
@@ -54,17 +56,26 @@ class track(base_track):
             By default glbase builds indexes for 100 and 200 bp read_extends
             
     """
-    def __init__(self, name=None, new=False, filename=None, norm_factor=1.0, mem_cache=False, pre_build=[100, 200], **kargs):
+    def __init__(self, name=None, new=False, filename=None, norm_factor=None, mem_cache=False, pre_build=[100, 200], **kargs):
         base_track.__init__(self, name, new, filename, norm_factor, mem_cache)
-                
+                                
         if new:
+            if norm_factor is None:
+                norm_factor = 1.0
             self.meta_data['norm_factor'] = str(norm_factor)
             self.pre_build = pre_build
             self.meta_data['pre_build'] = pre_build
             self.__setup_tables(filename)
+            config.log.info('Generating new track')
+        else:
+            assert not norm_factor, 'norm_factor can only be modified at creation time'
+            # if not new, get pre_build from the metadatum
         
-        # if not new, get pre_build from the metadatum
-        self.pre_build =  self.meta_data['pre_build']
+        try:
+            self.pre_build =  self.meta_data['pre_build']
+        except KeyError:
+            raise AssertionError, 'meta data not found in trk file, this suggests the trk file is incomplete, please check your trk file and regenerate if required'
+            
         self.norm_factor = float(self.meta_data['norm_factor'])
         if self.norm_factor != 1.0:
             config.log.info('track: Using norm_factor=%.3f' % self.norm_factor)
@@ -240,7 +251,7 @@ class track(base_track):
         if not isinstance(loc, location):
             loc = location(loc=loc)
         extended_loc = loc.expand(read_extend)
-
+        
         result = self.get_reads(extended_loc, strand=strand)
         
         if kde_smooth:
@@ -449,6 +460,9 @@ class track(base_track):
         **Returns**
             a list containing all of the reads between loc.
         """
+        if not isinstance(loc, location):
+            loc = location(loc=loc)
+        
         if self.gl_mem_cache: # Use the mem cache if available
             # work out which of the buckets is required:
             left_buck = int((loc["left"]-1-delta)/config.bucket_size)*config.bucket_size
@@ -469,9 +483,6 @@ class track(base_track):
                 if loc.qcollide(self.linearData[index]["loc"]):
                     # result expected in form :read_left, read_right, strand
                     result.append((self.linearData[index]["loc"]['left'], self.linearData[index]["loc"]['right'], self.linearData[index]["strand"])) 
-                           
-        #if not isinstance(loc, location):
-        #    loc = location(loc=loc)
 
         #if len(loc["chr"]) < 30: # small security measure.
         table_name = "chr_%s" % loc["chr"]
@@ -602,6 +613,38 @@ class track(base_track):
                 print " ", i
         c.close()
 
+    def saveBedGraph(self, filename, bin_size=100):
+        '''
+        **Purpose**
+            Save the track as a BedGraph
+            Will take into account the norm_factor if available
+        
+        **Arguments**
+            filename (Required)
+                filename to save BG to
+                
+            bin_size (Optional, default=100)
+                the size for each bin (resolution) of the BedGraph
+        
+        **Returns**
+            None
+        '''
+        assert filename, 'You must provide a filename'
+        
+        oh = open(filename, 'w')
+        for chrom in sorted(self.get_chromosome_names()):
+            this_chrom = self.get_array_chromosome(chrom)
+            config.log.info("Doing Chromosome '%s'" % chrom)
+            min_position = 0 # Could guess, but the below code will trim the padding zeros
+            max_position = len(this_chrom)
+            for l in xrange(min_position, max_position, bin_size):
+                value = numpy.mean(this_chrom[l:l+bin_size])
+                if value > 0.0: # If zero then it is okay to skip the loc.
+                    oh.write('chr%s\t%s\t%s\t%s\n' % (chrom, l, l+bin_size, numpy.mean(this_chrom[l:l+bin_size]))) # data is already norm_factor corrected  
+        oh.close()
+        config.log.info("saveBedGraph: Saved '%s'" % filename)
+        return(None)
+    
     def pileup(self, genelist=None, key="loc", filename=None, heatmap_filename=None, 
         bin_size=500, window_size=5000, read_extend=200, use_kde=False, simple_cleanup=False,
         only_do=False, stranded=False, respect_strand=True, raw_tag_filename=None,
@@ -632,7 +675,7 @@ class track(base_track):
             bin_size (Optional, default=500)
                 bin_size to use for the heatmap
                 
-            pointify (Optional, default=False)
+            pointify (Optional, default=True)
                 convert ythe genomic locations in 'genelist' to a single point
                 (Usually used in combination with window_size).
             
@@ -953,9 +996,15 @@ class track(base_track):
                 
             cmap (Optional, default=?)
                 A matplotlib cmap to use for coloring the heatmap
+
+            imshow (Optional, default=False)
+                Embed the heatmap as an image inside a vector file. 
+                Currently experimental it is not always supported in the vector output files.
+                Also occasionally does not correctly draw.
                 
         **Results**
-            file in filename and the heatmap table
+            file in filename and the heatmap table, and the 'sorted_coords' (a genelist) containing the chromsome locations in the same
+            order as the heatmap
         """
         assert genelist, "must provide a genelist"
         assert "loc" in genelist.keys(), "appears genelist has no 'loc' key"
@@ -963,7 +1012,6 @@ class track(base_track):
         assert log in ("e", math.e, 2, 10, None), "this 'log' base not supported"
         
         table = []
-        bin_size = int((distance*2) / bins)
         
         # get a sorted list of all the locs I am going to use.
         all_locs = genelist['loc']
@@ -974,6 +1022,7 @@ class track(base_track):
         
         curr_cached_chrom = None
         cached_chrom = None
+        bin_size = None
         
         p = progressbar(len(genelist))
         for idx, read in enumerate(zip(all_locs, strands)):
@@ -982,6 +1031,10 @@ class track(base_track):
                 l = l.pointify()
             if distance:
                 l = l.expand(distance)
+            
+            if not bin_size: # I need to sample from an example size. 
+                # assume all sizes are the same!
+                bin_size = int(len(l) / float(bins))
             
             # I can dispose and free memory as the locations are now sorted:
             # See if the read_extend is already in the cache:
@@ -1001,7 +1054,7 @@ class track(base_track):
                 #config.log.error('Asked for part of the chomosome outside of the array')
             else:
                 a = cached_chrom[l['left']:l['right']]
-                
+            
             if respect_strand:
                 # positive strand is always correct, so I leave as is.
                 # For the reverse strand all I have to do is flip the array.
@@ -1009,9 +1062,10 @@ class track(base_track):
                     a = a[::-1]
        
             # bin the data
-            row = numpy.array(utils.bin_data(a, bin_size)) # appears to be slow?
-            
-            table.append(row)   
+            ret = utils.bin_data(a, bin_size) # Python list, so testable
+            if ret:
+                row = numpy.array(ret) # appears to be slow?    
+                table.append(row)   
             p.update(idx)         
         
         # sort the data by intensity
@@ -1033,6 +1087,13 @@ class track(base_track):
             newt.append(data[item["n"],])
         data = numpy.array(newt)
         data = numpy.delete(data, numpy.s_[-1:], 1)
+        
+        # Get the sorted_locs for reporting purposes:
+        sorted_locs = [all_locs[i['n']] for i in mag_tab] # need to sort them by intensity
+        sorted_locs.reverse() # Make it into the intuitive order.
+        gl = Genelist.genelist()
+        gl.load_list([{'loc': i} for i in sorted_locs])
+        sorted_locs = gl
         
         if log:
             if log == "e" or log == math.e:
@@ -1065,7 +1126,7 @@ class track(base_track):
             config.log.info("track.heatmap(): Saved raw_heatmap_filename to '%s'" % raw_heatmap_filename)
         
         config.log.info("track.heatmap(): Saved heatmap tag density to '%s'" % filename)
-        return({"data": data})
+        return({"data": data, 'sorted_coords': sorted_locs})
 
     def measure_frip(self, genelist=None, sample=None, delta=None, pointify=False):
         """
@@ -1226,6 +1287,9 @@ if __name__ == "__main__":
     t.finalise()
     e = time.time()
     print e-s, "s"
+    #t.finalise()
+    
+    print t.get_reads('chr1:100-200')
     
     s = time.time()
     print "Fake bed..."

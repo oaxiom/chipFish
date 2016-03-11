@@ -129,10 +129,11 @@ class delayedlist(genelist):
     def __len__(self):
         # I need to collect an estimate
         if not self.__len_estimate:
-            with open(self.fullpath) as f:
-                for i, l in enumerate(f):
-                    pass
-            self.__len_estimate = i
+            f = open(self.fullpath, 'rb')           
+            lines = 0
+            for line in f.xreadlines(): lines += 1
+
+            self.__len_estimate = lines-1 # start from 0
 
         return(self.__len_estimate) # 
 

@@ -80,7 +80,10 @@ class app():
             oh = open(tracklist, "rU")
             track_path = os.path.dirname(tracklist)
             mode = None
-            for line in oh:
+            for line in oh:                
+                if not line.strip(): # tolerate empty lines in spec sheet
+                    continue
+            
                 if "#" in line:
                     # Options should go here.
                     pass # Anything useful to do with these?
@@ -157,7 +160,7 @@ class app():
                                     continue
                                 # Okay, assume the user knows what they are doing and just grab the file they asked for:
                                 self.draw.bindTrack(glload(name))
-                            elif mode == "genome_sql": # must be a glb
+                            elif mode == "genome_sql": 
                                 self.draw.bindTrack(genome_sql(filename=os.path.join(path, name)))
             oh.close()
 
