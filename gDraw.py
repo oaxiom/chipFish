@@ -530,7 +530,7 @@ class gDraw:
                 size=opt.track.scale_bar_font_size, align="right", colour=(0,0,0))
             self.__drawText(self.w - 10, loc[1] - opt.track.height_px["graph"] + opt.track.scale_bar_font_size + 5, 
                 opt.graphics.font, 
-                int(max(min_scaling, track_max)), # Don't add the clamp, scaling is now done with the clamp
+                int(max(min_scaling+clamp, track_max+clamp)), # You must add the clamp, otherwise you end up with maximums less than the clamp
                 size=opt.track.scale_bar_font_size, align="right", colour=(0,0,0))
 
         return(colbox)# collision box dimensions
