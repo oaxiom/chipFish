@@ -121,20 +121,22 @@ class track:
     height_px = {"graph": 200, # These are the pixel heights of the tracks. Can be any reasonable value. These values are asthetically pleasing
         "graph_split_strand": 200, # same as graph
         "kde_graph": 200, # ditto
-        "bar": 30,
-        "spot": 30,
+        "bar": 20,
+        "spot": 20,
         "genome": 70,
         "repeats": 200} # height's of the tracks in pixels.
+    bar_height = 12 # Height of the bars for bar tracks    
     spot_pixel_radius = 8 # Size of the spot circle
     spot_default_colour = (0.1, 0.1, 0.1) # The colour of the spot for spot tracks
+    bar_default_colour = (0.1, 0.1, 0.1) # The colour of the spot for spot tracks
     spot_filled = True # fill the spot circle?
     spot_shape = "circle" # supported = circle, triangle
     font_scale_size = 24 # Size of the font on the tracks
     filled = True
-    background = True # Draw a grey background defining the span of the track
+    background = False # Draw a grey background defining the span of the track
     draw_names = True
     draw_scales = True
-    scale_bar_font_size = 14
+    scale_bar_font_size = 40
     label_fontsize = 22
-    min_scale = 2 # The minimum x axis value for tracks. 
+    min_scale = 20 # The minimum x axis value for tracks. 
     lock_scales = False # Lock all scales on the Tracks together. Make this per trk file settable?
