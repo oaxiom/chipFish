@@ -233,7 +233,7 @@ class gDraw:
                 sets the width of the display
         """
         self.fullw = width # for blanking screen
-        self.w = width - opt.graphics.right_border_width # a small right most border for editing trakcs
+        self.w = width - opt.graphics.right_border_width # a small right most border for editing trakcs, never implemented
         self.halfw = self.w / 2
         self.ruler.set(0, 100, (0, self.w))
 
@@ -296,7 +296,9 @@ class gDraw:
         res = []
         minim = 1000000000
 
-        scales_and_labels = {10: "10bp",
+        scales_and_labels = {
+            # 1 bp causes chipFish to crash :(
+            10: "10bp",
             100: "100bp",
             1000: "1kbp",
             10000: "10kbp",
@@ -316,7 +318,7 @@ class gDraw:
         posLeft = self.__realToLocal(self.rbp - best, -40)
         posRight = self.__realToLocal(self.rbp, -40)
 
-        self.ctx.set_line_width(2.0)
+        self.ctx.set_line_width(4.0)
         self.__setPenColour((0,0,0))
         
         self.ctx.move_to(posLeft[0]-20, opt.ruler.height_px + 8) # move 20px arbitrarily left
@@ -333,7 +335,7 @@ class gDraw:
 
         self.__drawText(posLeft[0], opt.ruler.height_px + 21, opt.graphics.font, scales_and_labels[best], size=opt.draw.scale_bar_fontsize)
 
-    def exportImage(self, filename, type=None):
+    def exportImage(self, filename, scale=1, type=None):
         """
         **Purpose**
 
@@ -355,6 +357,9 @@ class gDraw:
                 extension in the filename. If not type is given and
                 the extension doesn't make any sense then a png will be
                 used.
+                
+            scale (Optional, default=1)
+                rescale the svg
 
         **Result**
             returns the actual filename used to save.
@@ -366,18 +371,25 @@ class gDraw:
         if not self.ctx or guess_height != self.last_guess_height or type in ("svg", "pdf"):
             # If the surface size changed between the last call and this, I need a newly sized surface.
             if type == "svg":
-                self.surface = cairo.SVGSurface(filename, self.w, guess_height)
+                self.surface = cairo.SVGSurface(filename, int(self.w*scale), int(guess_height*scale))
             elif type == "pdf": # not tested
-                self.surface = cairo.PDFSurface(filename, self.w, guess_height)
+                self.surface = cairo.PDFSurface(filename, int(self.w*scale), int(guess_height*scale))
             else: # get a png
-                self.surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, self.w, guess_height)
+                self.surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, int(self.w*scale), int(guess_height*scale))
             self.ctx = cairo.Context(self.surface)
             self.last_guess_height = guess_height
 
         self.h = guess_height
 
         # forceRedraw onto my surface.
+        if scale != 1:
+            self.ctx.scale(scale, scale) 
+            
         self.paint(self.ctx)
+        
+        if scale != 1:
+            self.ctx.scale(1.0/scale, 1.0/scale) 
+
 
         if type in ("svg", "pdf", "ps", "eps"):
             actual_filename = filename # suppose to mod, based on type
@@ -430,7 +442,7 @@ class gDraw:
         return( (0, base_loc[1]-opt.track.height_px[track_type], self.w, opt.track.height_px[track_type]-2) )
 
     def __drawTrackGraph(self, track_data, scaled=True, min_scaling=opt.track.min_scale, clamp=1, 
-        sliding_window_smoothing=False, no_scaling=False, colour=None, name=None, **kargs):
+        no_scaling=False, colour=None, name=None, **kargs):
         """
         **Arguments**
             track_data
@@ -450,18 +462,12 @@ class gDraw:
                 clamp the display scale from <clamp> .. n
                 rather than 0 .. n
                 
-            sliding_window_smoothing (default=False)
-                use a sliding window to 'smooth the data'
-                
             name (Optional, default=None)
                 By default I will use the name of the genelist.
                 If you want to rename the track then set options name="Name of track" 
         """
 
         data = track_data["array"]
-        if sliding_window_smoothing:
-            data = utils.sliding_window(data, len(data)/80) # This would work better with tag-shifted rather than the whole data.
-
         data = numpy.array(data, dtype=numpy.float32)
 
         if clamp:
@@ -652,13 +658,13 @@ class gDraw:
             colour
                 a float colour (r, g, b, [a]), ranging 0..1
         """
-        colbox = self.__drawTrackBackground(track_data["track_location"], "spot")
+        #colbox = self.__drawTrackBackground(track_data["track_location"], "spot")
 
         sc = self.__realToLocal(0, track_data["track_location"])
 
-        self.__setPenColour((1,1,1))
-        self.ctx.rectangle(0, sc[1]-(opt.track.spot_pixel_radius*3), self.w, (opt.track.spot_pixel_radius*2)-2) # 30 = half genomic track size
-        self.ctx.fill()
+        #self.__setPenColour((1,1,1))
+        #self.ctx.rectangle(0, sc[1]-(opt.track.spot_pixel_radius*3), self.w, (opt.track.spot_pixel_radius*2)-2) # 30 = half genomic track size
+        #self.ctx.fill()
 
         colour = opt.track.spot_default_colour
         if "colour" in kargs:
@@ -669,7 +675,7 @@ class gDraw:
             if opt.track.spot_shape == "circle":
                 centre_point = (item["left"] + item["right"]) / 2
                 sc = self.__realToLocal(centre_point, track_data["track_location"])
-                self.ctx.arc(sc[0], sc[1]-(opt.track.spot_pixel_radius * 2), opt.track.spot_pixel_radius, 0, 2 * math.pi)
+                self.ctx.arc(sc[0], sc[1]-(opt.track.spot_pixel_radius * 2)-3, opt.track.spot_pixel_radius, 0, 2 * math.pi)
             elif opt.track.spot_shape == "triangle":
                 pass
 
@@ -678,12 +684,48 @@ class gDraw:
         else:
             self.ctx.stroke()
 
-        self.__drawText(0, sc[1]-17 , opt.graphics.font, track_data["name"])
-        return(colbox)
+        #self.__drawText(0, sc[1]-17 , opt.graphics.font, track_data["name"])
+        return(None)
 
     def __drawTrackBar(self, track_data, min_scale=1, **kargs):
         """
-        draw a 'bar' format track
+        draw a 'bar-heatmap' format track
+
+        **Arguments**
+            track_data
+                must be some kind of array/iterable, with a nbp:1px resolution.
+
+        """
+        #colbox = self.__drawTrackBackground(track_data["track_location"], "spot")
+
+        sc = self.__realToLocal(0, track_data["track_location"])
+
+        self.__setPenColour((1,1,1))
+        #self.ctx.rectangle(0, sc[1], self.w, (opt.track.bar_height-1)) # 30 = half genomic track size
+        #self.ctx.fill()
+
+        colour = opt.track.bar_default_colour
+        if "colour" in kargs:
+            colour = kargs["colour"]
+        self.ctx.set_line_width(0.5)
+        self.__setPenColour(colour)
+
+        for bar in track_data["array"]:           
+            left = self.__realToLocal(bar['left'], track_data["track_location"])
+            rite = self.__realToLocal(bar['right'], track_data["track_location"])
+            
+            self.ctx.move_to(left[0], sc[1]-opt.track.bar_height) 
+            self.ctx.line_to(rite[0], sc[1]-opt.track.bar_height) 
+            self.ctx.line_to(rite[0], sc[1]) 
+            self.ctx.line_to(left[0], sc[1]) 
+            self.ctx.fill()
+
+        #self.__drawText(0, sc[1]-17 , opt.graphics.font, track_data["name"])
+        return(None)
+
+    def __drawTrackHeatmap(self, track_data, min_scale=1, **kargs):
+        """
+        draw a 'bar-heatmap' format track
 
         **Arguments**
             track_data
@@ -706,6 +748,8 @@ class gDraw:
         col = 1.0# - (currValue / track_max)
         self.__setPenColour( (col,col,col) )
         self.ctx.move_to(posLeft[0], posLeft[1]-9) # start x,y
+
+        print new_array
 
         for index, value in enumerate(new_array):
             fraction_along_array = index / len(new_array)
@@ -839,7 +883,7 @@ class gDraw:
 
         #---------------------------------------------------------------
         # Draw gene arrow
-
+        '''
         if data["strand"] == "+": # top strand
             loc = self.__realToLocal(data["loc"]["left"], track_slot_base)
             # arrow.
@@ -862,13 +906,14 @@ class gDraw:
             self.__drawText(loc[0]+opt.graphics.arrow_width_px-13, loc[1]+22+opt.graphics.arrow_height_px, "Arial", data["name"], size=opt.gene.font_size, align="right", style=opt.gene.font_style)
         else:
             raise ErrorInvalidGeneDefinition
+        '''
 
         if opt.draw.single_midline_in_introns: # draw a single line through the gene
             # this looks best when the genome is not being drawn.
             leftmost = self.__realToLocal(data["loc"]["left"], track_slot_base)
             rightmost = self.__realToLocal(data["loc"]["right"], track_slot_base)
             self.__setPenColour(opt.graphics.gene_colour)
-            self.ctx.set_line_width(1)
+            self.ctx.set_line_width(3)
             self.ctx.move_to(leftmost[0], leftmost[1])
             self.ctx.line_to(rightmost[0], rightmost[1])
             self.ctx.stroke()

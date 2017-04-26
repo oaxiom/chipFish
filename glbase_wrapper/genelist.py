@@ -68,25 +68,10 @@ class genelist(glbase.genelist):
         **Results**
             returns a Numpy array.
         """
-        if type == "bar":
-            # make a single array
-            ret = numpy.zeros(int( (loc["right"]-loc["left"]+resolution)/resolution ))
+        ret = []
+        if loc["chr"] in self.dataByChr:
+            for item in self.dataByChr[loc["chr"]]:
+                if loc.qcollide(item["loc"]):
+                    ret.append(item["loc"])
+        return(ret)
 
-            if loc["chr"] in self.dataByChr:
-                for item in self.dataByChr[loc["chr"]]:
-                    if loc.qcollide(item["loc"]):
-                        # make a suitable draw object
-                        for rloc in xrange(item["loc"]["left"], item["loc"]["right"], int(resolution)):
-                            array_relative_location = int((rloc - loc["left"]) / resolution) # convert relative to the array
-
-                            if array_relative_location >= 0 and array_relative_location < len(ret): # within array
-                                ret[array_relative_location] += 1
-            return(ret)
-        elif type == "spot":
-            ret = []
-            if loc["chr"] in self.dataByChr:
-                for item in self.dataByChr[loc["chr"]]:
-                    if loc.qcollide(item["loc"]):
-                        ret.append(item["loc"])
-            return(ret)
-        return(None)

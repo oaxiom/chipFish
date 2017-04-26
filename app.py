@@ -85,7 +85,7 @@ class app():
                     continue
             
                 if "#" in line:
-                    # Options should go here.
+                    # Options should go here?
                     pass # Anything useful to do with these?
                 else:
                     if ":" in line: 
@@ -148,7 +148,7 @@ class app():
                                 f["skiplines"] = 1 # Changes in recent version of macs bed.
                                 self.draw.bindTrack(genelist(filename=os.path.join(path, name), format=f), options=options)
                             elif mode == "genome": # must be a glb
-                                # First see if I can get it out of the pre-packaged geneomes:
+                                # First see if I can get it out of the pre-packaged genomes:
                                 try:
                                     g = genomes()
                                     if name in g:
