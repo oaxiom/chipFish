@@ -126,7 +126,7 @@ class track:
         "genome": 70,
         "repeats": 200} # height's of the tracks in pixels.
     bar_height = 12 # Height of the bars for bar tracks    
-    spot_pixel_radius = 8 # Size of the spot circle
+    spot_pixel_radius = 7 # Size of the spot circle
     spot_default_colour = (0.1, 0.1, 0.1) # The colour of the spot for spot tracks
     bar_default_colour = (0.1, 0.1, 0.1) # The colour of the spot for spot tracks
     spot_filled = True # fill the spot circle?

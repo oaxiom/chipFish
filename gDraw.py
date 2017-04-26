@@ -662,27 +662,28 @@ class gDraw:
 
         sc = self.__realToLocal(0, track_data["track_location"])
 
-        #self.__setPenColour((1,1,1))
-        #self.ctx.rectangle(0, sc[1]-(opt.track.spot_pixel_radius*3), self.w, (opt.track.spot_pixel_radius*2)-2) # 30 = half genomic track size
-        #self.ctx.fill()
+        self.__setPenColour((1,1,1))
+        self.ctx.rectangle(0, sc[1]-(opt.track.spot_pixel_radius*3), self.w, (opt.track.spot_pixel_radius*2)-2) # 30 = half genomic track size
+        self.ctx.fill()
 
         colour = opt.track.spot_default_colour
         if "colour" in kargs:
             colour = kargs["colour"]
         self.__setPenColour(colour)
 
-        for item in track_data["array"]:
+        for spot in track_data["array"]:
             if opt.track.spot_shape == "circle":
-                centre_point = (item["left"] + item["right"]) / 2
+                centre_point = (spot["left"] + spot["right"]) / 2
                 sc = self.__realToLocal(centre_point, track_data["track_location"])
-                self.ctx.arc(sc[0], sc[1]-(opt.track.spot_pixel_radius * 2)-3, opt.track.spot_pixel_radius, 0, 2 * math.pi)
+                self.ctx.arc(sc[0], sc[1]-(opt.track.spot_pixel_radius*2)+2, opt.track.spot_pixel_radius, 0, 2 * math.pi)
+                
             elif opt.track.spot_shape == "triangle":
                 pass
 
-        if opt.track.spot_filled:
-            self.ctx.fill()
-        else:
-            self.ctx.stroke()
+            if opt.track.spot_filled:
+                self.ctx.fill()
+            else:
+                self.ctx.stroke()
 
         #self.__drawText(0, sc[1]-17 , opt.graphics.font, track_data["name"])
         return(None)
@@ -714,10 +715,7 @@ class gDraw:
             left = self.__realToLocal(bar['left'], track_data["track_location"])
             rite = self.__realToLocal(bar['right'], track_data["track_location"])
             
-            self.ctx.move_to(left[0], sc[1]-opt.track.bar_height) 
-            self.ctx.line_to(rite[0], sc[1]-opt.track.bar_height) 
-            self.ctx.line_to(rite[0], sc[1]) 
-            self.ctx.line_to(left[0], sc[1]) 
+            self.ctx.rectangle(left[0], sc[1]-opt.track.bar_height, rite[0]-left[0], opt.track.bar_height)
             self.ctx.fill()
 
         #self.__drawText(0, sc[1]-17 , opt.graphics.font, track_data["name"])
@@ -793,6 +791,7 @@ class gDraw:
             t = self.ctx.text_extents(str(text))
             self.ctx.move_to(x - t[2], y) 
         self.ctx.show_text(str(text))
+        self.ctx.stroke() # unset the path.
 
     def __drawGenome(self, track_data, **kargs):
         # Draw a genome
@@ -883,30 +882,29 @@ class gDraw:
 
         #---------------------------------------------------------------
         # Draw gene arrow
-        '''
+        
         if data["strand"] == "+": # top strand
             loc = self.__realToLocal(data["loc"]["left"], track_slot_base)
             # arrow.
-            self.ctx.move_to(loc[0], loc[1]-20)
-            self.ctx.line_to(loc[0], loc[1]-20-opt.graphics.arrow_height_px)
-            self.ctx.line_to(loc[0] + opt.graphics.arrow_width_px, loc[1]-20)
-            self.ctx.line_to(loc[0], loc[1]-20+opt.graphics.arrow_height_px)
-            self.ctx.line_to(loc[0], loc[1]-20)
-            self.ctx.fill()
+            #self.ctx.move_to(loc[0], loc[1]-20)
+            #self.ctx.line_to(loc[0], loc[1]-20-opt.graphics.arrow_height_px)
+            #self.ctx.line_to(loc[0] + opt.graphics.arrow_width_px, loc[1]-20)
+            #self.ctx.line_to(loc[0], loc[1]-20+opt.graphics.arrow_height_px)
+            #self.ctx.line_to(loc[0], loc[1]-20)
+            #self.ctx.fill()
             self.__drawText(loc[0]+opt.graphics.arrow_width_px+3, loc[1]-20+opt.graphics.arrow_height_px, "Arial", data["name"], size=opt.gene.font_size, style=opt.gene.font_style)
         elif data["strand"] == "-":
             loc = self.__realToLocal(data["loc"]["right"], track_slot_base)
             # arrow.
-            self.ctx.move_to(loc[0], loc[1]+20)
-            self.ctx.line_to(loc[0], loc[1]+20-opt.graphics.arrow_height_px)
-            self.ctx.line_to(loc[0]-opt.graphics.arrow_width_px, loc[1]+20)
-            self.ctx.line_to(loc[0], loc[1]+20+opt.graphics.arrow_height_px)
-            self.ctx.line_to(loc[0], loc[1]+20)
-            self.ctx.fill()
+            #self.ctx.move_to(loc[0], loc[1]+20)
+            #self.ctx.line_to(loc[0], loc[1]+20-opt.graphics.arrow_height_px)
+            #self.ctx.line_to(loc[0]-opt.graphics.arrow_width_px, loc[1]+20)
+            #self.ctx.line_to(loc[0], loc[1]+20+opt.graphics.arrow_height_px)
+            #self.ctx.line_to(loc[0], loc[1]+20)
+            #self.ctx.fill()
             self.__drawText(loc[0]+opt.graphics.arrow_width_px-13, loc[1]+22+opt.graphics.arrow_height_px, "Arial", data["name"], size=opt.gene.font_size, align="right", style=opt.gene.font_style)
         else:
             raise ErrorInvalidGeneDefinition
-        '''
 
         if opt.draw.single_midline_in_introns: # draw a single line through the gene
             # this looks best when the genome is not being drawn.
