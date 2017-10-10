@@ -90,7 +90,6 @@ def seqToTrk(infilename=None, outfilename=None, name=None, stranded=True, format
                 config.log.info("%s,000,000 tags read" % m) # How to correct for 1000 M tags?
                 #break
      
-    e = time.time()
     # 1000 = averages 8-9 s
     # 3.65 s cache.
     # 0.61 s better cacheing, less commits
@@ -104,27 +103,6 @@ def seqToTrk(infilename=None, outfilename=None, name=None, stranded=True, format
     config.log.info("Library contains '%s' tags" % total)
     config.log.info('Building cache, finalizing...')
     t.finalise()
+    e = time.time()
     config.log.info("Took: %.1f seconds" % (e-s))
     return(True)
-
-if __name__ == "__main__":
-    # testing:
-    PROFILE = False
-    if PROFILE:
-        cProfile.run("seqToTrk(\"/home/hutchinsa/ChIP_Raw/CMN019_121_unique_hits.txt\", \"../data/NSMash1.trk\")", "seqToTrk.profile")
-
-        p = pstats.Stats( "seqToTrk.profile")
-
-        p.strip_dirs().sort_stats('time').print_stats()
-
-    else:
-        print "Command-line seqToTrk:"
-        print "Usage: $ ./seqToTrk.py <infile> <outfile>"
-
-        assert sys.argv[1], "no infile specified"
-        assert sys.argv[2], "no outfile specified"
-        assert os.path.exists(sys.argv[1]), "infile does not exist"
-
-        infile = sys.argv[1]
-        outfile = sys.argv[2]
-

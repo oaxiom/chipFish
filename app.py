@@ -138,7 +138,7 @@ class app():
                             elif mode == "split_track":
                                 self.draw.bindTrack(track(filename=os.path.join(path, name)), options=options, track_type="graph_split_strand")
                             elif mode == "flat":
-                                self.draw.bindTrack(flat_track(filename=os.path.join(path, name), bin_format="f"), track_type="graph", options=options)
+                                self.draw.bindTrack(flat_track(filename=os.path.join(path, name)), track_type="graph", options=options)
                             elif mode == "kde_track":
                                 self.draw.bindTrack(track(filename=os.path.join(path, name)), options=options, track_type="kde_graph")
                             elif mode == "bed":

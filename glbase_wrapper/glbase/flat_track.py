@@ -44,13 +44,15 @@ class flat_track(base_track, track):
                 directory location of the track file.
                 only respected if dir_name is set.
                 
-            bin_format (Optional, default="i")
-                the format to store the data in. 
+            bin_format (Optional, default=None, collect from data if new=False)
+                the format to store the data in, 
                 This is the same format as the python array, so "i" = integer,
                 "f" = float
     
         """
         base_track.__init__(self, name, new, filename)
+        
+        if new: assert bin_format, 'if new=True you must specify a bin_format'
         
         if bin_format: # Change the bin_format of the db.
             self.meta_data["bin_format"] = bin_format
