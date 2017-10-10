@@ -23,13 +23,13 @@ import config
 import numpy
 import matplotlib.pyplot as plot
 
-TRACK_BLOCK_SIZE = 2000 # should go in opt, later
-CACHE_SIZE = 100000 # maximum number of blocks to keep in memory.
-# these are equivalent to about 800 Mb's of memory on a Fedora box
-# On a 2Gb machine it is still usable, less may be a problem.
-# needs to be tested on a Windows and MACOSX machine.
+from track import track # All the benefits of track. 
 
-class flat_track(base_track):
+TRACK_BLOCK_SIZE = 1000000 # should go in opt, and in META later, required on a per-flat basis.
+CACHE_SIZE = 100000 # maximum number of blocks to keep in memory.
+
+
+class flat_track(base_track, track):
     def __init__(self, name=None, new=False, filename=None, bin_format=None):
         """
         **Purpose**
@@ -138,7 +138,7 @@ class flat_track(base_track):
             self.__flush_cache()
         return(True)
 
-    def add_score(self, loc=None, chromosome=None, left=None, right=None, score=0, **kargs):
+    def add_score(self, loc=None, chromosome=None, left=None, right=None, score=0, all_in_mem=False, **kargs):
         """
         **Purpose**
             adds a already known score at a particular location (or span). This will overwrite any previously
@@ -195,7 +195,65 @@ class flat_track(base_track):
                     self.cache[blockID][local_pos] = score
                     #print local_pos, local_pos >= 0 and local_pos <= TRACK_BLOCK_SIZE
             #print self.cache[blockID]
-        self.__flush_cache() # I can go over the CACHE in this routine.
+        if not all_in_mem:
+            self.__flush_cache() # I can go over the CACHE in this routine.
+        # But putting this here means I don't have to hit the db every blockID
+        # Should help speed where I use a lot of new blocks.
+        return(None)
+
+    def add_chromosome_array(self, chromosome=None, arr=None):
+        '''
+        **Purpose**
+            Support for loading of complete chromosome arrays.
+            
+            This will overwrite any existing data.
+            
+        **Arguments**
+            chromsome (Required)
+                chromsome to insert array into 
+            
+            arr (Required)
+                a Python list of scores for the entire chromosome. Should start at position 0,
+                and extend for the complete chromosomes.
+        '''
+        assert chromosome, 'You must specify a chromosome'
+        assert arr, 'You must provide the chromsosome data as arr'
+        
+        chrom = chromosome    
+        lleft = 0
+        lright = len(arr)
+        
+        # Find the first non-zero value, and go from there.
+        left_most_block = int(abs(math.floor(lleft / self.block_size))) # bodge for now
+        right_most_block = int(abs(math.ceil((lright+1) / self.block_size)))
+
+        blocks_required = ["%s:%s" % (chrom, b) for b in xrange(left_most_block * self.block_size, right_most_block * self.block_size, self.block_size)]
+
+        for blockID in blocks_required:
+            #print blockID
+            #This routine should only be used at creation time, so we can assume a new block is required
+            self.__new_block(blockID) # all in mem.
+            
+            # block should now be on cache and accesable.
+            bleft = int(blockID.split(":")[1])
+            bright = bleft + TRACK_BLOCK_SIZE
+            self.cache[blockID] = array(self.bin_format, arr[bleft:bright])
+            # modify the data
+            #print blockID, lleft, lright, bleft, bright
+            '''
+            for pos in xrange(bleft, bright): # iterate through the array.
+                local_pos = pos - bleft # pos in blockID coords
+                # some funny stuff here:
+                # right is inc'd by 1
+                # as that is what is usually expected from 10-20.
+                # (i.e. coords are NOT 0-based and are closed).
+                if pos >= 0 and pos < lright: #stop it falling of arr
+                    self.cache[blockID][local_pos] = arr[pos]
+            
+                #print local_pos, local_pos >= 0 and local_pos <= TRACK_BLOCK_SIZE
+            '''
+            #print self.cache[blockID]
+        self.__flush_cache(all=True) # Flush everything to help with memory usage
         # But putting this here means I don't have to hit the db every blockID
         # Should help speed where I use a lot of new blocks.
         return(None)
@@ -233,7 +291,7 @@ class flat_track(base_track):
         if result: # has a block already, modify it.
             # update the block data.
 
-            c.execute("UPDATE data SET array=? WHERE blockID=?", (self._format_data(data), blockID))
+            c.execute("UPDATE data SET array=? WHERE blockID=?", (d, blockID))
         else:
             c.execute("INSERT INTO data VALUES (?, ?)", (blockID, d))
         c.close()
@@ -256,13 +314,13 @@ class flat_track(base_track):
 
         return(False)
 
-    def __flush_cache(self):
+    def __flush_cache(self, all=False):
         """
         check the cache is not over the size limit. If it is, take the last
         n>CACHE_SIZE entries commit to the db.
 
         """
-        while len(self.cacheQ) > CACHE_SIZE:
+        while len(self.cacheQ) > CACHE_SIZE or all and self.cacheQ:
             blockID = self.cacheQ.pop()
             self.__commit_block(blockID, self.cache[blockID])
             del self.cache[blockID]
@@ -299,7 +357,7 @@ class flat_track(base_track):
             strand (Optional, default = "+")
                 strand, but only valid for stranded tracks
                 
-            mask_zero (Optional, defaule=False)
+            mask_zero (Optional, default=False)
                 return a masked numpy array with zeros masked out.
 
         **Returns**
@@ -368,7 +426,7 @@ class flat_track(base_track):
 
         base_track.finalise(self)
         
-    def pileup(self, genelists=None, filename=None, bandwidth=None, average=True, 
+    def pileup(self, genelists=None, filename=None, window_size=None, average=True, 
         background=None, mask_zero=False, respect_strand=True, **kargs):
         """
         **Purpose**
@@ -381,7 +439,7 @@ class flat_track(base_track):
             filename
                 The filename to save the image to
                 
-            bandwidth (Optional, default=None)
+            window_size (Optional, default=None)
                 the number of base pairs to use around the centre of the location
                 If set to None then it will use the location as specified. 
         
@@ -441,28 +499,28 @@ class flat_track(base_track):
         ax = fig.add_subplot(111)
         
         x = None
-        if bandwidth:
-            x = numpy.arange(bandwidth*2) - int((bandwidth*2)/2)
+        if window_size:
+            x = numpy.arange(window_size*2) - int((window_size*2)/2)
         
-        if bandwidth:
-            loc_span = bandwidth*2
+        if window_size:
+            loc_span = window_size*2
         else:
             loc_span = len(genelists[0].linearData[0]["loc"]) # I have to assume all locs are identical.
         
         for gl in genelists:
-            if bandwidth:
-                hist = numpy.zeros(bandwidth*2)
-                counts = numpy.zeros(bandwidth*2)
+            if window_size:
+                hist = numpy.zeros(window_size*2)
+                counts = numpy.zeros(window_size*2)
             else:
                 x = numpy.arange(loc_span) - int(loc_span/2)
                 hist = numpy.zeros(loc_span)
                 counts = numpy.zeros(loc_span) # used to get the average.
                 
             for i in gl:
-                if bandwidth:
+                if window_size:
                     l = i["loc"].pointify()
-                    l = l.expand(bandwidth)
-                    a = self.get(l)[0:bandwidth*2] # mask_zero is NOT asked of here. because I need to ignore zeros for the average calculation (below)
+                    l = l.expand(window_size)
+                    a = self.get(l)[0:window_size*2] # mask_zero is NOT asked of here. because I need to ignore zeros for the average calculation (below)
                 else:
                     a = self.get(i["loc"])[0:loc_span]
                 
@@ -493,9 +551,9 @@ class flat_track(base_track):
             
         bkgd = None
         if background:
-            if bandwidth:
-                bkgd = numpy.zeros(bandwidth*2)
-                counts = numpy.zeros(bandwidth*2)
+            if window_size:
+                bkgd = numpy.zeros(window_size*2)
+                counts = numpy.zeros(window_size*2)
             else:
                 bkgd = numpy.zeros(loc_span)
                 counts = numpy.zeros(loc_span)
@@ -504,10 +562,10 @@ class flat_track(base_track):
             p = progressbar(len(background))
             for i, back in enumerate(background):
                 for b in back:
-                    if bandwidth:
+                    if window_size:
                         l = b["loc"].pointify()
-                        l = l.expand(bandwidth)
-                        a = self.get(l)[0:bandwidth*2]
+                        l = l.expand(window_size)
+                        a = self.get(l)[0:window_size*2]
                     else:
                         a = self.get(b["loc"])[0:loc_span]
                     bkgd_items += 1
@@ -544,6 +602,8 @@ class flat_track(base_track):
 
         else:
             bkgd = None
+        
+        ax.axvline(0, ls=":", color="grey")
         
         leg = ax.legend()
         [t.set_fontsize(7) for t in leg.get_texts()]

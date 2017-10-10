@@ -23,16 +23,12 @@ DEALINGS IN THE SOFTWARE.
 
 -------------
 
-Modifications (mainly code clean-ups and some extra features) were added by 
-Andrew P. Hutchins and are included as part of glbase, also released under the MIT 
-license.
+Modifications were added by Andrew P. Hutchins and are included as part of glbase,
+also released under the MIT license
 
 """
 
-import tempfile
-import shutil
-import sys, os, timeit, math, textwrap
-import itertools
+import sys, os, timeit, math, textwrap, random, itertools
 from time import time
 
 import numpy as np
@@ -40,10 +36,10 @@ import scipy.spatial as spdist
 from scipy.sparse import csr_matrix
 from sklearn.decomposition import RandomizedPCA
 from sklearn.decomposition import PCA
+from sklearn.manifold import MDS
 from sklearn import neighbors
 from sklearn.neighbors import NearestNeighbors
 from sklearn.externals.joblib import Parallel, delayed
-from sklearn.externals.joblib import load, dump
 from matplotlib import pyplot as plt
 import matplotlib.gridspec as gridspec
 from matplotlib.colors import LogNorm
@@ -63,24 +59,29 @@ def chunk_based_bmu_find(x, y, Y2):
     dlen = x.shape[0]
     nnodes = y.shape[0]
     bmu = np.empty((dlen,2))
+    
     # it seems that small batches for large dlen is really faster: 
     # that is because of ddata in loops and n_jobs. for large data it slows down due to memory needs in parallel
     blen = min(50,dlen) 
-    i0 = 0;
+    i0 = 0
     d = None
     t = time()
-    while i0+1<=dlen:
-        Low =  (i0)
-        High = min(dlen,i0+blen)
+    npd = np.dot # Speedness
+    while i0+1 <= dlen:
+        Low = (i0) 
+        High = min(dlen,i0+blen)+1
+        
         i0 = i0+blen      
-        ddata = x[Low:High+1]
-        d = np.dot(y, ddata.T)
-        d *= -2
-        d += Y2.reshape(nnodes,1)
-        bmu[Low:High+1,0] = np.argmin(d, axis = 0)
-        bmu[Low:High+1,1] = np.min(d, axis = 0) 
+        ddata = x[Low:High]
+        
+        d = (npd(y, ddata.T) * -2) + Y2.reshape(nnodes, 1) # inline for hopeful numpy speedups
+        
+        bmu[Low:High,0] = np.argmin(d, axis=0)
+        bmu[Low:High,1] = np.min(d, axis=0) 
+        
         del ddata
         d = None
+        
     return bmu
 
 class SOM(object):   
@@ -103,7 +104,9 @@ class SOM(object):
         self.dlabel = False
 
     def config(self, threshold_value=False, digitize=False, nodenames=None, compnames=None, mapsize=None, 
-        CVrange=None, CVplot=None, initmethod='pca', **kargs):
+        CVrange=None, CVplot=None, initmethod='pca', seed=12345678, components=2,
+        init_whiten=True,
+        image_debug=False, **kargs):
         """
         **Purpose**
             configure the SOM, change options, etc.
@@ -133,9 +136,20 @@ class SOM(object):
             initmethod (Optional, default='pca')
                 select the initialisation method for the SOM.
                 
-                The default is pca, the other option is 'random'
+                The default is pca (sklearn RandomizedPCA)
                 
-                initmethod = ['random', 'pca']
+                fullpca uses the complete PCA model
+                
+                If the number of componenets (see below) is >2 then MDS is invoked to 
+                determine the final model.
+                
+                initmethod = ['random', 'pca', 'fullpca']
+            
+            init_whiten (Optional, default=True)
+                whiten (convert to unit variance) the data before doing the initialization specified above
+            
+            components (Optional, default=2)
+                The number of PCA/MDS/etc components to use for the initialisation
                 
             CVplot (Optional, default=False)
                 Provide a filename for the CV plot, showing the Coefficient of variance (y axis)
@@ -148,17 +162,30 @@ class SOM(object):
             CVrange (Optional, default=False)
                 Only keep genes within the CV ranges specified using [low, high]
             
+            seed (Optional, default=12345678)
+                a seed for random number usage. 
+            
+            image_debug (Optional, default=False)
+                Output a series of debug images showing the SOM and net training at each iteration (SLOW!)
+                
+                Set to a string for the path to put the images into.
+            
             # Other (currently private) settings:
             algos = ['seq','batch']
             all_neigh = ['gaussian','manhatan','bubble','cut_gaussian','epanechicov' ]
             alfa_types = ['linear','inv','power']
         """
+        random.seed(seed)
+        self.seed = seed
         self.initmethod = initmethod
         self.algtype = 'batch'
         self.alfaini = .5
         self.alfafinal = .005
         self.neigh = 'gaussian'
         self.mapsize = mapsize
+        self.image_debug = image_debug
+        self.components = components
+        self.init_whiten = init_whiten
 
         if not compnames:
             self.compnames = self.parent.getConditionNames()
@@ -221,7 +248,7 @@ class SOM(object):
             
             config.log.info("som.config: CV range sliced %s rows, %s remaining" % (len(self.parent)-self.data_raw.shape[0], self.data_raw.shape[0]))
         
-            print self.data_raw.shape, len(self.dlabel)
+            #print self.data_raw.shape, len(self.dlabel)
         
         self.data = np.copy(self.data_raw)       # get after CV slicing  
         # I'm still not sure abourt the exact point raw_data should be stored. 
@@ -238,7 +265,7 @@ class SOM(object):
                 self.data *= digitize
                 self.data = np.ceil(self.data) # always move up as the zeros have already been set
                 
-        self.data = normalize(self.data, method='var')
+        self.data = normalize(self.data, method='var') # Already unit normalized?!
  
         self.finalise_config()
     
@@ -317,7 +344,7 @@ class SOM(object):
         """
         cd = self.nnodes
         UD2 = np.zeros((cd, cd))
-        for i in range(cd):
+        for i in xrange(cd):
             UD2[i,:] = self.grid_dist(i).reshape(1,cd)
         self.UD2 =  UD2
             
@@ -342,6 +369,9 @@ class SOM(object):
             Initialise the map
             
         """
+        valid_methods = ('random', 'pca', 'fullpca', 'mds')
+        assert self.initmethod in valid_methods, "%s' is not a valid init method, shoose one of '%s'" % (self.initmethod, ', '.join(valid_methods))
+        
         dim = 0
         n_nod = 0
         if self.initmethod == 'random':
@@ -349,13 +379,12 @@ class SOM(object):
             mn = np.tile(np.min(self.data, axis=0), (self.nnodes,1))
             mx = np.tile(np.max(self.data, axis=0), (self.nnodes,1))
             self.codebook = mn + (mx-mn)*(np.random.rand(self.nnodes, self.dim))
-        elif self.initmethod == 'pca':
+        elif self.initmethod in ('pca', 'fullpca'):
             codebooktmp = self.lininit() #it is based on two largest eigenvalues of correlation matrix
             self.codebook = codebooktmp
-        else:
-            print 'please select a corect initialization method'
-            print 'set a correct one in SOM. current SOM.initmethod:  ', self.initmethod
-            print "possible init methods:'random', 'pca'"
+        elif self.initmethod == 'mds':
+            codebooktmp = self.lininit() 
+            self.codebook = codebooktmp
      
     def train(self, trainlen=None, n_job=1, verbose=True):
         """
@@ -371,22 +400,15 @@ class SOM(object):
         dlen = self.dlen
         dim = self.dim
         mapsize = self.mapsize
-        mem = np.log10(dlen*nnodes*dim)
-        
-        #print 'data len is %d and data dimension is %d' % (dlen, dim)
-        #print 'map size is %d, %d' %(mapsize[0], mapsize[1])
-        #print 'array size in log10 scale' , mem 
-        #print 'nomber of jobs in parallel: ', n_job 
-        #######################################
-        
+                        
         #initialization
         if verbose:
-            print 'initialization method = %s, initializing..' % getattr(self, 'initmethod')
+            print 'initialization method = %s' % self.initmethod
             t0 = time()
             
         self.init_map()
         if verbose:
-            print 'initialization done in %f seconds' % round(time()-t0 , 3 )
+            print 'initialization done in %f seconds' % round(time()-t0 , 3)
         
         self.batchtrain(njob=n_job, phase='rough', verbose=verbose)
         self.batchtrain(njob=n_job, phase='finetune', verbose=verbose)
@@ -395,16 +417,15 @@ class SOM(object):
         if verbose: 
             ts = round(time() - t0, 3)
             print
-            print "Total time elapsed: %.1f seconds" %ts
-            print "final quantization error: %.2f" %err 
+            print "Total time elapsed: %.1f seconds" % ts
+            print "final quantization error: %.2f" % err 
     
-    #to project a data set to a trained SOM and find the index of bmu 
-    #It is based on nearest neighborhood search module of scikitlearn, but it is not that fast.
     def project_data(self, data, k=1):
         """
         **Purpose**
             Project new data into an exisiting SOM
-        
+            to project a data set to a trained SOM and find the index of bmu 
+            It is based on nearest neighborhood search module of scikitlearn, but it is not that fast.
         """
         codebook = self.codebook
         data_raw = self.data_raw
@@ -442,18 +463,21 @@ class SOM(object):
         predicted_labels = clf.kneighbors(data[:,index], n_neighbors=k, return_distance=True)
         return(predicted_labels)
 
-    def __get_all_genes(self):
+    def __get_all_genes(self, codebook=None):
         """
         (Internal)
         
         Wrapper for the SOM projection. returns a bunch of stuff used in several functions.
         """
+        if codebook is None:
+            codebook = self.codebook
+        
         data_tr = self.data_raw
         proj = self.project_data(data_tr)
         msz = self.mapsize
         coord = self.ind_to_xy(proj)
 
-        aa = [[0]] * len(self.codebook) 
+        aa = [[0]] * len(codebook) 
         res = {}
         for n, i in enumerate(coord):
             if (i[0], i[1]) not in res:
@@ -529,7 +553,7 @@ class SOM(object):
         config.log.info("som.hit_map: Saved '%s'" % real_filename)
 
     def threshold_SOM_nodes(self, normalised_threshold=0.7, text_size=7, filename=None, 
-        alternate_soms=None, som_names=None,
+        alternate_soms=None, som_names=None, img_number_of_cols=5,return_masks=False,
         **kargs):
         """
         **Purpose**
@@ -544,6 +568,9 @@ class SOM(object):
             filename (Optional)
                 save the SOM map with thresholding to a file      
             
+            img_number_of_cols (Optional, default=5)
+                The number of columns of SOMs to plot.
+            
             text_size (Optional, default=7)
                 tet size for the SOM title. Only used if filename is also used.
                 
@@ -554,6 +581,14 @@ class SOM(object):
                 alternatively you can provide your own SOM(s) in a dictionary to threshold out
                 
                 the dict should look like: {name: SOM, ...}
+                
+            return_masks (Optional, default=False)
+                By default threshold_SOM_nodes returns a set of genelists containing all of the data in
+                the thresholds. If return_masks=True then instead threshold_SOM_nodes 
+                returns the mask arrays in a dictionary:
+                {'som_name': numpy.array(mask), ...}
+                Each mask is in the same format and orientation as the SOMs, with a 1 for 
+                thresholded and 0 for not thresholded.
         """
         soms_to_do = None
         if alternate_soms:
@@ -562,7 +597,7 @@ class SOM(object):
             som_order = soms_to_do.keys()
             som_order.sort() # Try to be helpful
         elif som_names:
-            codebook = denormalize_by(self.data_raw, self.codebook)
+            codebook = denormalize_by(self.data_raw, self.codebook) # This is wrong?
             if not isinstance(som_names, list):
                 som_names = [som_names]
             som_indeces = [self.compnames.index(i) for i in som_names]
@@ -579,15 +614,18 @@ class SOM(object):
         
         if filename:
             # Work out columns, etc
-            no_rows = len(soms_to_do)/10 + 1
+            no_rows = len(soms_to_do)/img_number_of_cols + 1
             if no_rows <=1:
                 no_cols = len(soms_to_do)
             else:
-                no_cols = 10
+                no_cols = img_number_of_cols
  
-            fig = self.draw.getfigure(size=(no_cols*2.4, no_rows*1.5))
+            h = .2
+            w = .001
+            fig = self.draw.getfigure(size=(no_cols*3.0*(1+w), no_rows*1.5*(1+h)))
         
         res = {}
+        masks = {} # In case user wants the masks
         
         for som_index, som in enumerate(som_order):
             # Work out the actual_thresold for each SOM
@@ -615,7 +653,8 @@ class SOM(object):
                 ax = fig.add_subplot(no_rows, no_cols*2, (som_index*2)+1) # Top is nromal SOM, bottom is the threshold
                 ax.imshow(soms_to_do[som].reshape(self.mapsize[0], self.mapsize[1])[::-1], 
                     extent=[0, self.mapsize[0], 0, self.mapsize[1]],
-                    aspect="auto", origin='lower')
+                    aspect="auto", origin='lower',
+                    interpolation=config.get_interpolation_mode())
                 ax.set_xticklabels('')
                 ax.set_yticklabels('')
                 ax.set_xlim(0, self.mapsize[0]-1)
@@ -625,27 +664,33 @@ class SOM(object):
                 
                 ax = fig.add_subplot(no_rows, no_cols*2, (som_index*2)+2) # Top is nromal SOM, bottom is the threshold
                 ax.imshow(mask.reshape(self.mapsize[0], self.mapsize[1])[::-1], 
-                    extent=[0, self.mapsize[0], 0, self.mapsize[1]], cmap=cm.binary_r,
-                    aspect="auto", origin='lower', interpolation='none')
+                    extent=[0, self.mapsize[0], 0, self.mapsize[1]], 
+                    cmap=cm.binary_r,
+                    aspect="auto", origin='lower', 
+                    interpolation=config.get_interpolation_mode())
                 ax.set_xticklabels('')
                 ax.set_yticklabels('')
                 ax.set_xlim(0, self.mapsize[0]-1)
                 ax.set_ylim(0, self.mapsize[1]-1)
                 ax.tick_params(top="off", bottom="off", left="off", right="off")
             res[som] = res_this_som
- 
+            masks[som] = mask.reshape(self.mapsize[0], self.mapsize[1])[::-1] # Be helpful
+    
         # repack into genelists
-        newres = {}
-        for k in res:
-            newres[k] = genelist()
-            if res[k]: # sometimes res can be empty?
-                newres[k].load_list([{self.node_names_key_name: i} for i in res[k]])
+        if not return_masks:
+            newres = {}
+            for k in res:
+                newres[k] = genelist()
+                if res[k]: # sometimes res can be empty?
+                    newres[k].load_list([{self.node_names_key_name: i} for i in res[k]])
  
         if filename:
-            fig.tight_layout()
-            plt.subplots_adjust(hspace=0.4,wspace=0.02)
-            actual_filename = self.draw.savefigure(fig, filename)
+            #fig.tight_layout()
+            plt.subplots_adjust(hspace=h,wspace=w)
+            actual_filename = self.draw.savefigure(fig, filename, bbox_inches='tight') # bbox is not the same as tight_layout
             config.log.info('som.threshold_SOM_nodes: Saved "%s"' % actual_filename)
+        if return_masks:
+            return(masks)
         return(newres)            
         
     def predict_by(self, data, Target, K=5, wt='distance'):
@@ -746,15 +791,15 @@ class SOM(object):
         codebook = self.codebook
         data_raw = self.data_raw
         dim = codebook.shape[1]
-        ind = np.arange(0,dim)
+        ind = np.arange(0, dim)
         indX = ind[ind != Target]
         X = codebook[:,indX]
         Y = codebook[:,Target]
         n_neighbors = K
-        clf = neighbors.KNeighborsRegressor(n_neighbors, weights = 'distance')
+        clf = neighbors.KNeighborsRegressor(n_neighbors, weights='distance')
         clf.fit(X, Y)
         # the codebook values are all normalized
-        #we can normalize the input data based on mean and std of original data
+        # we can normalize the input data based on mean and std of original data
         dimdata = data.shape[1]
         if dimdata == dim: 
             data[:,Target] == 0   
@@ -768,19 +813,19 @@ class SOM(object):
         sum_ = np.sum(weights,axis=1)
         weights = weights/sum_[:,np.newaxis]
         labels = np.sign(codebook[ind,Target])
-        labels[labels>=0]=1
+        labels[labels>=0] = 1
         
         #for positives
         pos_prob = labels.copy()
-        pos_prob[pos_prob<0]=0
+        pos_prob[pos_prob<0] = 0
         pos_prob = pos_prob*weights
-        pos_prob = np.sum(pos_prob,axis=1)[:,np.newaxis]
+        pos_prob = np.sum(pos_prob, axis=1)[:,np.newaxis]
         
         #for negatives
         neg_prob = labels.copy()
-        neg_prob[neg_prob>0]=0
-        neg_prob = neg_prob*weights*-1
-        neg_prob = np.sum(neg_prob,axis=1)[:,np.newaxis]
+        neg_prob[neg_prob>0] = 0
+        neg_prob = neg_prob*weights * -1
+        neg_prob = np.sum(neg_prob, axis=1)[:,np.newaxis]
         
         #Predicted_values = clf.predict(data)
         #Predicted_values = denormalize_by(data_raw[:,Target], Predicted_values)
@@ -810,34 +855,7 @@ class SOM(object):
             S_  = np.sum(np.exp(weights),axis=1)[:,np.newaxis]
             weights = np.exp(weights)/S_
             
-#           sum_ = np.sum(weights,axis=1)
-#           weights = weights/sum_[:,np.newaxis]
             return weights , ind    
-
-# 
-#         codebook = getattr(self, 'codebook')
-#         data_raw = getattr(self,'data_raw')
-#         dim = codebook.shape[1]
-#         ind = np.arange(0,dim)
-#         X = codebook[:]
-#         Y = codebook[:,Target]
-#         n_neighbors = K
-#         clf = neighbors.KNeighborsRegressor(n_neighbors, weights = wt)
-#         clf.fit(X, Y)
-#         # the codebook values are all normalized
-#         #we can normalize the input data based on mean and std of original data
-#         dimdata = data.shape[1]
-#         if dimdata == dim: 
-#             data[:,Target] == 0   
-#             data = normalize_by(data_raw, data, method='var')
-#             data = data[:,indX]
-#         elif dimdata == dim -1:          
-#             data = normalize_by(data_raw[:,indX], data, method='var')       
-#             #data = normalize(data, method='var')
-#         Predicted_values = clf.predict(data)
-#         Predicted_values = denormalize_by(data_raw[:,Target], Predicted_values)
-#         return Predicted_values
-    
     
     def para_bmu_find(self, x, y, njb=1):
         dlen = x.shape[0]
@@ -859,8 +877,6 @@ class SOM(object):
         """
         (SOM Internal)
         **Purpose**
-            ?
-            
         #First finds the Voronoi set of each node. It needs to calculate a smaller matrix. 
         Super fast comparing to classic batch training algorithm
         # it is based on the implemented algorithm in som toolbox for Matlab by 
@@ -924,21 +940,15 @@ class SOM(object):
         ms = max(mapsize[0],mapsize[1])
         if mn == 1:
             ms = ms/5.0
-            
-        #Based on somtoolbox, Matlab
-        #case 'train',    sTrain.trainlen = ceil(50*mpd);
-        #case 'rough',    sTrain.trainlen = ceil(10*mpd); 
-        #case 'finetune', sTrain.trainlen = ceil(40*mpd);
-        
+                        
         if phase == 'rough':
             #training length
-            trainlen = int(np.ceil(10*mpd))
+            trainlen = int(np.ceil(40*mpd))
             #radius for updating
             if initmethod == 'random':
-                #trainlen = int(np.ceil(15*mpd))
                 radiusin = max(1, np.ceil(ms/2.))
                 radiusfin = max(1, radiusin/8.)
-            elif initmethod == 'pca':
+            elif initmethod in ('pca', 'fullpca', 'mds'):
                 radiusin = max(1, np.ceil(ms/8.))
                 radiusfin = max(1, radiusin/4.)
                 
@@ -947,13 +957,12 @@ class SOM(object):
             trainlen = int(np.ceil(40*mpd))
             #radius for updating
             if initmethod == 'random':
-                #trainlen = int(np.ceil(50*mpd))
                 radiusin = max(1, ms/8.) #from radius fin in rough training  
                 radiusfin = max(1, radiusin/16.)
-            elif initmethod == 'pca':
-                radiusin = max(1, np.ceil(ms/8.)/4)
-                radiusfin = 1#max(1, ms/128)        
-    
+            elif initmethod in ('pca', 'fullpca', 'mds'):
+                radiusin = max(1, np.ceil(ms/8.)/2)
+                radiusfin = 1
+                
         radius = np.linspace(radiusin, radiusfin, trainlen)
         ##################################################    
     
@@ -969,19 +978,17 @@ class SOM(object):
             print '%s training...' % phase
             print 'radius_ini: %.2f, radius_final: %.2f, trainlen: %d' %(radiusin, radiusfin, trainlen)
         
-        for i in range(trainlen):
+        for i in xrange(trainlen):
             #in case of Guassian neighborhood
             H = np.exp(-1.0*UD2/(2.0*radius[i]**2)).reshape(nnodes, nnodes)
-            t1 = time()
             bmu = None
             bmu = self.para_bmu_find(self.data, New_Codebook_V, njb=njob)
-            
+                                    
             #updating the codebook
-            t2 = time()
-            New_Codebook_V = self.update_codebook_voronoi(self.data, bmu, H, radius)
-            #print 'updating nodes: ', round (time()- t2, 3)            
+            New_Codebook_V = self.update_codebook_voronoi(self.data, bmu, H, radius)        
+                            
             if verbose:
-                print "Iteration: %d, elapsed time: %.2f, quantization error: %.2f " % (i+1, round(time()-t1, 3), np.mean(np.sqrt(bmu[1] + X2)))  
+                print "Iteration: %d, quantization error: %.2f" % (i+1, np.mean(np.sqrt(bmu[1] + X2)))  
             
         self.codebook = New_Codebook_V
         bmu[1] = np.sqrt(bmu[1] + X2)
@@ -1048,7 +1055,7 @@ class SOM(object):
             print 'please consider the above mentioned errors'
             return np.zeros((rows,cols)).ravel()
         
-    def view_2d(self, text_size,which_dim='all', what='codebook'):
+    def view_2d(self, text_size, which_dim='all', what='codebook'):
         """
         **Purpose**
             ?
@@ -1060,7 +1067,7 @@ class SOM(object):
                 data_raw = self.data_raw
                 codebook = denormalize_by(data_raw, codebook)
             else:
-                print 'first initialize codebook'
+                print 'First initialize codebook'
                 
             if which_dim == 'all':
                 dim = self.dim
@@ -1142,7 +1149,7 @@ class SOM(object):
 
         dist = pdist(codebook, metric="euclidean")
         link = linkage(dist, 'complete', metric="euclidean")
-        a = dendrogram(link, orientation='right', labels=self.compnames)
+        a = dendrogram(link, orientation='left', labels=self.compnames)
 
         ax.set_frame_on(False)
         ax.set_xticklabels("")
@@ -1163,6 +1170,7 @@ class SOM(object):
                 filename to save the image to.
             
             text_size
+                font size for the title on each SOM
             
             which_dim (Optional, default='all')
                 ?
@@ -1180,11 +1188,13 @@ class SOM(object):
             ratio = float(dim)/float(dim)
             ratio = np.max((.35,ratio))
             sH, sV = 16,16*ratio*1
+            
         elif type(which_dim) == int: 
             dim = 1
             indtoshow = np.zeros(1)
             indtoshow[0] = int(which_dim)
             sH, sV = 6,6
+            
         elif type(which_dim) == list:
             max_dim = codebook.shape[1]
             dim = len(which_dim)
@@ -1216,12 +1226,12 @@ class SOM(object):
             if grid:
                 pl = plt.pcolor(mp[::-1])
             else:
-                plt.imshow(mp[::-1])
+                plt.imshow(mp[::-1], interpolation=config.get_interpolation_mode())
                 plt.axis('off')
         
             if text:
                 print ind, self.compnames[ind]
-                plt.title("\n".join(textwrap.wrap(self.compnames[ind], 22)))
+                plt.title("\n".join(textwrap.wrap(self.compnames[ind], 19)))
                 font = {'size': text_size}
                 plt.rc('font', **font)
             
@@ -1232,7 +1242,7 @@ class SOM(object):
             ax.yaxis.set_ticks([i for i in range(0,msz0)])
             ax.xaxis.set_ticklabels([])
             ax.yaxis.set_ticklabels([])
-            ax.grid(True,linestyle='-', linewidth=0.5,color='k')
+            #ax.grid(True,linestyle='-', linewidth=0.5,color='k')
         plt.subplots_adjust(hspace=h,wspace=w)
 
         if filename:    
@@ -1243,52 +1253,88 @@ class SOM(object):
     def lininit(self):
         """
         **Purpose**
-            ?
+            Initialise the seed network using PCA, RanomizedPCA or MDS when PC>2.
         """
-        #X = UsigmaWT
-        #XTX = Wsigma^2WT
-        #T = XW = Usigma #Transformed by W EigenVector, can be calculated by 
-        #multiplication PC matrix by eigenval too
-        #Furthe, we can get lower ranks by using just few of the eigen vevtors
-        #T(2) = U(2)sigma(2) = XW(2) ---> 2 is the number of selected eigenvectors
+        # X = UsigmaWT
+        # XTX = Wsigma^2WT
+        # T = XW = Usigma #Transformed by W EigenVector, can be calculated by 
+        # multiplication PC matrix by eigenval too
+        # Further, we can get lower ranks by using just few of the eigen vevtors
+        # T(2) = U(2)sigma(2) = XW(2) ---> 2 is the number of selected eigenvectors
         # This is how we initialize the map, just by using the first two first eigen vals and eigenvectors
         # Further, we create a linear combination of them in the new map by giving values from -1 to 1 in each 
-        #Direction of SOM map
+        # Direction of SOM map
         # it shoud be noted that here, X is the covariance matrix of original data
     
-        msize =  self.mapsize
+        msize = self.mapsize
         rows = msize[0]
         cols = msize[1]
         nnodes = self.nnodes
     
         if np.min(msize) > 1:
             coord = np.zeros((nnodes, 2))
-            for i in range(0,nnodes):
+            for i in xrange(0, nnodes):
                 coord[i,0] = int(i/cols) #x
                 coord[i,1] = int(i%cols) #y
-            mx = np.max(coord, axis = 0)
-            mn = np.min(coord, axis = 0)
+            mx = np.max(coord, axis=0)
+            mn = np.min(coord, axis=0)
             coord = (coord - mn)/(mx-mn)
             coord = (coord - .5)*2
-            data = self.data
-            me = np.mean(data, 0)
-            data = (data - me)
+            
+            #data = np.copy(self.data)
+            me = np.mean(self.data, 0)
+            #data = (data - me)
             codebook = np.tile(me, (nnodes,1))
-            pca = RandomizedPCA(n_components=2) #Randomized PCA is scalable
-            #pca = PCA(n_components=2)
-            pca.fit(data)
-            eigvec = pca.components_
-            eigval = pca.explained_variance_
-            norms = np.sqrt(np.einsum('ij,ij->i', eigvec, eigvec))
-            eigvec = ((eigvec.T/norms)*eigval).T; eigvec.shape
-
-            for j in range(nnodes):
-                for i in range(eigvec.shape[0]):
-                    codebook[j,:] = codebook[j, :] + coord[j,i]*eigvec[i,:]
-            return np.around(codebook, decimals = 6)    
+        
+            if isinstance(self.components, int):
+                max_comp = self.components
+            elif isinstance(self.components, list):
+                max_comp = max(self.components)
+            else:
+                raise AssertionError, 'components must be either an integer or a list'
+            
+            if self.initmethod in ('pca', 'fullpca'):
+                if self.initmethod == 'pca':
+                    pca = RandomizedPCA(n_components=max_comp, random_state=self.seed, whiten=self.init_whiten) #Randomized PCA is scalable
+                elif self.initmethod == 'fullpca':
+                    pca = PCA(n_components=max_comp, whiten=self.init_whiten) 
+                
+                # Note that the init is done on the untransformed as the scipy implementation whitens and centers.
+                eigvec = pca.fit_transform(self.data_raw.T) # see mds.py for transpose orders                
+                if isinstance(self.components, list): # get specific PCs
+                    eigvec = np.array([eigvec[:,c-1] for c in self.components]).T
+                
+                eigval = pca.explained_variance_      
+                        
+            if self.components >2: 
+                config.log.info('Invoked MDS as PCs>2')
+                # new code
+                mds = MDS(n_components=2, n_jobs=1, n_init=20, verbose=0, random_state=self.seed) # I make this deterministic
+                eigvec = mds.fit_transform(eigvec) # Not eigen values or vectors, but names maintained for code clarity
+                eigval = mds.stress_ # For the normalization
+                
+                if self.image_debug:
+                    self.draw.unified_scatter(self.compnames, eigvec[:, 0], eigvec[:, 1], x=1, y=2, filename="%s_md.png" % (self.image_debug,), 
+                        mode='MDS ', squish_scales=True)
+                eigvec = eigvec.T # transpose after the draw call above
+            
+            if self.image_debug:
+                fig = plt.figure()
+                ax = fig.add_subplot(111)
+                ax.scatter(eigvec[0], eigvec[1])
+                fig.savefig('%s_init_int.png' % self.image_debug)
+                self.eigvec = eigvec
+                        
+            for j in xrange(nnodes):
+                for i in xrange(eigvec.shape[0]):
+                    codebook[j,:] = codebook[j, :] + coord[j,i] * eigvec[i,:]
+            
+            return np.around(codebook, decimals=6)   
+             
         elif np.min(msize) == 1:
+            raise AssertionError, 'mapsize too small'
             coord = np.zeros((nnodes, 1))
-            for i in range(0,nnodes):
+            for i in xrange(0,nnodes):
                 #coord[i,0] = int(i/cols) #x
                 coord[i,0] = int(i%cols) #y
             mx = np.max(coord, axis = 0)
@@ -1310,7 +1356,7 @@ class SOM(object):
             norms = np.sqrt(np.einsum('ij,ij->i', eigvec, eigvec))
             eigvec = ((eigvec.T/norms)*eigval).T; eigvec.shape
         
-            for j in range(nnodes):
+            for j in xrange(nnodes):
                 for i in range(eigvec.shape[0]):
                     codebook[j,:] = codebook[j, :] + coord[j,i]*eigvec[i,:]
             return np.around(codebook, decimals = 6)    
@@ -1342,3 +1388,22 @@ def denormalize_by(data_by, n_vect, n_method='var'):
     else:
         print 'data was not normalized before'
         return n_vect  
+
+if __name__ == '__main__':
+    import config
+    config.SKLEARN_AVAIL = True # SKlearn import strangeness
+    from expression import expression
+    from helpers import glload
+    import cProfile, pstats
+    
+    expn = glload('example/shared_raw_data/som_test_data_set.glb') 
+    expn += expn 
+    expn += expn # Dataset is too small
+    
+    # Can't call directly with expn.som
+    s = SOM(parent=expn, name=expn.name)
+    s.config(nodenames="name", threshold_value=math.log(10**1.6, 2), digitize=10)
+    
+    cProfile.run("s.train()", "profile.pro")
+    p = pstats.Stats("profile.pro")
+    p.strip_dirs().sort_stats("time").print_stats()

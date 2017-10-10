@@ -12,7 +12,14 @@ import shutil
 import tempfile
 
 import networkx as nx
-from pygraphviz import AGraph
+# To reimplement:
+try:
+    from pygraphviz import AGraph
+except ImportError:
+    try:
+        from graphviz import AGraph
+    except ImportError:
+        pass # to get here GRAPHVIZ must be True 
 
 from numpy import exp
 

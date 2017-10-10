@@ -3,7 +3,7 @@ Think of me as a delayed version of geneList
 
 * this is the only special case of geneList (delayed)
 """
-import sys, os, time, copy, csv
+import sys, os, time, copy, csv, gzip
 
 import config
 import utils
@@ -45,12 +45,15 @@ class delayedlist(genelist):
             as a tsv (tab-separated) rather than the default csv (comma
             separated).
 
+        gzip (Optional, default=False)
+            The input file is a gzip file. 
+
         format
             format specifier. (see docs... complex)
 
     """
     
-    def __init__(self, filename=None, format=None, force_tsv=False, **kargs):
+    def __init__(self, filename=None, format=None, force_tsv=False, gzip=False, **kargs):
         genelist.__init__(self) # no kargs though. I want the mpty version.
         
         self.__len_estimate = None
@@ -64,6 +67,7 @@ class delayedlist(genelist):
         self.fullpath = filename
         self.filehandle = None
         self.format = format # override default
+        self.gzip = gzip
 
         if force_tsv: 
             self.format["force_tsv"] = True
@@ -110,6 +114,7 @@ class delayedlist(genelist):
 
         assert kargs.has_key("peaklist") or kargs.has_key("genelist") or kargs.has_key("microarray"), "You must provide a genelist-like object"
         assert "loc_key" in kargs, "You must provide a 'loc_key' name"
+        assert 'logic' not in kargs, "the 'logic' system is not supported if one of the genelists is a delayedlist"
 
         # get the genelist object:
         if kargs.has_key("peaklist"): gene_list = kargs["peaklist"]
@@ -129,12 +134,19 @@ class delayedlist(genelist):
     def __len__(self):
         # I need to collect an estimate
         if not self.__len_estimate:
-            f = open(self.fullpath, 'rb')           
-            lines = 0
-            for line in f.xreadlines(): lines += 1
+            if not self.gzip:
+                f = open(self.fullpath, 'rb')           
+                lines = 0
+                for line in f.xreadlines(): lines += 1
 
-            self.__len_estimate = lines-1 # start from 0
-
+                self.__len_estimate = lines-1 # start from 0
+                
+            else: # gzipped file variant
+                f = gzip.open(self.fullpath, 'rb') # must be rb :(  
+                lines = 0
+                for line in f.readlines(): lines += 1
+                self.__len_estimate = lines-1 # start from 0
+                
         return(self.__len_estimate) # 
 
     def __getitem__(self, index):
@@ -213,7 +225,11 @@ class delayedlist(genelist):
         if self.filehandle: 
             self.filehandle.close()
 
-        self.filehandle = open(self.fullpath, "rU")
+        if not self.gzip:
+            self.filehandle = open(self.fullpath, "rU")
+        else:
+            self.filehandle = gzip.open(self.fullpath, 'rb') # must be rb :(
+        
         
         if "force_tsv" in self.format and self.format["force_tsv"]:
             self.__reader = csv.reader(self.filehandle, dialect=csv.excel_tab, quoting=csv.QUOTE_NONE)

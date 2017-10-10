@@ -2,6 +2,8 @@
 
 The new realtime system, basically a set of data preprocessors for expression objects
 
+Functions take a bunch of data and spit out an glbase expression object.
+
 """
 
 import csv, numpy, copy
@@ -39,8 +41,14 @@ def process_biomark(expression_sheets, sample_descriptor_tables, method, prefix=
             S48-A02,S48,Unknown,1,A02,Test,13.2827171910875,0.978859410170243,Pass,0.00542578158304924,
             ...
         
-        sample_descriptor_tables (Required)
+        sample_descriptor_tables (Required, or None)
+            If set to None, then it will attempt to collect the sample names and primer names from inside the 
+            expression_sheets
+        
             A set of descriptors that explain what the sample and primer names are. 
+            
+            If the primer and sample names are correctly labelled in the expression_sheets files,
+            then set this to None and it will collect that data from the expression_sheets
             
             It should look like this (a tsv file):
             
@@ -58,7 +66,7 @@ def process_biomark(expression_sheets, sample_descriptor_tables, method, prefix=
             Note that the expression_sheets and samples_descriptor_tables are paired, and 
             
             len(expression_sheets) == len(samples_descriptor_tables)
-        
+                    
         missing_data_ct (Optional, default=35)
             A Ct value to input into missing data values.
         
@@ -76,7 +84,7 @@ def process_biomark(expression_sheets, sample_descriptor_tables, method, prefix=
             'negative control' etc.
         
         convert_under_scores (Optional, default=False)
-            convert underscores in the sample names to spaces
+            convert underscores i.e. '_' in the sample names to spaces
         
         method (Required)
             The normalisation method required.
@@ -94,7 +102,8 @@ def process_biomark(expression_sheets, sample_descriptor_tables, method, prefix=
             Use the pass/fail calls from the BioMark.
             
     """
-    assert len(expression_sheets) == len(sample_descriptor_tables), "expression sheets and sample descriptors must be the same length"
+    if sample_descriptor_tables:
+        assert len(expression_sheets) == len(sample_descriptor_tables), "expression sheets and sample descriptors must be the same length"
     assert len(expression_sheets) == len(prefix), "'prefix' is not the same length as the expression sheets"
     assert method in valid_methods, "method '%s' not found" % method
     if method == "Buganim":
@@ -105,21 +114,47 @@ def process_biomark(expression_sheets, sample_descriptor_tables, method, prefix=
     
     data = {}
     
-    for expn_tab, desc_tab, prefix in zip(expression_sheets, sample_descriptor_tables, prefix):
-        sample_names, primer_names = load_descriptors(desc_tab, prefix, convert_under_scores)
-        expn = load_expn(expn_tab, missing_data_ct) # This already filters CtCall=Fail
+    if sample_descriptor_tables:
+        for expn_tab, desc_tab, prefix in zip(expression_sheets, sample_descriptor_tables, prefix):
+            sample_names, primer_names = load_descriptors(desc_tab, prefix, convert_under_scores)
+            expn = load_expn(expn_tab, missing_data_ct) # This already filters CtCall=Fail
         
-        # First I need to combine all of the expn tables
-        for s in expn:
-            sam_name = sample_names[s]
-            if sam_name not in data:
-                data[sam_name] = {}
-            for p in expn[s]:
-                prim_name = primer_names[p]
-                if prim_name not in data[sam_name]:
-                    data[sam_name][prim_name] = []
-                data[sam_name][prim_name] = data[sam_name][prim_name] + expn[s][p]
-
+            # First I need to combine all of the expn tables
+            for s in expn:
+                sam_name = sample_names[s]
+                if sam_name not in data:
+                    data[sam_name] = {}
+                for p in expn[s]:
+                    prim_name = primer_names[p]
+                    if prim_name not in data[sam_name]:
+                        data[sam_name][prim_name] = []
+                    data[sam_name][prim_name] = data[sam_name][prim_name] + expn[s][p]
+            primer_names = primer_names.values()
+    else: # descriptors are contained in the expression_sheets
+        for expn_tab, prefix in zip(expression_sheets, prefix):
+            #sample_names, primer_names = load_descriptors(desc_tab, prefix, convert_under_scores)
+            expn = load_expn(expn_tab, missing_data_ct, prefix=prefix, collect_sample_and_primer_names=True) # This already filters CtCall=Fail
+            
+            # First I need to combine all of the expn tables
+            primer_names = []
+            sample_names = []       
+            
+            for sam_name in expn:
+                if sam_name not in data:
+                    data[sam_name] = {}
+                if sam_name not in sample_names:
+                    sample_names.append(sam_name)
+                    
+                for prim_name in expn[sam_name]:
+                    if prim_name not in data[sam_name]:
+                        data[sam_name][prim_name] = []
+                    if prim_name not in primer_names:
+                        primer_names.append(prim_name)
+                    data[sam_name][prim_name] = data[sam_name][prim_name] + expn[sam_name][prim_name]
+                    
+    #print data
+    #print sample_names
+    #print primer_names
     config.log.info("process_biomark: Found %s samples" % len(data))         
     config.log.info("process_biomark: Found %s primers" % len(primer_names))  
     
@@ -189,7 +224,7 @@ def process_biomark(expression_sheets, sample_descriptor_tables, method, prefix=
     e.sort_conditions()
     return(e)
         
-def load_expn(filename, missing_data_ct):
+def load_expn(filename, missing_data_ct, prefix=None, collect_sample_and_primer_names=False):
     """
     (Internal)
     **Purpose**
@@ -208,10 +243,16 @@ def load_expn(filename, missing_data_ct):
                     # get the Ct
                     sample = row[1]
                     primer = row[4]
-                    Ct = float(row[6])
+                    if collect_sample_and_primer_names:
+                        Ct = float(row[7])
+                    else:
+                        Ct = float(row[6])
                     
-                    if row[8] == "Fail":
-                        Ct = float(missing_data_ct)
+                    if (row[8] == "Fail") or (row[10] == "Fail"): # Sometimes seen in column 10
+                        Ct = float(missing_data_ct)  
+                    
+                    if prefix: # prefix adding is done here if required
+                        sample = '%s-%s' % (prefix, sample)
                     
                     if sample not in table:
                         table[sample] = {}
@@ -269,7 +310,7 @@ def norm_buganim(data, sample_names, primer_names, control_genes, missing_data_c
     newsample_names = []
     for s in data:
         for g in control_genes:
-            if data[s][p] >= missing_data_ct:
+            if data[s][g] >= missing_data_ct:
                 mark_s_for_del.append(s)
             else:
                 newsample_names.append(s) # I will keep this sample
@@ -294,7 +335,7 @@ def norm_buganim(data, sample_names, primer_names, control_genes, missing_data_c
         #print sample_names
 
     # Gene filter part 2:
-    primer_names = set(primer_names.values()) # I only need the set of primer names now
+    primer_names = set(primer_names) # I only need the set of primer names now
     mark_p_for_del = []
     for p in set(primer_names) - set(control_genes):
         # Can sometimes have missing values:

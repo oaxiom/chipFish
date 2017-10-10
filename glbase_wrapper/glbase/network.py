@@ -276,7 +276,7 @@ class network:
                 A list of colours to use for the nodes. 
             
             labels (Optional, default=True)
-                draw labels?
+                draw labels on the nodes 
                 
             edges (Optional, default=True)
                 draw the edges between nodes
@@ -425,13 +425,17 @@ class network:
             node_size_t = ((node_size_t - mi) / (ma - mi)) * 2000 # puts it into range 0..1
             #print node_size_t
             node_size_t = [int(i) for i in node_size_t]
+        elif isinstance(node_size, int):
+            node_size_t = [node_size] * len(self.parent.getConditionNames())
+        else:
+            node_size_t = node_size
         
-            # I need to reorder the node_sizes to match the nodes.
-            # I don't know why this is required here, where commonly it is not required...
-            ss = dict(zip(self.parent.getConditionNames(), node_size_t))
-            node_size = []
-            for node in G.nodes():
-                node_size.append(ss[node])
+        # I need to reorder the node_sizes to match the nodes.
+        # I don't know why this is required here, where commonly it is not required...
+        ss = dict(zip(self.parent.getConditionNames(), node_size_t))
+        node_size = []
+        for node in G.nodes():
+            node_size.append(ss[node])
         
             if "node_cmap" in kargs and kargs["node_cmap"]:
                 cmap = cm.get_cmap(kargs["node_cmap"], 2001) 

@@ -9,7 +9,7 @@ degenerate character N=[ATCG]
 
 """
 
-import sys, os, numpy, string, csv, random, math, cPickle
+import sys, os, numpy, string, csv, random, math, cPickle, gzip
 import scipy.stats as stats
 from scipy.spatial.distance import pdist
 
@@ -405,7 +405,7 @@ def convertFASTAtoCSV(filename):
                 del entry
             entry = Node(line) # make a new node
 
-def convertFASTAtoDict(filename):
+def convertFASTAtoDict(filename, gzip_input=False):
     """
     load a fasta file and output it into a big list;
     expects filename to be correct
@@ -413,7 +413,10 @@ def convertFASTAtoDict(filename):
     """
     assert os.path.exists(filename), "filename %s not found" % filename
 
-    openfile = open(filename, "rU")
+    if gzip_input:
+        openfile = gzip.open(filename, "rb")
+    else:
+        openfile = open(filename, "rU")
 
     result = []
     #entry = {"seq": "", "name": "empty"}

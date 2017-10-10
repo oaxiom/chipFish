@@ -13,7 +13,14 @@ import tempfile
 import os, sys, numpy
 from bisect import insort, bisect
 import networkx as nx
-from pygraphviz import AGraph
+try:
+	from pygraphviz import AGraph
+except Exception:
+	try:
+		from graphviz import AGraph # Throw an error if failed here
+	except Exception:
+		pass # This is pretty bad I think...
+
 import matplotlib.pyplot as plot
 
 import data, evaluator, network, posterior, prior, result 

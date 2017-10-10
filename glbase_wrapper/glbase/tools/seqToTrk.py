@@ -14,7 +14,8 @@ from .. import genelist
 from .. import format
 from .. import config
 
-def seqToTrk(infilename=None, outfilename=None, name=None, stranded=True, format=format.minimal_bed, **kargs):
+def seqToTrk(infilename=None, outfilename=None, name=None, stranded=True, format=format.minimal_bed, 
+    gzip=False, **kargs):
     """
     **Purpose**
         Convert a list of genomic coordinates to a trk database (Actually an SQL
@@ -44,6 +45,9 @@ def seqToTrk(infilename=None, outfilename=None, name=None, stranded=True, format
         norm_factor (Optional, default = 1.0)
             An optional normalization factor. Data is multiplied by this number before display
 
+        gzip (Optional, default=False)
+            The input file(s) is a gzip file.
+
     **Returns**
         True on completion
         and a trk file in outfilename
@@ -67,7 +71,7 @@ def seqToTrk(infilename=None, outfilename=None, name=None, stranded=True, format
     s = time.time()
     for file in infilename:
         #config.log.info("Started %s -> %s" % (file, outfilename)) # Don't need as the delayedlist binding will put some output
-        seqfile = delayedlist(filename=os.path.realpath(file), format=format)
+        seqfile = delayedlist(filename=os.path.realpath(file), format=format, gzip=gzip)
         for item in seqfile:
             if stranded: 
                 if not __strand_checked: # purposely throw an error

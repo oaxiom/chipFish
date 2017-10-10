@@ -14,9 +14,16 @@ from copy import copy, deepcopy
 from itertools import chain
 from bisect import insort
 from collections import deque
-import networkx as nx
-from pygraphviz import AGraph
-
+import networkx as nx 
+# To reimplement:
+try:
+    from pygraphviz import AGraph
+except ImportError:
+    try:
+        from graphviz import AGraph
+    except ImportError:
+        pass # to get here GRAPHVIZ must be True 
+        
 import pydot
 import numpy as N
 

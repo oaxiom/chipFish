@@ -33,10 +33,11 @@ do_logging = True
 MATPLOTLIB_AVAIL = False # required
 NUMPY_AVAIL = False # required
 SCIPY_AVAIL = False # required
-SKLEARN_AVAIL = False # optional
+SKLEARN_AVAIL = False # required
 NETWORKX_AVAIL = False # optional
 PYDOT_AVAIL = False # optional
 NUMEXPR_AVAIL = False # Optional
+PYGRAPHVIZ_AVAIL = False # Optional
 
 # Some simple options for printing genelists
 NUM_ITEMS_TO_PRINT = 3 # number of items to print by default.
@@ -70,6 +71,12 @@ def change_draw_aspect(aspect):
     # This is often ignored though by the drawing methods themselves...
     assert size in ["normal", "square", "long"], "drawing aspect '%s' not found" % size
     draw_size = aspect
+
+def get_interpolation_mode():
+    # Get a suitable interpolator for non-aliased heatmaps and hist2d's, etc.
+    if draw_mode in ("svg", 'pdf', 'eps', 'ps'):
+        return('nearest') # Yes, it really is nearest. Otherwise it will go to something like bilinear
+    return('none')
 
 # -------------- set up the logger here.
 # You can access it using config.log()

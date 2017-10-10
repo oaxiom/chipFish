@@ -121,7 +121,7 @@ class motif:
     def __len__(self):
         return(len(self.seq))
 
-    def scan_sequence(self, seq=None, both_strands=True):
+    def scan_sequence(self, seq=None, both_strands=True, mismatches=0):
         """
         **Purpose**
             scan the word across a single sequence of DNA
@@ -132,6 +132,9 @@ class motif:
                 
             both_strands (Optional, default=True)
                 search both strands of the sequence?
+                
+            mismatches (Optional, default=0)
+                number of base pair mismatches to tolerate. 
         
         **Returns**
             A dictionary, containing the keys:
@@ -142,13 +145,24 @@ class motif:
             
         """
         assert seq, "You must provide a sequence"
-        
+
         if both_strands:
             seqs = {"+": seq.lower(), "-": utils.rc(seq.lower())}
         else:
             seqs = {"+": seq.lower()}
         
-        seq_len = len(seq)
+        if mismatches == 0:
+            return(self._scan_no_mismatch(seqs))
+        else:
+            return(self._scan_seqs_mismatches(seqs, mismatches))
+
+    def _scan_no_mismatch(self, seqs=None):
+        '''
+        Search path for no mismatches
+        
+        This could be done a lot faster I think...
+        '''
+        seq_len = len(seqs['+'])
         local_pos = []
         found_seqs = []
         strands = []
@@ -161,17 +175,78 @@ class motif:
             for m in i:
                 if strand == "+":
                     local_pos.append(m.start()) 
-                    found_seqs.append(seq[m.start():m.start()+len(self)])
+                    found_seqs.append(seqs['+'][m.start():m.start()+len(self)])
                     strands.append(strand)
                     
                 elif strand == "-":
                     st = abs(seq_len - m.end())
                     local_pos.append(st) # convert to get the 5' most
-                    found_seqs.append(utils.rc(seq[st:st+len(self)]))
+                    found_seqs.append(utils.rc(seqs['+'][st:st+len(self)]))
                     strands.append(strand)
                     
                 num_motifs += 1
         return({"num_motifs_found": num_motifs, "locations": local_pos, "sequences": found_seqs, "strands": strands})
+
+    def _getMismatchRegEx(self, mismatches):
+        """
+        return a list of regexs that take into account the
+        number of degenerate base pairs.
+        motif should be a degenerate acgtykrmn type sequence string.
+        """
+        rel = [regex_dict[bp] for bp in self.seq.lower()] # make the base regex to modify below.
+        seq = self.seq.lower()
+
+        rels = []
+        
+        if mismatches:
+            pos = 0
+            while pos < len(seq):
+                if seq[pos] == "n":
+                    pos += 1 # already a degenerate bp.
+                else:
+                    old = rel[pos]
+                    rel[pos] = regex_dict["n"]
+                    rels.append(re.compile("".join(rel)))
+                    #print "".join(rel)
+                    rel[pos] = old # replace the old bp.
+                    pos += 1 # move on a bp.
+
+        self.re = rels
+        return(rels)
+
+    def _scan_seqs_mismatches(self, seqs, mis_matches=1):
+        '''
+        Search path for mismatch searching
+        
+        At the moment this only reports the number of matched motifs
+        
+        '''
+        
+        assert mis_matches < 2, "more than 1 bp degenerate in the back search is not supported. Forcing 1 bp mismatch"
+        assert mis_matches > 0, 'At least 1 bp mismatch required'
+
+        rels = self._getMismatchRegEx(mis_matches)
+
+        temp_finds = []
+
+        for regex in rels:
+            for strand in seqs:
+                found = regex.finditer(seqs[strand])
+
+                if found:
+                    for match in found:
+                        # Positions are currently wrong as they are strand relative?
+                        temp_finds.append({"seq": seqs[strand][match.start():match.end()], "pos": "%s:%s:%s" % (strand, match.start(), match.end()) })
+        
+        found_list = []
+        # prune duplicate locations;
+        unique = []
+        for item in temp_finds: # keep only the first element.
+            if not item["pos"] in unique:
+                found_list.append(item["seq"])
+                unique.append(item["pos"])
+
+        return({"num_motifs_found": len(unique), "locations": None, "sequences": found_list, "strands": None})
                 
     def scan_sequences(self, seq_data=None, both_strands=True, keep_found_only=False):
         """
