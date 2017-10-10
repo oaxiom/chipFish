@@ -76,7 +76,6 @@ def bed_to_flat(infilename, outfilename, name, isPE, read_extend=None, gzip=None
     n = 0
     
     bin_format = 'i'
-    
     f = flat_track(filename=outfilename, new=True, name=name, bin_format=bin_format)
 
     config.log.info("Started %s -> %s" % (infilename, outfilename))

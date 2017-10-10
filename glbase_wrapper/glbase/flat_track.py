@@ -57,7 +57,7 @@ class flat_track(base_track, track):
             self._save_meta_data()
         else:
             self.bin_format = self.meta_data["bin_format"] # I unload this one 
-            
+        
         self.bin_format = bin_format
         self.bin_len = struct.calcsize(self.bin_format)
         self.block_size = TRACK_BLOCK_SIZE # size of the blocks
@@ -219,7 +219,7 @@ class flat_track(base_track, track):
         assert chromosome, 'You must specify a chromosome'
         assert arr, 'You must provide the chromsosome data as arr'
         
-        chrom = chromosome    
+        chrom = chromosome.replace('chr', '')
         lleft = 0
         lright = len(arr)
         
@@ -237,6 +237,7 @@ class flat_track(base_track, track):
             # block should now be on cache and accesable.
             bleft = int(blockID.split(":")[1])
             bright = bleft + TRACK_BLOCK_SIZE
+            #print blockID, bleft, bright, arr[bleft:bright], array(self.bin_format, arr[bleft:bright])
             self.cache[blockID] = array(self.bin_format, arr[bleft:bright])
             # modify the data
             #print blockID, lleft, lright, bleft, bright
@@ -252,6 +253,7 @@ class flat_track(base_track, track):
             
                 #print local_pos, local_pos >= 0 and local_pos <= TRACK_BLOCK_SIZE
             '''
+            #print
             #print self.cache[blockID]
         self.__flush_cache(all=True) # Flush everything to help with memory usage
         # But putting this here means I don't have to hit the db every blockID
@@ -320,7 +322,7 @@ class flat_track(base_track, track):
         n>CACHE_SIZE entries commit to the db.
 
         """
-        while len(self.cacheQ) > CACHE_SIZE or all and self.cacheQ:
+        while len(self.cacheQ) > CACHE_SIZE or (all and self.cacheQ):
             blockID = self.cacheQ.pop()
             self.__commit_block(blockID, self.cache[blockID])
             del self.cache[blockID]
@@ -375,7 +377,7 @@ class flat_track(base_track, track):
         blocks_required = ["%s:%s" % (loc["chr"], b) for b in xrange(left_most_block * self.block_size, right_most_block * self.block_size, self.block_size)]
 
         ret_array = array(self.bin_format, [])
-
+            
         for blockID in blocks_required:
             # this is the span location of the block
             block_loc = location(chr=blockID.split(":")[0], left=blockID.split(":")[1], right=int(blockID.split(":")[1])+self.block_size-1)
