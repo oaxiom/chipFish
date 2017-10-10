@@ -105,11 +105,14 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         config.log.error("glglobs cannot be written to")
 
     def compare(self, key=None, filename=None, method=None, delta=200, matrix_tsv=None, 
-        row_cluster=True, col_cluster=True, bracket=[-0.2, 1], **kargs):
+        row_cluster=True, col_cluster=True, bracket=None, 
+        jaccard=False, **kargs):
         """
         **Purpose**
             perform a square comparison between the genelists according
             to some sort of criteria.
+            
+            Performs Pearson correlation between the patterns of overlap
 
         **Arguments**
             key (string, required)
@@ -153,6 +156,10 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 
             col_font_size (Optional, default=8)
                 the size of the column labels (in points)
+
+            jaccard (Optional, default=False)
+                Use the Jaccard index https://en.wikipedia.org/wiki/Jaccard_index
+                instead of the (Classic) number of overlaps.
             
         **Result**
             returns the distance matrix if succesful or False|None if not.
@@ -167,8 +174,16 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         assert distance_score in valid_dist_score, "%s is not a valid distance metric" % (distance_score,)
 
         config.log.info("This may take a while, all lists are intersected by '%s' with '%s' key" % (method, key))
-
-        matrix = zeros( (len(self), len(self)) ) # 2D matrix.
+        
+        if jaccard:
+            if not bracket:
+                bracket = [0.0, 0.4]
+            # I need a float matrix? I thought the default is a float64?
+            matrix = zeros( (len(self), len(self)), dtype=numpy.float64) # 2D matrix.
+        else: # Integers will do fine to store the overlaps
+            if not bracket:
+                bracket = [-0.2, 1]
+            matrix = zeros( (len(self), len(self)) ) # 2D matrix.
 
         for ia, la in enumerate(self.linearData):
             for ib, lb in enumerate(self.linearData):
@@ -190,8 +205,12 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                     else:
                         res = 1 # If two lists collide to produce 0 hits it eventually ends up with nan 
                         # in the table which then buggers up the clustering below.
+                    if jaccard:
+                        res = (res / float(len(la) + len(lb) - res))
                     matrix[ia, ib] = res
-                
+        
+        #print matrix
+        
         # fill in the gaps in the triangle
         for ia, la in enumerate(self.linearData):
             for ib, lb in enumerate(self.linearData):
@@ -209,24 +228,24 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                     oh.write("\t%s" % matrix[ia,ib])
                 oh.write("\n")
             oh.close()
-
-        # data must be normalised to the maximum possible overlap.
-        for ia, la in enumerate(self.linearData):
-            for ib, lb in enumerate(self.linearData):
-                matrix[ia,ib] = (matrix[ia,ib] / min([len(la), len(lb)]))
                 
-        spear_result_table = zeros( (len(self), len(self)) ) # square matrix to store the data.
-        # convert the data to a spearmanr score.
-        for ia, this_col in enumerate(matrix):
-            for ib, other_col in enumerate(matrix):
-                if ia != ib:
-                    # I think pearson actually works the best as it is more sensitive to outliers. 
-                    #spear_result_table[ia,ib] = spearmanr(this_col, other_col)[0] # [0] = r score, [1] = p-value
-                    spear_result_table[ia,ib] = pearsonr(this_col, other_col)[0] # [0] = r score, [1] = p-value
-                else:
-                    spear_result_table[ia,ib] = 1.0
+        if jaccard:
+            result_table = matrix
+        else:
+            # data must be normalised to the maximum possible overlap.
+            for ia, la in enumerate(self.linearData):
+                for ib, lb in enumerate(self.linearData):
+                    matrix[ia,ib] = (matrix[ia,ib] / min([len(la), len(lb)]))
+            corr_result_table = zeros( (len(self), len(self)) ) # square matrix to store the data.
+            # convert the data to a pearson score.
+            for ia, this_col in enumerate(matrix):
+                for ib, other_col in enumerate(matrix):
+                    if ia != ib:
+                        corr_result_table[ia,ib] = pearsonr(this_col, other_col)[0] # [0] = r score, [1] = p-value
+                    else:
+                        corr_result_table[ia,ib] = 1.0 
 
-        result_table = spear_result_table
+            result_table = corr_result_table
 
         # need to add the labels and serialise into a doct of lists.
         dict_of_lists = {}
@@ -251,12 +270,21 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         else:
             aspect = "normal"
         
+        # respect heat_wid, hei if present
+        square = True
+        if "heat_hei" in kargs or "heat_wid" in kargs:
+            square=False
+        
         #print dict_of_lists
+        if jaccard:
+            colbar_label = 'Jaccard index'
+        else:
+            colbar_label = 'Pearson correlation'
         
         # draw the heatmap and save:
         ret = self.draw.heatmap(data=dict_of_lists, filename=filename,
-            colbar_label="correlation", bracket=bracket,
-            square=True, cmap=cm.hot, cluster_mode="euclidean", row_cluster=row_cluster, col_cluster=col_cluster,
+            colbar_label=colbar_label, bracket=bracket,
+            square=square, cmap=cm.hot, cluster_mode="euclidean", row_cluster=row_cluster, col_cluster=col_cluster,
             row_names=row_names, col_names=row_names, aspect=aspect, **kargs)
 
         config.log.info("compare: Saved Figure to '%s'" % ret["real_filename"])
@@ -737,10 +765,168 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 
         config.log.info("overlap_heatmap: Saved overlap heatmap to '%s'" % ret["real_filename"])
         return(tab)
+
+    def chip_seq_cluster(self, list_of_peaks, merge_peaks_distance=400, sort_clusters=True,  
+ 		_get_chr_blocks=False, **kargs):
+        """
+        **Purpose**
+            Combine and merge all peaks, extract the read pileups then categorize the peaks into
+            similar groupings. Return a new list of genelists, one genelist for each grouping
+            that contains the list of genomic locations in each group. 
+            
+            Return a glbase expression object with each row a merged (unique) peak, each
+            column is a peak
+            
+            Be careful, the resulting objects can get very huge!
+            
+            The order of the genomic locations and order of the groups must be maintained
+            between the heatmap and the returned data.
+            
+            NOTE: I sort of named this function incorectly with the whole 'cluster' business.
+            Although it's not wrong to label the returned groups as clusters it is certainly
+            confusing and may imply that some sort of k-means or hierarchical clustering
+            is performed. No clustering is performed, instead groups are made based on a binary 
+            determination from the list_of_peaks. So below, where I refer to 'cluster'
+            I really mean group. Later I may add k-means clustering, which may make things even more
+            confusing.
+            
+            Here is a detailed explanation of this function:
+            
+            1. Join all of the peaks into a redundant set of coordinates
+
+            2. Merge all of the genomic regions to produce a single list of unique genomic regions 
+            (this is what it means by "chip_seq_cluster_heatmap(): Found <number> unique 
+            genomic regions")
+
+            3. Build a table of all possible peak combinations:
+
+            e.g. for two chip-seq lists, A and B:
+
+            listA only: [True, False]
+            listB only: [False, True]
+            listA and listB: [True, True]
+
+            It is these that are the 'clusters' (or groups). In this case there would 
+            be just 3 groups. The more lists the more possible groups.
+
+            Note that groups with no members are culled. 
+              
+        **Arguments**
+            list_of_peaks (Required)
+                A list of genelists of peaks from your ChIP-seq data to interrogate. The order of the libraries
+                Genomic location data should be stored in a 'loc' key in the genelist.
+                                              
+            merge_peaks_distance (Optional, default=400)
+                Maximum distance that the centers of any two peaks can be apart before the two peaks are merged into
+                a single peak. (taking the mean of the peak centers)
+
+            sort_clusters (Optional, default=True)
+                sort the clusters from most complex to least complex.
+                Note that chip_seq_cluster_heatmap cannot preserve the order of the peaks
+                (it's impossible), so setting this to false will just randomise the order of the clusters
+                which may not be particularly helpful.
+                
+        **Returns**
+            Returns a glbase expression object, with rows as unique genomic peaks and 
+            columns as each peak list. 
+            The values will be filled with 0 or 1, if it was a peak or not a peak.
+        """
+        # get a non-redundant list of genomic regions based on resolution.           
+        chr_blocks = {} # stores a binary identifier 
+        pil_blocks = {}
+        total_rows = 0
+        resolution = merge_peaks_distance # laziness hack!
+        
+        # Make a super list of all the peaks. why? It's not actually used...
+        #mega_list_of_peaks = sum([gl["loc"] for gl in list_of_peaks], [])
+        #mega_list_of_peaks = [p.pointify().expand(merge_peaks_distance) for p in mega_list_of_peaks]
+        #config.log.info("chip_seq_cluster: Started with %s redundant peaks" % len(mega_list_of_peaks))
+        '''
+        newl = []
+        for l in list_of_peaks:
+            newl.append(l.deepcopy().pointify().expand('loc', merge_peaks_distance))
+        list_of_peaks = newl
+        '''
+        
+        # Merge overlapping peaks   
+        merged_peaks = {}
+        p = progressbar(len(list_of_peaks))
+        for idx, gl in enumerate(list_of_peaks):
+            for p1 in gl["loc"]:
+                p1 = p1.pointify().expand(merge_peaks_distance)
+                if not p1["chr"] in chr_blocks:
+                    chr_blocks[p1["chr"]] = {}
+            
+                binary = [0 for x in xrange(len(list_of_peaks))] # set-up here in case I need to modify it.
+            
+                for p2 in chr_blocks[p1["chr"]]: # p2 is now a block_id tuple
+                    #if p1.qcollide(p2):
+                    if p1["right"] >= p2[0] and p1["left"] <= p2[1]: # unfolded for speed.
+                        binary = chr_blocks[p1["chr"]][p2]["binary"] # preserve the old membership
+                    
+                        # remove the original entry
+                        del chr_blocks[p1["chr"]][p2]
+                        total_rows -= 1
+                    
+                        # Add in a new merged peak:
+                        p1 = location(chr=p1["chr"], 
+                            left=int((p1["left"]+p2[0])/2.0), 
+                            right=int((p1["right"]+p2[1])/2.0)).pointify().expand(merge_peaks_distance)
+                        # Don't get confused here, p1 is added onto the block heap below:
+                        break
+                        
+                # modify binary to signify membership for this peaklist
+                binary[idx] = 1
+            
+                # Add p1 onto the blocklist
+                block_id = (p1["left"], p1["right"])
+                if block_id not in chr_blocks[p1["chr"]]:
+                    chr_blocks[p1["chr"]][block_id] = {"binary": binary,
+                        "pil": [0 for x in xrange(len(list_of_peaks))]} # one for each gl, load pil with dummy data.
+                        # pil is not needed here, but kept for compatability with _heatmap function
+                    total_rows += 1 # because the result is a dict of dicts {"<chrname>": {"bid": {data}}, so hard to keep track of the total size.
+
+            p.update(idx)
+            
+    	config.log.info("chip_seq_cluster: Found %s unique genomic regions" % total_rows)
+    	
+    	if _get_chr_blocks:
+    		return(chr_blocks)
+    	# Convert the chr_blocks into a expression object
+    	
+    	tab = []
+    	for chrom in chr_blocks:
+    		for loc in chr_blocks[chrom]:
+    			l = location(chr=chrom, left=loc[0], right=loc[1])
+    			cid = int("".join([str(i) for i in chr_blocks[chrom][loc]["binary"]]), 2)
+    			#print cid
+    			tab.append({'loc': l, 'conditions': chr_blocks[chrom][loc]['binary'], 'cid': cid})
+
+		'''
+        # I want to sort the groups from the most complex to the least complex.     
+        if sort_clusters:
+            sorted_clusters = []
+            for c in cluster_ids:
+                sorted_clusters.append({"id": c, "score": sum(c)})
+            sorted_clusters = sorted(sorted_clusters, key=itemgetter("score"))
+            # This result is actually least to most, but as the heatmap is drawn bottom to top it makes sense to
+            # preserve this order.
+        else:
+            pass
+            #URK!
+    	'''
+    		
+    	#print tab
+    	e = expression(loadable_list=tab, cond_names=[p.name for p in list_of_peaks])
+    	if sort_clusters:
+    		e.sort('cid')
+    	
+    	return(e)
         
     def chip_seq_cluster_heatmap(self, list_of_peaks, list_of_trks, filename=None, normalise=False, bins=20, 
         pileup_distance=1000, merge_peaks_distance=400, sort_clusters=True, cache_data=False, log=2, bracket=None,
-        range_bracket=None, frames=False, titles=None, read_extend=200, imshow=False, **kargs):
+        range_bracket=None, frames=False, titles=None, read_extend=200, imshow=True, cmap=cm.YlOrRd, 
+        size=None, **kargs):
         """
         **Purpose**
             Combine and merge all peaks, extract the read pileups then categorize the peaks into
@@ -808,8 +994,8 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 library to assist in cross-comparison of ChIP-seq libraries.
                                               
             merge_peaks_distance (Optional, default=400)
-                Maximum distance that two peaks can be apart before the two peaks are merged into
-                a single peak.
+                Maximum distance that the centers of any two peaks can be apart before the two peaks are merged into
+                a single peak. (taking the mean of the peak centers)
                 
             pileup_distance (Optional, default=1000)
                 distance around the particular bin to draw in the pileup.
@@ -818,7 +1004,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 The size in base pairs to extend the read. If a strand is present it will expand 
                 from the 3' end of the read.
 
-            bins (Optional, default=10)
+            bins (Optional, default=20)
                 number of bins to use for the pileup. Best to use conservative numbers (10-50) as 
                 large numbers of bins can consume huge amounts of memory.
                 
@@ -898,6 +1084,10 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         """
         assert not (range_bracket and bracket), "You can't use both bracket and range_bracket"
 
+		# Currently untested:
+		#chr_blocks = self.chip_seq_cluster(list_of_peaks=list_of_peaks, merge_peaks_distance=merge_peaks_distance, 
+		#	sort_clusters=sort_clusters, _get_chr_blocks=True)
+
         # get a non-redundant list of genomic regions based on resolution.           
         chr_blocks = {} # stores a binary identifier 
         pil_blocks = {}
@@ -958,6 +1148,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         # I will need to go back through the chr_blocks data and add in the pileup data:
         bin_size = int((resolution+resolution+pileup_distance) / bins)
         block_len = (resolution+resolution+pileup_distance+pileup_distance) # get the block size
+        data = None
         
         # sort out cached_data
         if cache_data and os.path.isfile(cache_data): # reload previously cached data.
@@ -975,6 +1166,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             for pindex, trk in enumerate(list_of_trks):
                 for index, chrom in enumerate(chr_blocks):
                     # The chr_blocks iterates across all chromosomes, so this only hits the db once per chromosome:
+                    del data
                     data = trk.get_array_chromosome(chrom, read_extend=read_extend) # This will use the fast cache version if available.
 
                     for block_id in chr_blocks[chrom]:
@@ -1069,7 +1261,6 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                         ret_data[cluster_index+1]["genelist"].linearData.append({"loc": this_loc})
                         groups.append(cluster_index+1)
 
-        
         # finish off the pileup_data:
         for cid in pileup_data:
             for pid in xrange(len(pileup_data[cid])):
@@ -1128,8 +1319,8 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         if filename:
             if not titles:
                 titles = [p.name for p in list_of_peaks]
-            real_filename = self.draw.multi_heatmap(filename=filename, groups=groups, titles=titles, imshow=imshow,
-                list_of_data=list_of_tables, colbar_label=colbar_label, bracket=bracket, frames=frames)        
+            real_filename = self.draw.multi_heatmap(filename=filename, groups=groups, titles=titles, imshow=imshow, size=size,
+                list_of_data=list_of_tables, colour_map=cmap, colbar_label=colbar_label, bracket=bracket, frames=frames)        
 
         config.log.info("chip_seq_cluster_heatmap: Saved overlap heatmap to '%s'" % real_filename)   
         return(ret_data)
@@ -1157,7 +1348,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 i.e. "_cid<num>" will be inserted before the final filetype (in this case a png
                 file).
             
-            multi_plot (Optional, default=True) NOT CURRENTLY IMPLEMENTED, only True is implemented.
+            multi_plot (Optional, default=True) ONLY True IS IMPLEMENTED
                 If True, plot all pileups on separate graphs, plotted sequentially horizontally as part of the same
                 figure.
                 
@@ -1335,7 +1526,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 range from 0.05 to 0.0001
             
         **Returns**
-            None and a heatmap in filename
+            The resorted row names (as a list) and a heatmap in filename
         
         '''
 
@@ -1385,7 +1576,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         
         goex = expression(loadable_list=newe, cond_names=cond_names)
         
-        goex.heatmap(filename=filename, size=size, bracket=bracket, 
+        res = goex.heatmap(filename=filename, size=size, bracket=bracket, 
             row_cluster=row_cluster, col_cluster=col_cluster, 
             heat_wid=heat_wid, cmap=cmap, border=border,
             row_font_size=row_font_size, heat_hei=heat_hei, grid=grid, 
@@ -1394,5 +1585,89 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             draw_numbers_fmt=draw_numbers_fmt,
             draw_numbers_font_size=draw_numbers_font_size)
         config.log.warning("GO_heatmap: Saved heatmap '%s'" % filename)
-        return(None)
+        return(reversed(res["reordered_rows"]))
+
+    def measure_density(self, trks, peaks, norm_by_library_size=True, log=False,
+        read_extend=200, pointify=True, expand=1000,
+        **kargs):
+        """
+        **Purpose**
+            get the seq tag density from the trks, and return as an expression object
+            
+        **Arguments**
+            trks (Required)
+                a list of tracks
+            
+            peaks (Required)
+                a list of peaks, a genelist containing a 'loc' key
+            
+            read_extend (Optional, default=200)
+                read extend the sequence tags in the tracks by xbp
+            
+            norm_by_library_size (Optional, default=True)
+                normalise the result by the [library size/1e6]
+        
+            log (Optional, default=False)
+                log transform the resulting matrix
+                
+            pointify (Optional, default=True)
+                convert the genomic locations to the center of the peak
+            
+            expand (Optional, default=500)
+                expand the left and right flanks of the genomic coordiantes by <expand> base pairs
+                Performed AFTER pointify
+                
+        **Returns**
+            an expression object, with the conditions as the tag density from the tracks
+            
+        """
+        assert isinstance(trks, list), 'measure_density: trks must be a list'
+        assert 'loc' in peaks.keys(), 'measure_density: no loc key found in peaks'
+        all_trk_names = [t["name"] for t in trks]
+        assert len(set(all_trk_names)) == len(all_trk_names), 'track names are not unique. Please change the track["name"] to unique names'
+        
+        peaks = peaks.deepcopy()
+        if pointify:
+            peaks = peaks.pointify()
+        if expand:
+            peaks = peaks.expand('loc', expand)
+            
+        peaks.sort('loc')
+
+        newl = []
+        curr_chrom = None
+        curr_data = None
+        curr_n = 0
+        for p in peaks:
+            p["conditions"] = [0.0 for t in trks]
+
+        all_chroms = len(set([i['chr'] for i in peaks['loc']])) * len(trks)
+        all_sizes = [t.get_total_num_reads() / 1e6 for t in trks]
+
+        for it, t in enumerate(trks):
+            pb = progressbar(all_chroms)
+            curr_chrom = None
+            for p in peaks:  
+                if p['loc']['chr'] != curr_chrom:  
+                    del curr_data
+                    curr_data = t.get_array_chromosome(p['loc']['chr'], read_extend=read_extend) # this is a numpy array
+                    curr_chrom = p['loc']['chr']
+                    pb.update(curr_n)
+                    curr_n += 1  
+                
+                d = curr_data[p['loc']['left']:p['loc']['right']]
+                
+                if len(d) == 0: # fell off edgor of array
+                    p["conditions"][it] = 0 # Need to put a value in here
+                    continue
+                                
+                if norm_by_library_size:
+                    p["conditions"][it] = numpy.average(d) / all_sizes[it]
+                else:
+                    p["conditions"][it] = numpy.average(d)
     
+        expn = expression(loadable_list=peaks.linearData, cond_names=[t["name"] for t in trks])
+        if log:
+            expn.log(2, .1)
+        
+        return(expn)

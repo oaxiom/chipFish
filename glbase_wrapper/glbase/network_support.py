@@ -30,17 +30,12 @@ def draw_nodes(G, pos, ax=None, nodelist=None, node_size=300, node_col_override=
     
     Heavily modified these days though...
     """
-    if nodelist is None: # set it to use all nodes in nodelist == None
+    if nodelist is None: # set it to use all nodes if nodelist is None. is, as sometimes you get a numpy array
         nodelist = G.nodes(data=True)
     elif isinstance(nodelist, list): # The node_boundary just sends back a list of node names
         # Convert to a tuple-like list of nodes, to match the output from G.nodes()
         nodelist = [(n, G.node[n]) for n in nodelist] # get the node back out from the full network
-    
-    #print nodelist
-    
-    #print G.nodes(data=True)
-    #print nodelist(data=True)
-    
+            
     # set the colors from the attributes if present:
     if 'color' in nodelist[0][1]: # Test a node to see if color attrib present
         node_color = []
@@ -62,6 +57,8 @@ def draw_nodes(G, pos, ax=None, nodelist=None, node_size=300, node_col_override=
         node_size = []
         for n in nodelist:
             node_size.append(n[1]['size'])
+    else:
+        node_size = [node_size] * len(nodelist)
     
     xy = numpy.asarray([pos[v[0]] for v in nodelist])
 
@@ -78,7 +75,8 @@ def draw_nodes(G, pos, ax=None, nodelist=None, node_size=300, node_col_override=
     return node_collection
 
 def draw_edges(G, pos, ax, edgelist=None, width=1.0, width_adjuster=50, edge_color='k', style='solid',
-    alpha=None, edge_cmap=None, edge_vmin=None, edge_vmax=None, traversal_weight=1.0,
+    alpha=None, edge_cmap=None, edge_vmin=None, edge_vmax=None, traversal_weight=1.0, 
+    edge_delengthify=0.15, 
     arrows=True,label=None, zorder=1, **kwds):
     """
     Code cleaned-up version of networkx.draw_networkx_edges
@@ -94,7 +92,23 @@ def draw_edges(G, pos, ax, edgelist=None, width=1.0, width_adjuster=50, edge_col
         return None
 
     # set edge positions
-    edge_pos = numpy.asarray([(pos[e[0]], pos[e[1]]) for e in edgelist])
+    edge_pos = [(pos[e[0]], pos[e[1]]) for e in edgelist]
+    new_ep = []
+    for e in edge_pos:
+        x, y = e[0]
+        dx, dy = e[1]
+        
+        # Get edge length
+        elx = (dx - x) * edge_delengthify
+        ely = (dy - y) * edge_delengthify
+        
+        x += elx
+        y += ely
+        dx -= elx
+        dy -= ely
+    
+        new_ep.append(((x, y), (dx,dy)))
+    edge_pos = numpy.asarray(new_ep)
 
     if not cb.iterable(width):
         #print [G.get_edge_data(n[0], n[1])['weight'] for n in edgelist]
@@ -160,8 +174,46 @@ def draw_edges(G, pos, ax, edgelist=None, width=1.0, width_adjuster=50, edge_col
     ax.update_datalim(corners)
     ax.autoscale_view()
     '''
-
     return(edge_collection)
+
+def draw_node_labels(G, pos, labels=None, font_size=12, font_color='k',
+    font_family='sans-serif', font_weight='normal', alpha=1.0, bbox=None, ax=None,
+    zorder=1, **kargs):
+    """
+    **Purpose**
+        Bug fix in networks.draw_networkx_labels - does not respect zorder
+        
+        ax is now required
+    """
+    assert ax, 'draw_node_labels: You must specify an axis to plot on'
+    
+    if labels is None:
+        labels = dict((n, n) for n in G.nodes())
+
+    # set optional alignment
+    horizontalalignment = kargs.get('horizontalalignment', 'center')
+    verticalalignment = kargs.get('verticalalignment', 'center')
+
+    text_items = {}  # there is no text collection so we'll fake one
+    for n, label in labels.items():
+        x, y = pos[n]
+        #if not cb.is_string_like(label): # Assume users are a bit more savvy
+        label = str(label)  # this will cause "1" and 1 to be labeled the same
+            
+        t = ax.text(x, y, label,
+            size=font_size,
+            color=font_color,
+            family=font_family,
+            weight=font_weight,
+            horizontalalignment=horizontalalignment,
+            verticalalignment=verticalalignment,
+            transform=ax.transData,
+            bbox=bbox,
+            clip_on=True,
+            zorder=zorder) # bug fix
+        text_items[n] = t
+
+    return text_items
 
 def hierarchical_clusters(G, data_table, node_names, expected_group_number):
     """
@@ -376,6 +428,8 @@ def unified_network_drawer(G, correlation_table, names, filename=None, low_thres
     edge_width, width_adjuster, traversal_weight 
     and they interact in complicated ways.
     
+    zorder, lowest is further back higher is further forward
+    
     """
     # Kargs and defaults:
     edge_color = 'grey'
@@ -393,7 +447,7 @@ def unified_network_drawer(G, correlation_table, names, filename=None, low_thres
     if layout_data: 
         pos = layout_data
     else:
-        pos = nx.graphviz_layout(G, layout)    
+        pos = nx.drawing.nx_agraph.graphviz_layout(G, layout) # Bug in NX 1.11
     
     # trim isolated nodes
     if trim_isolated_nodes:
@@ -452,12 +506,12 @@ def unified_network_drawer(G, correlation_table, names, filename=None, low_thres
         
     # edges
     if edges: 
-        draw_edges(G, pos, ax, edgelist=elarge, width=edge_width, width_adjuster=width_adjuster, alpha=edge_alpha, edge_color='#666666', traversal_weight=traversal_weight, zodrder=3)
-        draw_edges(G, pos, ax, edgelist=esmall, width=edge_width, width_adjuster=width_adjuster, alpha=edge_alpha/2.0, edge_color='#bbbbbb', traversal_weight=traversal_weight, zorder=2)
+        draw_edges(G, pos, ax, edgelist=elarge, width=edge_width, width_adjuster=width_adjuster, alpha=edge_alpha, edge_color='#666666', traversal_weight=traversal_weight, zodrder=4)
+        draw_edges(G, pos, ax, edgelist=esmall, width=edge_width, width_adjuster=width_adjuster, alpha=edge_alpha/2.0, edge_color='#bbbbbb', traversal_weight=traversal_weight, zorder=3)
 
     # labels
     if labels:
-        nx.draw_networkx_labels(G, pos, font_size=label_fontsize, font_family='sans-serif', zorder=6)
+        draw_node_labels(G, pos, ax=ax, font_size=label_fontsize, font_family='sans-serif', zorder=5)
 
     if mark_path:       
         if isinstance(mark_path, list): # ou are probably sending your own path
@@ -507,7 +561,7 @@ def unified_network_drawer(G, correlation_table, names, filename=None, low_thres
     
     if title:
         #ax.set_title(title)
-        ax.text(x_min, y_min, title, ha='left', size=title_font_size)
+        ax.text(x_min-(x_pad//2), y_min-(y_pad//2), title, ha='left', size=title_font_size)
            
     if save_gml:
         nx.write_gml(G, save_gml)

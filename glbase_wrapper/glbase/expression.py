@@ -30,17 +30,18 @@ from location import location
 from svd import svd
 from stats import stats
 
-if config.NETWORKX_AVAIL:
+if config.NETWORKX_AVAIL and config.PYGRAPHVIZ_AVAIL:
     from network import network
     if config.PYDOT_AVAIL:
-        from bayes import bayes # Actually requires graphviz, but will probably port it later.
+        from bayes import bayes # Requires graphviz, but will probably port it later.
 
-if config.SKLEARN_AVAIL:
-    from som import SOM
-    from somde import somde
-    from pca import pca
+from som import SOM
+from somde import somde
+from pca import pca
+from mds import mds
+from tsne import tsne
 
-if config.NETWORKX_AVAIL and config.SKLEARN_AVAIL:
+if config.NETWORKX_AVAIL and config.PYGRAPHVIZ_AVAIL and config.SKLEARN_AVAIL:
     from mdsquish import mdsquish
 
 class expression(base_expression):
@@ -144,12 +145,12 @@ class expression(base_expression):
         if name == "network":
             assert config.NETWORKX_AVAIL, "Asking for a network object but networkx is not available"
             assert config.PYDOT_AVAIL, "Asking for a network object but pydot is not available"
+            assert config.PYGRAPHVIZ_AVAIL, "Asking for a network object but pygraphviz is not available"
             self.network = network(self)
             return(self.network)
         elif name == "svd":
             return(self.get_svd())
         elif name == "pca":
-            assert config.SKLEARN_AVAIL, "Asking for pca but sklearn not available"
             return(self.get_pca())
         elif name == "stats":
             self.stats = stats(self)
@@ -157,7 +158,7 @@ class expression(base_expression):
         elif name == "mdsquish":
             assert config.NETWORKX_AVAIL, "Asking for mdsquish but networkx is not available"
             assert config.PYDOT_AVAIL, "Asking for a mdsquish object but pydot is not available"
-            assert config.SKLEARN_AVAIL, "Asking for mdsquish but sklearn not available"
+            assert config.PYGRAPHVIZ_AVAIL, "Asking for a network object but pygraphviz is not available"
             self.mdsquish = mdsquish(self)
             return(self.mdsquish)
         elif name == "som":
@@ -166,13 +167,19 @@ class expression(base_expression):
             self.som = SOM(parent=self, name=self.name)
             return(self.som)
         elif name == 'somde': 
-            assert config.SKLEARN_AVAIL, "Asking for somde but sklearn not available"
             sq = math.ceil(math.sqrt(len(self)))
             self.somde = somde(parent=self, name=self.name)
             return(self.somde)   
+        elif name == 'mds': 
+            self.mds = mds(parent=self, name=self.name)
+            return(self.mds)   
+        elif name == 'tsne': 
+            self.tsne = tsne(parent=self, name=self.name)
+            return(self.tsne)   
         elif name == "bayes":
             assert config.NETWORKX_AVAIL, "Asking for a bayes object but networkx/graphviz is not available"
             assert config.PYDOT_AVAIL, "Asking for a bayes object but pydot is not available"
+            assert config.PYGRAPHVIZ_AVAIL, "Asking for a network object but pygraphviz is not available"
             self.bayes = bayes(self)
             return(self.bayes)
         
@@ -903,6 +910,26 @@ class expression(base_expression):
                 to draw the heatmap part of the figure. Allows very large matrices to
                 be saved as an svg, with the heatmap part as a raster image and all other elements
                 as vectors).
+
+            sample_label_colbar (Optional, default=None)
+                add a colourbar for the samples names. This is designed for when you have too many
+                conditions, and just want to show the different samples as colours
+                                
+                Should be a list of colours in the same order as the condition names 
+
+            col_colbar (Optional, default=None)
+                add a colourbar for the samples names. This is designed for when you have too many
+                conditions, and just want to show the different samples as colours
+                                
+                Should be a list of colours in the same order as the condition names 
+
+            row_colbar (Optional, default=None)
+                add a colourbar for the samples names. This is designed for when you have too many
+                conditions, and just want to show the different samples as colours
+                                
+                Should be a list of colours in the same order as the row names.
+                
+                Note that unclustered data goes from the bottom to the top!
                 
         **Result**
             saves an image to the 'filename' location and
@@ -1438,6 +1465,40 @@ class expression(base_expression):
         config.log.info("filter_low_expression: removed %s items, list now %s items long" % (len(self) - len(newl), len(newl)))
         return(newl)
 
+    def filter_by_mean_expression(self, min_mean_expression, max_mean_expression):
+        """
+        **Purpose**
+            filter genes by a minimum_expression value in at least number_of_conditions
+            
+            Basically the command:
+            
+            mean(item["conditions"]) >= min_mean_expression 
+            and 
+            mean(item["conditions"]) <= max_mean_expression
+            
+        **Arguments**
+            min_mean_expression (Required)
+                The minimum mean expression value required to pass the test
+                
+            max_mean_expression (Required)
+                The maximum mean expression value required to pass the test
+        
+        **Results**
+            Returns a new genelist 
+        """
+        
+        newl = self.shallowcopy()
+        newl.linearData = []
+        
+        for item in self.linearData:
+            if numpy.mean(item["conditions"]) >= min_mean_expression and numpy.mean(item["conditions"]) <= max_mean_expression: # passed
+                newl.linearData.append(item.copy())
+        
+        assert len(newl) > 0, "filter_by_mean_expression: The number of genes passing the filter was zero!"
+        newl._optimiseData()
+        config.log.info("filter_by_mean_expression: removed %s items, list now %s items long" % (len(self) - len(newl), len(newl)))
+        return(newl)
+
     def filter_high_expressed(self, max_expression, number_of_conditions):
         """
         **Purpose**
@@ -1572,13 +1633,13 @@ class expression(base_expression):
             if True in vals:
                 newl.linearData.append(row)
         newl._optimiseData()
-        config.log.info("filter_by_value: %s items passed" % (len(newl),))
+        config.log.info("filter_by_value: removed %s items, list now %s items long" % (len(self) - len(newl), len(newl)))
         return(newl)
 
     def filter_by_CV(self, minCV, maxCV, pad=0.1):
         """
         **Purpose**
-            Filter each gene to be within the range minCV, maxCV
+            Filter each gene (row) to be within the range minCV, maxCV
             coefficient of variations. For good measure it will add in a 
             'CV' key to the genelist
 
@@ -1601,11 +1662,127 @@ class expression(base_expression):
                 row['CV'] = CV
                 newl.linearData.append(row)
         newl._optimiseData()
-        config.log.info("filter_by_CV: %s items passed" % (len(newl),))
+        config.log.info("filter_by_CV: removed %s items, list now %s items long" % (len(self) - len(newl), len(newl)))
         return(newl)
 
+    def draw_cumulative_CV(self, filename, pad=0.1, label_genes=None, label_genes_key=None, 
+        label_fontsize=7, **kargs):
+        '''
+        **Purpose**
+            Draw a cumulative CV plot for all genes (rows) in the expression object.
+            
+        **Arguments**
+            filename (Required)
+                The filename to save the image to.
+        
+            pad (Optional, default=0.1)
+                pad for the mean divisor to stop division by zero
+            
+            label_genes (Optional, default=None)
+                a list of names for rows (genes?) you want to mark on the plot
+                
+            label_genes_key (Optional, Required if label_genes is used)
+                a key name to use to match the label_genes
+                
+            label_fontsize (Optional, default=7)
+                Font size for the labels
+        '''
+        assert filename, "no filename specified"
+        
+        if label_genes_key:
+            CV = [(row[label_genes_key], numpy.std(row['conditions']) / (numpy.mean(row['conditions'])+pad)) for row in self.linearData]
+            CV = sorted(CV, key=itemgetter(1))
+            labels = [i[0] for i in CV]
+            CV = [i[1] for i in CV]
+        else:
+            CV = [numpy.std(row['conditions']) / (numpy.mean(row['conditions'])+pad) for row in self.linearData]
+            CV.sort()
+
+        fig = self.draw.getfigure(**kargs)
+        ax = fig.add_subplot(111)
+                
+        ax.plot(CV, color="red")
+        for t in label_genes:
+            try:
+                x = labels.index(t)
+                y = CV[x]
+                ax.text(x, y, t, size=label_fontsize, ha='center', va='center') # Trust me, keep it va='center' it reduces ambiguity
+            except ValueError:
+                config.log.warning("label '%s' not found" % t)
+            
+        self.draw.do_common_args(ax, **kargs)
+        realfilename = self.draw.savefigure(fig, filename)
+        config.log.info("draw_cumulative_CV: Saved '%s'" % (realfilename))
+        return(None)
+
+    def draw_scatter_CV(self, filename, pad=0.1, label_genes=None, label_genes_key=None, 
+        label_fontsize=7, **kargs):
+        '''
+        **Purpose**
+            Draw a scatter CV plot for all genes in the expression object.
+            
+            X axis is mean expression
+            Y axis is CV
+            
+        **Arguments**
+            filename (Required)
+                The filename to save the image to.
+        
+            pad (Optional, default=0.1)
+                pad for the mean divisor to stop division by zero
+            
+            label_genes (Optional, default=None)
+                a list of names for rows (genes?) you want to mark on the plot
+                
+            label_genes_key (Optional, Required if label_genes is used)
+                a key name to use to match the label_genes
+                
+            label_fontsize (Optional, default=7)
+                Font size for the labels
+                
+            logx (Optional, default=2)
+                You usually calculate CV on the raw (un transofrmed data)
+                Generally it is easier to comprehend if the X axis (mean expression)
+                is log2 transformed
+        '''
+        assert filename, "no filename specified"
+        if 'logx' not in kargs:
+            kargs['logx'] = 2 # Use the do_common_args system for clean overrides
+        
+        if label_genes_key:
+            data = [(row[label_genes_key], numpy.std(row['conditions']) / (numpy.mean(row['conditions'])+pad), numpy.mean(row['conditions'])+pad) for row in self.linearData]
+            labels = [i[0] for i in data]
+            X = [i[2] for i in data]
+            Y = [i[1] for i in data]
+        else:
+            data = [(numpy.std(row['conditions']) / (numpy.mean(row['conditions'])+pad), numpy.mean(row['conditions'])+pad) for row in self.linearData]
+            X = [i[1] for i in data]
+            Y = [i[0] for i in data]
+
+        fig = self.draw.getfigure(**kargs)
+        ax = fig.add_subplot(111)
+        
+        ax.scatter(X, Y, color="grey", s=5, alpha=0.5, edgecolor='none')
+        if label_genes:
+            for t in label_genes:
+                try:
+                    i = labels.index(t)
+                    x = X[i]
+                    y = Y[i]
+                    ax.text(x, y, t, size=label_fontsize, ha='center', va='center') # Trust me, keep it va='center' it reduces ambiguity
+                except ValueError:
+                    config.log.warning("label '%s' not found" % t)
+                
+        ax.set_xlabel('Mean')
+        ax.set_ylabel('CV')
+        
+        self.draw.do_common_args(ax, **kargs)
+        realfilename = self.draw.savefigure(fig, filename)
+        config.log.info("draw_scatter_CV: Saved '%s'" % (realfilename))
+        return(None)
+
     def scatter(self, x_condition_name, y_condition_name, filename=None, genelist=None, key=None, 
-        label=False, **kargs):
+        label=False, label_fontsize=14, **kargs):
         """
         **Purpose**
             draw an X/Y dot plot or scatter plot, get R^2 correlation etc.
@@ -1625,6 +1802,9 @@ class expression(base_expression):
                 genelist[key].
                 If you want to label all of the items in the list, then just send the original genelist
                 and a key to use and all of the spots will be labelled.
+
+            label_fontsize (Optional, default=14)
+            	labels fontsize
 
             do_best_fit_line (Optional, default=False)
                 draw a best fit line on the scatter
@@ -1672,7 +1852,7 @@ class expression(base_expression):
             if label:
                 kargs["spot_labels"] = matches[key]
             
-            real_filename = self.draw.nice_scatter(x_data, y_data, filename, spots=(tx, ty), **kargs)
+            real_filename = self.draw.nice_scatter(x_data, y_data, filename, spots=(tx, ty), label_fontsize=label_fontsize, **kargs)
         else:
             real_filename = self.draw.nice_scatter(x_data, y_data, filename, **kargs)
         
@@ -1836,7 +2016,7 @@ class expression(base_expression):
     def unlog(self, base=None, adjuster=0.00001):
         """
         **Purpose**
-            return the raw data to the unlogged form.  YOU MUST PROVIDE THE CORRECT BASE
+            return the raw data to the unlogged form. YOU MUST PROVIDE THE CORRECT BASE
 
             NOTE: THis is one of the few IN-PLACE glbase commands.
             
@@ -2460,6 +2640,7 @@ class expression(base_expression):
                 
     def tree(self, mode="conditions", filename=None, row_name_key=None, 
         cluster_mode="euclidean", color_threshold=None, label_size=7, cut=False, 
+        radial=False, 
         **kargs):
         """
         **Purpose**
@@ -2499,12 +2680,12 @@ class expression(base_expression):
             bracket (Optional, default=False)
                 The min and max to bracket the data. This is mainly here for compatibility with heatmap()
                 So that the row/col trees in heatmap and here exactly match
-                            
+                   
         **Returns**
             if cut is False:
                 The Tree in a dictionary {"dendrogram": ..., "linkage": ..., "distance": ...}
             if cut is True:
-                A dict of genelists, containing all of the items from the cut.
+                A list of genelists, containing all of the items from the cut.
                 
         """
         valid_modes = ("conditions", "rows", "genes")
@@ -2537,10 +2718,9 @@ class expression(base_expression):
                 row_names = self[row_name_key]
             else:
                 row_names = None
-
+        
         ax = fig.add_subplot(111)
         ax.set_position([0.01, 0.01, 0.4, 0.98])
-
         # from scipy;
         # generate the dendrogram
         dist = pdist(data, metric=cluster_mode)
@@ -2549,7 +2729,9 @@ class expression(base_expression):
             color_threshold = color_threshold*((dist.max()-dist.min())+dist.min()) # convert to local measure
             
         link = linkage(dist, 'complete', metric=cluster_mode)
-        a = dendrogram(link, orientation='right', labels=row_names, color_threshold=color_threshold, get_leaves=True)
+        a = dendrogram(link, orientation='left', labels=row_names, 
+            ax=ax,
+            color_threshold=color_threshold, get_leaves=True)
                 
         ax.set_frame_on(False)
         ax.set_xticklabels("")
@@ -2606,7 +2788,145 @@ class expression(base_expression):
         if not cut:
             ret = {"dendrogram": a, "linkage": link, "distance": dist}
         return(ret)
+
+    def radial_tree(self, mode="conditions", filename=None, row_name_key=None, 
+        cluster_mode="euclidean", color_threshold=None, label_size=7, cut=False, 
+        radial=False, 
+        **kargs):
+        """
+        **Purpose**
+            Draw a hierarchical clustered tree of either the 'conditions' or 'rows'
+            
+            In this version the output is a radial tree, with the root at the center.
+            
+        **Arguments**
+            filename (Required)
+                filename to save an image to.
+            
+            mode (Optional, default="conditions")
+                cluster either the "conditions" or the "rows" or "genes". (rows are usually genes)
+                
+            row_name_key (Optional, default=None)
+                A key to use for the row_names, if mode == "row"
+                
+            cluster_mode (Optional, default="euclidean")
+                A metric to cluster the data by.
+                
+            color_threshold (Optional, default=None)
+                By default tree() uses the Scipy/MATLAB default colours to signify
+                links with similar distances. Set to -1 to change the tree to all blue.
+                
+                see scipy.cluster.hierarch.dendrogram
+                
+            label_size (Optional, default=7)
+                The size of the text attached to the leaf labels.
+            
+            cut (Optional, default=False)
+                the cut threshold on the tree, to select groups and return the cut. 
+                Will draw a line on the dendrgram tree indicating its position. 
+                The value should range from 0..1.0
+                
+                Note that if cut is used then row_name_key must also be valid
+                
+                Also note that the order of the clusters returned is random.
+            
+            bracket (Optional, default=False)
+                The min and max to bracket the data. This is mainly here for compatibility with heatmap()
+                So that the row/col trees in heatmap and here exactly match
+                   
+        **Returns**
+            if cut is False:
+                The Tree in a dictionary {"dendrogram": ..., "linkage": ..., "distance": ...}
+            if cut is True:
+                A dict of genelists, containing all of the items from the cut.
+                
+        """
+        config.log.warning('radial_tree: is currently experimental!')
         
+        import radial_tree
+        
+        valid_modes = ("conditions", "rows", "genes")
+        assert mode in valid_modes, "'%s' not a valid mode" % mode
+        if cut:
+            assert cut >= 0.0 and cut <= 1.0, "cut '%.2f' must be between 0 and 1.0" % cut
+            assert row_name_key, "'row_name_key' must also be valid"
+        
+        if not "size" in kargs: # resize if not specified
+            kargs["size"] = (6,6)
+        
+        fig = self.draw.getfigure(**kargs)
+        data = numpy.array(self.serialisedArrayDataList) # get a copy
+
+        if "log" in kargs:
+            data = self.__log_transform_data(self.serialisedArrayDataList, log=kargs["log"])
+
+        if "bracket" in kargs: # done here so clustering is performed on bracketed data
+            # And will result in the same clustering as in heatmaps.
+            data = self.draw.bracket_data(data, kargs["bracket"][0], kargs["bracket"][1])
+            vmin = kargs["bracket"][0]
+            vmax = kargs["bracket"][1]
+            
+        if mode == "conditions": # Use the condition names for rows:
+            row_names = self._conditions
+        elif mode == "rows" or mode == "genes":
+            data = data.T
+            if row_name_key:
+                row_names = self[row_name_key]
+            else:
+                row_names = None
+        
+
+        # from scipy;
+        # generate the dendrogram
+        dist = pdist(data, metric=cluster_mode)
+        if cut or color_threshold: # override color_threshold with cut
+            color_threshold = cut
+            color_threshold = color_threshold*((dist.max()-dist.min())+dist.min()) # convert to local measure
+            
+        link = linkage(dist, 'complete', metric=cluster_mode)
+        
+        print link
+        
+        rtree = radial_tree.tree(link)
+
+        ax = fig.add_subplot(111)
+        rtree = radial_tree.tree(link)
+        rtree.draw()
+        
+        #ax.set_frame_on(False)
+        #ax.set_xticklabels("")
+        #ax.tick_params(top="off", bottom="off", left="off", right="off")
+
+        if cut:
+            # Probably too tough to support?
+            # I believe that the old code is actually correct
+            ret = []
+            config.log.info("radial_tree: Using local threshold '%.2f'" % color_threshold)
+            clus = scipy.cluster.hierarchy.fcluster(link, color_threshold, 'distance')
+            for i, net in enumerate(sorted(set(clus))):
+                # get all of the gene names back out.
+                idxs = [idx for idx, x in enumerate(clus) if x == net]
+                newl = [{row_name_key: row_names[idx]} for idx in idxs]
+                newgl = genelist()
+                newgl.load_list(newl)
+                ret.append(newgl)
+        
+            ax.axvline(color_threshold, color="grey", ls=":")
+            config.log.info("radial_tree: Found %s clusters" % len(ret))
+
+        # Use the tree to reorder the data.
+        #row_names = a["ivl"]
+        #[t.set_fontsize(label_size) for t in ax.get_yticklabels()]
+                
+        #self.draw.do_common_args(ax, **kargs) # broken!?
+        if filename: 
+            real_filename = self.draw.savefigure(fig, filename)
+            config.log.info("radial_tree: Saved '%s'" % real_filename)
+        
+        if not cut:
+            ret = {"dendrogram": a, "linkage": link, "distance": dist}
+        return(ret)
+
     def gene_curve(self, key=None, values=None, filename=None, moving_average=None,
         **kargs):
         """
@@ -2692,7 +3012,7 @@ class expression(base_expression):
                 
             bracket (optional, default=(0,1))
                 bracket the heatmap by these values.
-                
+                        
             Other heatmap options that will work:
                 heat_hei
                 heat_wid
@@ -2720,9 +3040,10 @@ class expression(base_expression):
             labels = self[label_key]
         
         if mode in ("r", "r2"):
-            arr = numpy.corrcoef(data_table)
+            arr = numpy.corrcoef(data_table) # PMCC or little r, 
             if mode == "r2":
                 arr *= arr
+
         else:
             arr = numpy.zeros((len(labels), len(labels)))
             ps = numpy.zeros((len(labels), len(labels)))
@@ -2954,18 +3275,19 @@ class expression(base_expression):
          
         fig = self.draw.getfigure(aspect="long", **kargs)
         ax = fig.add_subplot(111)
-        ax.set_position([0.46, 0.04, 0.5, 0.90]) # x,y,width,height
+        ax.set_position([0.46, 0.14, 0.5, 0.75]) # x,y,width,height
         
         y = numpy.arange(len(data))
         if err:
             # error bars'd graphs look better with black on grey
-            ax.barh(y, data, xerr=err, ecolor="black", ec="none", fc="grey", height=0.5)
+            ax.barh(y, data, xerr=err, ecolor="black", ec="none", fc="grey", height=0.5, error_kw={'linewidth': 0.3, 'capthick': 0.3}, capsize=2.0)
         else:
             # no error bars, solid black is better
             ax.barh(y, data, ec="none", fc="black", height=0.5)
+            
         ax.set_yticklabels(conds)
-        ax.set_yticks(y+0.25) # 0.25 should be half of the height of the bars so that text aligns with the bar
-        ax.set_ylim([0, len(data)])
+        ax.set_yticks(y)#+0.25) # 0.25 should be half of the height of the bars so that text aligns with the bar
+        ax.set_ylim([-0.5, len(data)-0.5])
         [item.set_markeredgewidth(0.0) for item in ax.yaxis.get_ticklines()]
         
         if fold_change:
@@ -2978,17 +3300,17 @@ class expression(base_expression):
         else:
         
             if plot_mean:
-                ax.axvline(numpy.average(data), color="grey", ls=":")
-                ax.text(numpy.average(data)+0.1, len(data)+0.02, "m", size=6)
+                ax.axvline(numpy.average(data), color="grey", ls=":", lw=0.5)
+                #ax.text(numpy.average(data)+0.1, len(data)+0.02, "m", size=6)
         
             if plot_stdev:
                 mean = numpy.average(data)
                 std = numpy.std(data)
-                ax.axvline(mean + std, color="blue", ls=":")
-                ax.axvline(mean - std, color="blue", ls=":")
-                ax.axvline(mean + (std*2.0), color="red", ls=":")
-                ax.text(mean + std+0.1, len(data)+0.02, "1x", size=6)
-                ax.text(mean + (std*2.0)+0.1, len(data)+0.02, "2x", size=6)
+                ax.axvline(mean + std, color="blue", ls=":", lw=0.5)
+                ax.axvline(mean - std, color="blue", ls=":", lw=0.5)
+                ax.axvline(mean + (std*2.0), color="red", ls=":", lw=0.5)
+                #ax.text(mean + std+0.1, len(data)+0.02, "1x", size=6)
+                #ax.text(mean + (std*2.0)+0.1, len(data)+0.02, "2x", size=6)
 
         if not "xlims" in kargs:
             if fold_change:
@@ -3007,7 +3329,7 @@ class expression(base_expression):
             
         if not "title" in kargs:
             kargs["title"] = value
-               
+        
         self.draw.do_common_args(ax, **kargs)
         if tight_layout:
             fig.tight_layout()

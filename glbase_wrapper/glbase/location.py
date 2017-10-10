@@ -60,10 +60,7 @@ class location:
         return(hash(self._loc_string))
     
     def __deepcopy__(self, memo):
-        try:
-            return(cPickle.loads(cPickle.dumps(self, -1))) # This is 2-3x faster and presumably uses less memory
-        except PicklingError:
-            return(copy.deepcopy(self, memo)) # Use the generic version
+        return(cPickle.loads(cPickle.dumps(self, -1))) # This is 2-3x faster and presumably uses less memory
     
     def __nonzero__(self):
         return(True)

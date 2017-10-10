@@ -267,9 +267,12 @@ class stats:
                 the name of condition 2 to use
                 
         **Returns**
-            The u-statistic and one-sided p-value
+            The u-statistic and two-sided p-value
         """       
-        return(self.__unified_stats("mannwhitneyu", condition1, condition2))
+        data1 = self.parent.getDataForCondition(condition1)
+        data2 = self.parent.getDataForCondition(condition2)
+        
+        return(scipy.stats.mannwhitneyu(data1, data2, alternative='two-sided'))
 
     def wilcoxon(self, condition1, condition2):
         """
@@ -298,7 +301,6 @@ class stats:
         data2 = self.parent.getDataForCondition(condition2)
         
         test_funcs = {"wilcoxon": scipy.stats.wilcoxon,
-            "mannwhitneyu": scipy.stats.mannwhitneyu,
             "spearmanr": scipy.stats.spearmanr,
             "pearsonr": scipy.stats.pearsonr
             }

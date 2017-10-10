@@ -11,15 +11,15 @@ import config, utils
 
 from numpy import zeros, array, mean, std
 from draw import draw
-from base_genelist import _base_genelist
+from genelist import genelist
 from errors import AssertionError, NotImplementedError
 from progress import progressbar
 from location import location
-from history import historyContainer
+#from history import historyContainer
 
 import pwm
 
-class pwms(_base_genelist):
+class pwms(genelist):
     """
     **Purpose**
         A collection of pwm items with a few specialised
@@ -40,11 +40,13 @@ class pwms(_base_genelist):
             "jaspar_matrix_only"
             "ACGT_rows"
             "Jolma_csv"
+            "HOMER"
 
             to add, but currently unsupported formats:
             "jaspar"
     """
     def __init__(self, filename=None, name="None", format=None, **kargs):
+        genelist.__init__(self, filename=None, name=name, format=format, **kargs) # no filename, get an empty genelist
         assert filename, "filename argument not specified"
         assert format, "no format specifier provided"
         assert os.path.exists(filename), "file '%s' not found" % filename
@@ -52,7 +54,7 @@ class pwms(_base_genelist):
         self.linearData = []
         self.name = name
         self.draw = draw(self)
-        self._history = historyContainer(self) # a list of historyItem's
+        #self._history = historyContainer(self) # a list of historyItem's
 
         self.format = format # this is used if saving
 
@@ -68,12 +70,60 @@ class pwms(_base_genelist):
             self.__load_ACGT_rows(filename)
         elif format == "Jolma_csv":
             self.__load_jolma_csv(filename)
+        elif format == 'HOMER':
+            self.__load_HOMER(filename)
         else: 
             config.log.critical("'%s' format is unknown" % format)
         
         config.log.info("loaded '%s' with %s pwms" % (filename, len(self)))
 
-        self._optimiseData()
+        self._optimiseData()    
+
+    def __load_HOMER(self, filename):
+        '''
+        load HOMER format, basically load_ACGT_rows with enhanced header splitting
+        
+        >AAAGCATTGA	14-AAAGCATTGA,BestGuess:PB0197.1_Zfp105_2/Jaspar(0.625)	10.296193	-829.609933	0	T:187.0(2.20%),B:4.8(0.01%),P:1e-360
+        0.700	0.100	0.100	0.100
+        0.700	0.100	0.100	0.100
+        0.700	0.100	0.100	0.100
+        0.100	0.100	0.700	0.100
+        0.100	0.700	0.100	0.100
+        0.700	0.100	0.100	0.100
+        0.100	0.100	0.100	0.700
+        0.100	0.100	0.100	0.700
+        0.100	0.100	0.700	0.100
+        0.700	0.100	0.100	0.100
+        '''
+        oh = open(filename, 'rU')
+        
+        pwm_store = None
+        
+        for line in oh:
+            if line and line[0] != "#":
+                if line[0] == ">":
+                    if pwm_store: # save the finished pwm
+                        self.linearData.append({"name": name, 'motif_seq': motif_seq, 
+                            'p': p, 'score': score,
+                            "pwm": pwm.pwm(name=name, pwm_matrix=pwm_store, isPFM=False)})
+                    # setup a new pwm:
+                    pwm_store = []
+                    tt = line.strip().replace(">", "").split('\t')
+                    #print tt
+                    name = tt[1].split(':')[1].split('/')[0]
+                    motif_seq = tt[0]
+                    score = tt[2]
+                    p = tt[5].split(':')[-1]
+                else:
+                    pwm_store.append(line.strip().split())
+                    
+        # store the last motif in the file
+        if pwm_store: # save the finished pwm
+            self.linearData.append({"name": name, 'motif_seq': motif_seq, 
+                'p': p, 'score': score,
+                "pwm": pwm.pwm(name=name, pwm_matrix=pwm_store, isPFM=False)})
+        oh.close()   
+        return()     
 
     def __load_jolma_csv(self, filename):
         """
@@ -108,7 +158,6 @@ class pwms(_base_genelist):
             names.append(name)
         
         oh.close()
-
 
     def __load_uniprobe(self, path):
         """
@@ -283,13 +332,6 @@ class pwms(_base_genelist):
 
         return(None)
 
-    def _optimiseData(self):
-        """
-        (Internal)
-        not used here.
-        """
-        pass
-
     def __repr__(self):
         return("glbase.pwms")
 
@@ -396,6 +438,41 @@ class pwms(_base_genelist):
         key_order.append("pwm")
 
         genelist.saveCSV(self, filename=filename, key_order=key_order, **kargs) # inherit
+
+    def saveFASTA(self, filename=None, **kargs):
+        """
+        **Purpose**
+            save the pwm list as a FASTA-style entry
+            all other keys are stuffed into the > line
+
+        **Arguments**
+            filename (REquired)
+                the filename to save to
+                
+            key_order (Optional, default=<'name' first, all other keys random>)
+                key_order for stuffing the FASTA header line
+        """
+        
+        if "key_order" in kargs and kargs["key_order"]:
+            key_order = kargs["key_order"]
+        else:
+            ks = self.keys()
+            ks.remove('name')
+            ks.remove('pwm')
+            if ks:
+                key_order = ks
+
+        oh = open(filename, 'w')
+        for pwm in self.linearData:
+            if key_order:
+                oh.write('>%s\t%s\n' % (pwm['name'], '\t'.join([pwm[k] for k in key_order])))
+            else:
+                oh.write('>%s\n' % (pwm['name'], ))
+                
+            #print pwm['pwm'].get_matrix()
+            for bp in pwm['pwm'].get_matrix():
+                oh.write('%s\n' % ('\t'.join([str(i) for i in bp])), )
+        oh.close()
 
     def save(self, filename=None, mode="binary"):
         """

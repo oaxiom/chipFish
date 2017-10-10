@@ -14,3 +14,13 @@ o. Ability to skip track type= or # etc. lines on snp, bed, gtf, pgsnp etc...
     - but these lines should be stored and resaved out?
     
 .. Add meme and HOMER motif file output for pwms
+
+.. export to Pandas
+
+.. Port to Python 3
+
+.. rework the track files to output three formats: read extended, and flats
+
+.. Change the tracks so that they don't generate the SQL anymore (by default) and instead store a range of pre_builds, and all chrom tracking is done in memory for very fast build
+
+.. Add in adjustText overplotting to scatters

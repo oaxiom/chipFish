@@ -1,5 +1,6 @@
 
 import copy, cPickle, re
+from shlex import split as shlexsplit
 
 import config
 from helpers import *
@@ -269,21 +270,31 @@ class _base_genelist:
         as a separate function.
 
         Datatype coercion preference:
-        float > int > location > string
+        float > list > int > location > string
         """
+        
         try: # see if the element is a float()
             if "." in value: # if no decimal point, prefer to save as a int.
                 return(float(value))
             else:
                 raise ValueError
         except ValueError:
-            try: # see if it's actually an int?
-                return(int(value))
+            try: 
+                # Potential error here if it is a list of strings?
+                if '[' in value and ']' in value and ',' in value and '.' in value: # Probably a Python list of floats
+                    return([float(i) for i in value.strip(']').strip('[').split(',')])
+                elif '[' in value and ']' in value and ',' in value: # Probably a Python list of ints
+                    return([int(i) for i in value.strip(']').strip('[').split(',')])
+                else:
+                    raise ValueError
             except ValueError:
-                try: # see if I can cooerce it into a location:
-                    return(location(loc=value))
-                except (TypeError, IndexError, AttributeError, AssertionError, ValueError): # this is not working, just store it as a string
-                    return(str(value).strip())
+                try: # see if it's actually an int?
+                    return(int(value))
+                except ValueError:
+                    try: # see if I can cooerce it into a location:
+                        return(location(loc=value))
+                    except (TypeError, IndexError, AttributeError, AssertionError, ValueError): # this is not working, just store it as a string
+                        return(str(value).strip())
         return("") # return an empty datatype. 
         # I think it is possible to get here. If the exception at int() or float() returns something other than a 
         # ValueError (Unlikely, Impossible?)
@@ -300,6 +311,13 @@ class _base_genelist:
             if not (key in ignorekeys): # ignore these tags
                 #if not key in d:
                 #    d[key] = {}
+                if '__ignore_empty_columns' in format and format['__ignore_empty_columns']:
+                    # check the column exists, if not, pad in an empty value
+                    try:
+                        column[format[key]]
+                    except IndexError:
+                        d[key] = '' # Better than None for downstream compatability
+                        continue
                     
                 if isinstance(format[key], dict) and "code" in format[key]:
                     # a code block insertion goes here - any valid lib and one line python code fragment
@@ -315,8 +333,9 @@ class _base_genelist:
                 for item in gtf.split(";"):
                     if item:
                         item = item.strip()
-                        key = item.split(" ")[0]
-                        value = item.split(" ")[1].strip("\"")
+                        ss = shlexsplit(item)
+                        key = ss[0]
+                        value = ss[1].strip('"')
                         d[key] = self._guessDataType(value)
         return(d)
 
@@ -366,7 +385,7 @@ class _base_genelist:
         
     # ----------- special file loaders:
     # Unbelievably stupid format for hmmer:
-    def __load_hmmer_tbl(self, filename):
+    def _load_hmmer_tbl(self, filename):
         """
         Load the hmmer tbl_out table
         """

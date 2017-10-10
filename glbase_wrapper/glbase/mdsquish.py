@@ -89,7 +89,7 @@ class mdsquish:
         """
         assert pcas, "You must specify the PCA dimensions to use for the squish"
         
-        self.matrix = numpy.array(self.parent.serialisedArrayDataList)
+        self.matrix = self.parent.getExpressionTable().T
         
         self.__model = PCA(n_components=max(pcas)+1, whiten=whiten)
         self.__model.fit(self.matrix)
@@ -320,7 +320,7 @@ class mdsquish:
                                     self.G.add_edge(self.names[rind], self.names[cind], weight=self.traversal_weight+(1.0-t))   # This is really for pathfinding. Penalty self.traversal_weight for moving each 1 cell.
         
             self.__last_thresholds = (low_threshold, hi_threshold, max_links)
-            self.__layout_data = nx.graphviz_layout(self.G, layout) 
+            self.__layout_data =  nx.drawing.nx_agraph.graphviz_layout(self.G, layout) # Bug/Feature in NX 1.11
         else:
             config.log.info('mdsquish.conditions: Used preexisting network')
         

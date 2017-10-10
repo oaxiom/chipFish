@@ -6,6 +6,7 @@ Requires:
 * numpy
 * matplotlib
 * scipy
+* sklearn
 """
 
 import sys
@@ -56,10 +57,22 @@ except Exception:
     pass # pass silently as networkx is optional.
 
 try:
+    import pygraphviz
+    config.PYGRAPHVIZ_AVAIL = True
+except Exception:
+    pass # pass silently as pygraphviz is optional.
+
+try:
+    import graphviz # sometimes comes in the wrong namespace!
+    config.PYGRAPHVIZ_AVAIL = True
+except Exception:
+    pass # pass silently as pygraphviz is optional.
+
+try:
     import pydot
     config.PYDOT_AVAIL = True
 except Exception:
-    pass
+    pass # pass silently as pygraphviz is optional.
 
 try:
     import numexpr
@@ -94,7 +107,7 @@ from .draw import draw
 from .format_container import fc
 from .fastq import fastq
 from .glgo import glgo
-from .rigidgrids import rigidgrid # Available only through expn objects in future?
+#from .rigidgrids import rigidgrid # Available only through expn objects in future?
 import realtime
 import gldata
 import utils
@@ -104,7 +117,8 @@ import cmaps
 from .tools.seqToTrk import seqToTrk
 from .tools.wigstep_to_flattrack import wigstep_to_flat
 from .tools.gerp_to_flattrack import gerp_to_flat
-from .tools.bigwig_to_flattrack import bigwig_to_flat
+from .tools.bigwig_to_flattrack import bedgraph_to_flat
+from .tools.bed_to_flattrack import bed_to_flat
 from .tools.rnaseq import rnaseqqc
 
 def version():
@@ -114,11 +128,11 @@ def version():
 # export all of the libraries, methods and helpers.
 __all__ = ["genelist", "fastq", "expression", "genome", "genome_sql", "track", "flat_track", "delayedlist", 
             "glgo", # primary objects
-            "rigidgrid", # Temporarily available
+            #"rigidgrid", # Temporarily available
             "location", "pwm", "pwms", #accesory objects 
             "flags",  "format",
             "utils", "glload", "seqToTrk", "logo", 
-            "glglob", "motif",  "wigstep_to_flat", "bigwig_to_flat",
+            "glglob", "motif",  "wigstep_to_flat", "bedgraph_to_flat", 'bed_to_flat',
             "rnaseqqc", "gldata",
             "gerp_to_flat", "draw", "fc",
             "progressbar", "ecrbase", "region", "realtime", "realtime2", "tfbs_iter",

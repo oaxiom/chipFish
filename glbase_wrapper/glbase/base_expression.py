@@ -154,10 +154,10 @@ class base_expression(genelist):
         genelist._optimiseData(self) # do the parent optimise.
 
         # generate a serialised version of the array conditions.
-        data = {}
         self.numpy_array_all_data = numpy.array([i["conditions"] for i in self.linearData])
                 
         # could be done with dict comp:        
+        data = {}
         for index, name in enumerate(self._conditions):  
             if not name in data:
                 data[name] = self.numpy_array_all_data[:,index]

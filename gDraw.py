@@ -514,12 +514,12 @@ class gDraw:
             
         if opt.track.filled:
             if clamp:
-                loc = self.__realToLocal(1, track_data["track_location"])
+                loc = self.__realToLocal(0, track_data["track_location"])
             else:
                 loc = self.__realToLocal(0, track_data["track_location"])
             #if clamp:
-            self.ctx.line_to(item[0], loc[1] - min(data)) # move to the base line on the far right 
-            self.ctx.line_to(0, loc[1] - min(data)) # the nth far left
+            self.ctx.line_to(item[0], loc[1] ) # move to the base line on the far right 
+            self.ctx.line_to(0, loc[1] ) # the 0th far left
             self.ctx.fill()
         else:
             self.ctx.stroke()
@@ -662,9 +662,9 @@ class gDraw:
 
         sc = self.__realToLocal(0, track_data["track_location"])
 
-        self.__setPenColour((1,1,1))
-        self.ctx.rectangle(0, sc[1]-(opt.track.spot_pixel_radius*3), self.w, (opt.track.spot_pixel_radius*2)-2) # 30 = half genomic track size
-        self.ctx.fill()
+        #self.__setPenColour((1,1,1))
+        #self.ctx.rectangle(0, sc[1]-(opt.track.spot_pixel_radius*3), self.w, (opt.track.spot_pixel_radius*2)-2) # 30 = half genomic track size
+        #self.ctx.fill()
 
         colour = opt.track.spot_default_colour
         if "colour" in kargs:

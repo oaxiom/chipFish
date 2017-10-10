@@ -46,6 +46,7 @@ Then it can go::
 
 import sys, os, copy, random, numpy
 
+import six
 from numpy import array, arange, mean, max, min, std, float32
 from scipy.cluster.hierarchy import distance, linkage, dendrogram
 from scipy.spatial.distance import pdist # not in scipy.cluster.hierarchy.distance as you might expect :(
@@ -56,8 +57,10 @@ import numpy as np
 import matplotlib.pyplot as plot
 import matplotlib.cm as cm
 from matplotlib.colors import ColorConverter, rgb2hex
+import matplotlib.colors as matplotlib_colors
 import matplotlib.mlab as mlab
 from matplotlib.patches import Ellipse, Circle
+from adjustText import adjust_text
 
 import config, cmaps, utils
 from flags import *
@@ -98,7 +101,7 @@ class draw:
         vmin=0, vmax=None, colour_map=cm.RdBu_r, col_norm=False, row_norm=False, heat_wid=0.25, heat_hei=0.85,
         highlights=None, digitize=False, border=False, draw_numbers=False, draw_numbers_threshold=-9e14,
         draw_numbers_fmt='%.1f', draw_numbers_font_size=6, grid=False, row_color_threshold=None,
-        col_names=None,
+        col_names=None, row_colbar=None, col_colbar=None,
         **kargs):
         """
         my own version of heatmap.
@@ -180,6 +183,20 @@ class draw:
             
             draw_numbers_font_size (Optional, default=7)
                 the font size for the numbers in each cell
+                
+            col_colbar (Optional, default=None)
+                add a colourbar for the samples names. This is designed for when you have too many
+                conditions, and just want to show the different samples as colours
+                                
+                Should be a list of colours in the same order as the condition names 
+
+            row_colbar (Optional, default=None)
+                add a colourbar for the samples names. This is designed for when you have too many
+                conditions, and just want to show the different samples as colours
+                                
+                Should be a list of colours in the same order as the row names.
+                
+                Note that unclustered data goes from the bottom to the top!
             
         **Returns**
             The actual filename used to save the image.
@@ -200,6 +217,11 @@ class draw:
         else:
             # the default is a numpy like array object which can be passed right through.
             data = array(kargs["data"], dtype=float32)
+
+        if col_colbar:
+            assert len(col_colbar) == data.shape[1]
+        if row_colbar:
+            assert len(row_colbar) == data.shape[0]
         
         if col_norm:
             for col in xrange(data.shape[1]):   
@@ -213,24 +235,40 @@ class draw:
 
         if "square" in kargs and kargs["square"]:
             # make the heatmap square, for e.g. comparison plots
-            left_side_tree =    [0.15,    0.15,   0.10,   0.75]
-            top_side_tree =     [0.25,    0.90,  0.55,   0.08]
-            heatmap_location =  [0.25,    0.15,   0.55,   0.75]
+            left_side_tree =          [0.15,    0.15,   0.10,   0.75]
+            top_side_tree =           [0.25,    0.90,  0.55,   0.08]
+            heatmap_location =        [0.25,    0.15,   0.55,   0.75]
+            loc_col_colbar = [] # not supported?
         else:
             # positions of the items in the plot:
             # heat_hei needs to be adjusted. as 0.1 is the bottom edge. User wants the bottom
             # edge to move up rather than the top edge to move down.
             if row_cluster:
                 mmheat_hei = 0.93 - heat_hei # this is also the maximal value (heamap edge is against the bottom)
-                left_side_tree =    [0.05,  mmheat_hei,   0.248, heat_hei]
-                top_side_tree =     [0.3,   0.932,  heat_wid,   0.044]
-                heatmap_location =  [0.3,   mmheat_hei,   heat_wid,  heat_hei]
+                
+                left_side_tree =         [0.05,  mmheat_hei,   0.248, heat_hei]
+                top_side_tree =          [0.3,   0.932,  heat_wid,   0.044]
+                heatmap_location =       [0.3,   mmheat_hei,   heat_wid,  heat_hei]
+                
+                if col_colbar: # Slice a little out of the tree
+                    top_side_tree =          [0.3,   0.946,  heat_wid,   0.040]
+                    loc_col_colbar =         [0.3,   mmheat_hei+heat_hei+0.002,   heat_wid,  0.012]
+                    
+                if row_colbar: # Slice a little out of the tree
+                    left_side_tree =         [0.05,  mmheat_hei,   0.248-0.018, heat_hei]
+                    loc_row_colbar =         [0.3-0.016,   mmheat_hei,   0.014,  heat_hei]
+                
             else:
                 # If no row cluster take advantage of the extra width available, but shift down to accomodate the scalebar
                 mmheat_hei = 0.85 - heat_hei # this is also the maximal value (heamap edge is against the bottom)
-                #left_side_tree =    [0.05,  mmheat_hei,   0.248, heat_hei]
-                top_side_tree =     [0.03,   0.852,  heat_wid,   0.044]
-                heatmap_location =  [0.03,   mmheat_hei,   heat_wid,  heat_hei]
+                top_side_tree =          [0.03,   0.852,  heat_wid,   0.044]
+                heatmap_location =       [0.03,   mmheat_hei,   heat_wid,  heat_hei]
+                loc_row_colbar =         [0.03-0.016,   mmheat_hei,   0.014,  heat_hei] # No need to cut the tree, just squeeze i into the left edge
+                
+                if col_colbar:
+                    top_side_tree =          [0.03,   0.864,  heat_wid,   0.040] # squeeze up the colbar
+                    loc_col_colbar =         [0.03,   0.852,   heat_wid,  0.012] # 
+                
         scalebar_location = [0.01,  0.96,   0.24,   0.03]
         
         # set size of the row text depending upon the number of items:
@@ -338,10 +376,10 @@ class draw:
                 
             if row_color_threshold:
                 row_color_threshold = row_color_threshold*((Y.max()-Y.min())+Y.min()) # Convert to local threshold.
-                a = dendrogram(Z, orientation='right', color_threshold=row_color_threshold)
+                a = dendrogram(Z, orientation='left', color_threshold=row_color_threshold)
                 ax1.axvline(row_color_threshold, color="grey", ls=":")
             else:
-                a = dendrogram(Z, orientation='right')
+                a = dendrogram(Z, orientation='left')
 
             ax1.set_position(left_side_tree)
             ax1.set_frame_on(False)
@@ -371,6 +409,9 @@ class draw:
                 for index in order:
                     newd.append(data[int(index)])
                 data = array(newd)
+            
+            if row_colbar:
+                row_colbar = [row_colbar[int(index)] for index in order]
 
         if col_cluster:
             # ---------------- top side plot (tree) --------------------
@@ -404,25 +445,58 @@ class draw:
                     new_col_names.append(col_names[int(index)])
                 data = array(newd).T # transpose back orientation
                 col_names = new_col_names
+                
+            if col_colbar:
+                col_colbar = [col_colbar[int(index)] for index in order]
 
         # ---------------- Second plot (heatmap) -----------------------
         ax3 = fig.add_subplot(143)
         if 'imshow' in kargs and kargs['imshow']:
             ax3.set_position(heatmap_location) # must be done early for imshow
-            if config.draw_mode in ("svg", 'pdf', 'eps', 'ps'):
-                hm = ax3.imshow(data, cmap=colour_map, vmin=vmin, vmax=vmax, aspect="auto",
-                    origin='lower', extent=[0, data.shape[1], 0, data.shape[0]], 
-                    interpolation='nearest') # Yes, it really is nearest. Otherwise it will go to something like bilinear
-            else:
-                hm = ax3.imshow(data, cmap=colour_map, vmin=vmin, vmax=vmax, aspect="auto",
-                    origin='lower', extent=[0, data.shape[1], 0, data.shape[0]], 
-                    interpolation='none')
+            hm = ax3.imshow(data, cmap=colour_map, vmin=vmin, vmax=vmax, aspect="auto",
+                origin='lower', extent=[0, data.shape[1], 0, data.shape[0]], 
+                interpolation=config.get_interpolation_mode()) # Yes, it really is nearest. Otherwise it will go to something like bilinear
+
         else:
             edgecolors = 'none'
             if grid:
                 edgecolors = 'black'
             hm = ax3.pcolormesh(data, cmap=colour_map, vmin=vmin, vmax=vmax, antialiased=False, edgecolors=edgecolors, lw=0.5)
-            
+        
+        if col_colbar: 
+            # Must be reordered by the col_cluster if present
+            newd = {}
+            colors_ = dict(list(six.iteritems(matplotlib_colors.cnames)))
+            for c in colors_:
+                newd[c] = matplotlib_colors.hex2color(colors_[c])
+                
+            col_colbar = numpy.array([[newd[c]] for c in col_colbar]).transpose(1,0,2)
+            ax4 = fig.add_axes(loc_col_colbar)
+            ax4.imshow(col_colbar, aspect="auto",
+                origin='lower', extent=[0, len(col_colbar),  0, 1], 
+                interpolation=config.get_interpolation_mode())
+            ax4.set_frame_on(False)
+            ax4.tick_params(top=False, bottom=False, left=False, right=False)
+            ax4.set_xticklabels("")
+            ax4.set_yticklabels("")
+
+        if row_colbar: 
+            # Must be reordered by the col_cluster if present
+            newd = {}
+            colors_ = dict(list(six.iteritems(matplotlib_colors.cnames)))
+            for c in colors_:
+                newd[c] = matplotlib_colors.hex2color(colors_[c])
+                
+            row_colbar = numpy.array([[newd[c]] for c in row_colbar])#.transpose(1,0,2)
+            ax4 = fig.add_axes(loc_row_colbar)
+            ax4.imshow(row_colbar, aspect="auto",
+                origin='lower', extent=[0, len(row_colbar),  0, 1], 
+                interpolation=config.get_interpolation_mode())
+            ax4.set_frame_on(False)
+            ax4.tick_params(top=False, bottom=False, left=False, right=False)
+            ax4.set_xticklabels("")
+            ax4.set_yticklabels("")
+         
         if draw_numbers:
             for x in xrange(data.shape[0]):
                 for y in xrange(data.shape[1]):
@@ -452,11 +526,17 @@ class draw:
         else:
             ax3.set_ylim([0,data.shape[0]])
             ax3.set_yticklabels("")
-
+        
         ax3.yaxis.tick_right()
         ax3.tick_params(top=False, bottom=False, left=False, right=False)
         [t.set_fontsize(row_font_size) for t in ax3.get_yticklabels()] # generally has to go last.
         [t.set_fontsize(col_font_size) for t in ax3.get_xticklabels()]
+
+        # Make it possible to blank with x/yticklabels
+        if "xticklabels" in kargs:
+            ax3.set_xticklabels(kargs["xticklabels"])
+        if "yticklabels" in kargs:
+            ax3.set_yticklabels(kargs["yticklabels"])
 
         ax0 = fig.add_subplot(144)
         ax0.set_position(scalebar_location)
@@ -553,14 +633,9 @@ class draw:
         
         if imshow:
             ax3.set_position(heatmap_location) # must be done early for imshow
-            if config.draw_mode in ("svg", 'pdf', 'eps', 'ps'):
-                hm = ax3.imshow(data, cmap=colour_map, vmin=vmin, vmax=vmax, aspect="auto",
-                    origin='lower', extent=[0, data.shape[1], 0, data.shape[0]], 
-                    interpolation='nearest') # Yes, it really is nearest. Otherwise it will go to something like bilinear
-            else:
-                hm = ax3.imshow(data, cmap=colour_map, vmin=vmin, vmax=vmax, aspect="auto",
-                    origin='lower', extent=[0, data.shape[1], 0, data.shape[0]], 
-                    interpolation='none')
+            hm = ax3.imshow(data, cmap=colour_map, vmin=vmin, vmax=vmax, aspect="auto",
+                origin='lower', extent=[0, data.shape[1], 0, data.shape[0]], 
+                interpolation=config.get_interpolation_mode()) 
         else:
             hm = ax3.pcolormesh(data, cmap=colour_map, vmin=vmin, vmax=vmax, antialiased=False)
 
@@ -588,7 +663,8 @@ class draw:
         return(self.savefigure(fig, filename))
 
     def _heatmap_and_plot(self, peak_data=None, match_key=None, 
-        arraydata=None, peakdata=None, bin=None, draw_frames=False, **kargs):
+        arraydata=None, peakdata=None, bin=None, draw_frames=False, 
+        imshow=False, **kargs):
         """
         Required:
 
@@ -610,6 +686,8 @@ class draw:
 
         draw_frames (Optional, default=False)
             draw a frame around each of the elements in the figure.
+        
+        imshow (Optional, default=False)
 
 
         Optional:
@@ -662,7 +740,11 @@ class draw:
 
         ax1 = fig.add_subplot(142)
         plot_data = arraydata.T
-        hm = ax1.pcolormesh(plot_data, cmap=cmap, vmin=vmin, vmax=vmax, antialiased=False)
+        if imshow:
+            hm = ax1.imshow(plot_data, cmap=cmap, vmin=vmin, vmax=vmax, 
+                interpolation=config.get_interpolation_mode())
+        else:
+            hm = ax1.pcolormesh(plot_data, cmap=cmap, vmin=vmin, vmax=vmax, antialiased=False)
 
         ax1.set_frame_on(draw_frames)
         ax1.set_position(left_heatmap)
@@ -733,7 +815,7 @@ class draw:
 
     def multi_heatmap(self, list_of_data=None, filename=None, groups=None, titles=None,
         vmin=0, vmax=None, colour_map=cm.YlOrRd, col_norm=False, row_norm=False, heat_wid=0.25,
-        frames=False, imshow=False, **kargs):
+        frames=False, imshow=False, size=None, **kargs):
         """
         **Purpose**
             Draw a multi-heatmap figure, i.e. containing multiple heatmaps. And also supports a 
@@ -752,6 +834,9 @@ class draw:
             colbar_label (Optional, default="expression")
                 the label to place beneath the colour scale bar
                 
+            size (Optional, default=None)
+                override the guessed figure size with your own dimensions. 
+                
         **Returns**
             The actual filename used to save the image.
         """
@@ -760,7 +845,10 @@ class draw:
         # work out a suitable size for the figure.
         num_heatmaps = len(list_of_data)
         
-        fig = self.getfigure(size=(3*num_heatmaps, 10))
+        if size:
+            fig = self.getfigure(size=size)
+        else: # guess:
+            fig = self.getfigure(size=(3*num_heatmaps, 10))
         
         pad = 1.0 / (num_heatmaps+1)
         # item positions:
@@ -786,15 +874,9 @@ class draw:
                 vmax = list_of_data[index].max()
 
             if imshow:
-                print imshow
-                if config.draw_mode in ("svg", 'pdf', 'eps', 'ps'):
-                    hm = ax.imshow(list_of_data[index], cmap=colour_map, vmin=vmin, vmax=vmax, aspect="auto",
-                        origin='lower', extent=[0, list_of_data[index].shape[1], 0, list_of_data[index].shape[0]], 
-                        interpolation='nearest') # Yes, it really is nearest. Otherwise it will go to something like bilinear
-                else:
-                    hm = ax.imshow(list_of_data[index], cmap=colour_map, vmin=vmin, vmax=vmax, aspect="auto",
-                        origin='lower', extent=[0, list_of_data[index].shape[1], 0, list_of_data[index].shape[0]], 
-                        interpolation='none')
+                hm = ax.imshow(list_of_data[index], cmap=colour_map, vmin=vmin, vmax=vmax, aspect="auto",
+                    origin='lower', extent=[0, list_of_data[index].shape[1], 0, list_of_data[index].shape[0]], 
+                    interpolation=config.get_interpolation_mode()) 
             else:
                 hm = ax.pcolormesh(list_of_data[index], cmap=colour_map, vmin=vmin, vmax=vmax, antialiased=False)
 
@@ -826,15 +908,9 @@ class draw:
 
             dd = np.vstack((np.array(groups), np.array(groups))).T
             if imshow:
-                print imshow
-                if config.draw_mode in ("svg", 'pdf', 'eps', 'ps'):
-                    hm = ax.imshow(dd, cmap=cm.Paired, vmin=min(groups), vmax=max(groups), aspect="auto",
-                        origin='lower', extent=[0, dd.shape[1], 0, dd.shape[0]], 
-                        interpolation='nearest') # Yes, it really is nearest. Otherwise it will go to something like bilinear
-                else:
-                    hm = ax.imshow(dd, cmap=cm.Paired, vmin=min(groups), vmax=max(groups), aspect="auto",
-                        origin='lower', extent=[0, dd.shape[1], 0, dd.shape[0]], 
-                        interpolation='none')
+                hm = ax.imshow(dd, cmap=cm.Paired, vmin=min(groups), vmax=max(groups), aspect="auto",
+                    origin='lower', extent=[0, dd.shape[1], 0, dd.shape[0]], 
+                    interpolation=config.get_interpolation_mode()) 
             else:
                 ax.pcolormesh(dd, vmin=min(groups), vmax=max(groups), antialiased=False, cmap=cm.Paired)
                 
@@ -1336,9 +1412,9 @@ class draw:
         ax.set_ylim([0,30])
         
         artists = []
-        artists.append(Circle((10, 20), 8, alpha=1, facecolor="none"))
-        artists.append(Circle((20, 20), 8, alpha=1, facecolor="none"))
-        artists.append(Circle((15, 10), 8, alpha=1, facecolor="none"))
+        artists.append(Circle((10, 20), 8, alpha=1, lw=1, edgecolor='grey', facecolor="none"))
+        artists.append(Circle((20, 20), 8, alpha=1, lw=1, edgecolor='grey', facecolor="none"))
+        artists.append(Circle((15, 10), 8, alpha=1, lw=1, edgecolor='grey', facecolor="none"))
         
         for a in artists: # add all artists...
             ax.add_artist(a)
@@ -1412,10 +1488,10 @@ class draw:
         ax.set_ylim([0,10])
         
         artists = []
-        artists.append(Ellipse((7,7), width=3, height=7, angle=45, facecolor="none"))
-        artists.append(Ellipse((6.5,6), width=3, height=7, angle=45, facecolor="none"))
-        artists.append(Ellipse((6.5,4), width=3, height=7, angle=135, facecolor="none"))
-        artists.append(Ellipse((7,3), width=3, height=7, angle=135, facecolor="none"))
+        artists.append(Ellipse((7,7), width=3, height=7, angle=45, edgecolor='black', facecolor="none"))
+        artists.append(Ellipse((6.5,6), width=3, height=7, angle=45, edgecolor="black", facecolor="none"))
+        artists.append(Ellipse((6.5,4), width=3, height=7, angle=135, edgecolor="black", facecolor="none"))
+        artists.append(Ellipse((7,3), width=3, height=7, angle=135, edgecolor="black", facecolor="none"))
         
         for a in artists: # add all artists...
             ax.add_artist(a)
@@ -1588,7 +1664,7 @@ class draw:
         # See savefigure() for the actual specification
         return(plot.figure(figsize=data[aspect][size]))
 
-    def savefigure(self, fig, filename, size=config.draw_size):
+    def savefigure(self, fig, filename, size=config.draw_size, bbox_inches=None):
         """
         **Purpose**
             Save the figure
@@ -1614,7 +1690,7 @@ class draw:
             save_name = "%s.%s" % (head, config.draw_mode)
         
         dpi = {"small": 75, "medium": 150, "large": 200, "huge": 300}
-        fig.savefig(os.path.join(path, save_name), dpi=dpi[size])
+        fig.savefig(os.path.join(path, save_name), dpi=dpi[size], bbox_inches=bbox_inches)
         plot.close(fig) # Saves a huge amount of memory.
         return(save_name)            
 
@@ -1639,14 +1715,18 @@ class draw:
                 logy - set the y scale to a log scale
                 legend_size - size of the legend, small, normal, medium
                 xticklabel_fontsize - x tick labels fontsizes
+                xticklabels - labels to draw on the x axis
                 yticklabel_fontsize - y tick labels fontsizes
+                yticklabels - labels to draw on the y axis
                 vlines - A list of X points to draw a vertical line at
-                hlines - A list of Y points to draw a vertical line at
+                hlines - A list of Y points to draw a horizontal line at
                 ticks_top - True/False, display the axis ticks on the top
                 ticks_bottom - True/False, display the axis ticks on the bottom
                 ticks_left - True/False, display the axis ticks on the left
                 ticks_right - True/False, display the axis ticks on the right
                 ticks - True/False, display any ticks at all
+                xticks - List of tick positions you want to draw
+                yticks - List of tick positions you want to draw
                 
         **Returns**
             None
@@ -1664,7 +1744,10 @@ class draw:
         if "ylabel" in kargs:
             ax.set_ylabel(kargs["ylabel"])
         if "title" in kargs:
-            ax.set_title(kargs["title"])
+            if "title_fontsize" in kargs:
+                ax.set_title(kargs["title"], fontdict={'fontsize': kargs['title_fontsize']})
+            else:
+                ax.set_title(kargs["title"])
         if "xlims" in kargs:
             ax.set_xlim(kargs["xlims"])
         if "ylims" in kargs:
@@ -1686,12 +1769,18 @@ class draw:
             [t.set_fontsize(kargs["yticklabel_fontsize"]) for t in ax.get_yticklabels()]
         if "xticklabels" in kargs:
             ax.set_xticklabels(kargs["xticklabels"])
+        if "yticklabels" in kargs:
+            ax.set_yticklabels(kargs["yticklabels"])
         if "vlines" in kargs and kargs["vlines"]:
             for l in kargs["vlines"]:
                 ax.axvline(l, ls=":", color="grey")
         if "hlines" in kargs and kargs["hlines"]:
             for l in kargs["hlines"]:
                 ax.axhline(l, ls=":", color="grey")
+        if "alines" in kargs and kargs['alines']:
+            for quple in kargs['alines']:
+                # quples are interleaved, list of x's and list of y's
+                ax.plot((quple[0], quple[2]), (quple[1], quple[3]), ls=':', color='grey', lw=0.5)
         if "grid" in kargs and kargs["grid"]:
             ax.grid()
         if "ticks" in kargs and not kargs["ticks"]:
@@ -1703,7 +1792,11 @@ class draw:
         if "ticks_left" in kargs and not kargs["ticks_left"]:
             ax.tick_params(left="off")
         if "ticks_right" in kargs and not kargs["ticks_right"]:
-            ax.tick_params(right="off")       
+            ax.tick_params(right="off") 
+        if 'xticks' in kargs and kargs["xticks"]:
+            ax.set_xticks(kargs['xticks'])
+        if 'yticks' in kargs and kargs["yticks"]:
+            ax.set_yticks(kargs['yticks'])
 
     def _stacked_plots(self, filename, loc, features, graphs, merged=False, **kargs):
         """
@@ -1832,7 +1925,8 @@ class draw:
         return(self.savefigure(fig, filename))
     
     def nice_scatter(self, x=None, y=None, filename=None, do_best_fit_line=False, 
-        print_correlation=False, spot_size=4, plot_diag_slope=True, **kargs):
+        print_correlation=False, spot_size=4, plot_diag_slope=True, label_fontsize=14, 
+        **kargs):
         """
         **Purpose**
             Draw a nice simple scatter plot
@@ -1850,6 +1944,9 @@ class draw:
                 
             spot_labels (Optional, labels to write on the spots)
                 A list of labels to write over the spots.
+                
+            label_fontsize (Optional, default=14)
+            	labels fontsize
                 
             plot_diag_slope (Optional, default=False)
                 Plot a diagonal line across the scatter plot.
@@ -1888,7 +1985,7 @@ class draw:
             if "spot_labels" in kargs and kargs["spot_labels"]:
                 # for the matplot.lib < 100: I want to label everything.
                 for i, n in enumerate(kargs["spot_labels"]):
-                    ax.annotate(n, (kargs["spots"][0][i], kargs["spots"][1][i]), size=16, color="black", ha="center", va="center")
+                    ax.annotate(n, (kargs["spots"][0][i], kargs["spots"][1][i]), size=label_fontsize, color="black", ha="center", va="center")
         
         if print_correlation or do_best_fit_line:
             # linear regression
@@ -2042,7 +2139,7 @@ class draw:
             
         if "labels" in kargs and kargs["labels"]:
             ax.set_yticklabels(genelist[kargs["labels"]], rotation="horizontal")
-            ax.set_yticks(x+0.5)
+            ax.set_yticks(x)#+0.5)
         
         self.do_common_args(ax, **kargs)
         
@@ -2087,7 +2184,7 @@ class draw:
         return(self.savefigure(fig, filename))
         
     def beanplot(self, data, filename, violin=True, order=None, mean=False, median=True, alpha=0.2, 
-        beans=True, **kargs):
+        beans=True, IQR=False, **kargs):
         """
         http://statsmodels.sourceforge.net/devel/_modules/statsmodels/graphics/boxplots.html#beanplot
         **Purpose**
@@ -2098,6 +2195,7 @@ class draw:
                 a dict of lists:
                 {"condition A": [0, 1, ... n],
                 "condition B": [0, 1, ... n]}
+                These do not have to be the same length, if you are calling this function directly.
             
             filename (Required)
                 filename to save the file to. modified based on current draw_mode
@@ -2108,11 +2206,14 @@ class draw:
             beans (Optional, default=True)
                 draw the beans!
                 
-            means (Optional, default=False)
+            mean (Optional, default=False)
                 draw red lines for means on each plot
             
             median (Optional, default=True)
                 draw a line at the median for each plot
+                
+            IQR (Optional, default=False)
+                draw lines indicating the interquartile ranges at 75%
                 
             order (Optional, default=None)
                 list of the keys in the order you want them.
@@ -2146,7 +2247,7 @@ class draw:
         #xs = np.arange(num_cats)
         cmin = 0
         cmax = 0
-        bins = 50
+        bins = 100
         for x, d in enumerate(order):
             x_data = np.linspace(min(data[d]), max(data[d]), bins+2)
             # get the violin: required, even if not drawn.
@@ -2157,19 +2258,27 @@ class draw:
                 y_violin = numpy.insert(y_violin, 0, 0)
                 y_violin = numpy.append(y_violin, 0)
             
-                if violin:
-                    ax.plot(x+y_violin, x_data, color="grey")
-                    ax.plot(x-y_violin, x_data, color="grey")
+                if violin: # envelope
+                    ax.plot(x+y_violin, x_data, color="grey", lw=0.75)
+                    ax.plot(x-y_violin, x_data, color="grey", lw=0.75)
             
                 jitter_envelope = np.interp(data[d], x_data, y_violin)
                 jitter_coord = jitter_envelope * (np.random.uniform(low=0, high=1, size=len(data[d])) + np.random.uniform(low=-1, high=0, size=len(data[d])))
                 if beans:
                     ax.scatter(jitter_coord+x, data[d], alpha=alpha, edgecolor="none", s=10)#, color="red")
+            else:
+                config.log.warning('bean/violinplot: No variation in sample "%s", not drawing' % d)
             
             if median:
                 ax.plot([x-0.3, x+0.3], [numpy.median(data[d])]*2, c="green")
             if mean:
                 ax.plot([x-0.3, x+0.3], [numpy.mean(data[d])]*2, c="red")
+            if IQR:
+                q75, q25 = numpy.percentile(data[d], [75 ,25])
+                ax.plot([x-0.15, x+0.15], [q75]*2, c="green", lw=.5)
+                ax.plot([x, x], [q75,q75-(q25*0.1)], c="green", lw=.5) # Yes q25
+                ax.plot([x-0.15, x+0.15], [q25]*2, c="green", lw=.5)
+                ax.plot([x, x], [q25,q25+(q25*0.1)], c="green", lw=.5)
                 
             if max(data[d]) > cmax: 
                 cmax = max(data[d])
@@ -2186,3 +2295,113 @@ class draw:
         
         self.do_common_args(ax, **kargs)
         return(self.savefigure(fig, filename))
+
+    def unified_scatter(self, labels, xdata, ydata, x, y, mode='PC', filename=None,
+        spots=True, label=False, alpha=0.8, perc_weights=None, spot_cols='grey', overplot=None,
+        spot_size=40, label_font_size=7, cut=None, squish_scales=False, only_plot_if_x_in_label=None, 
+        adjust_labels=True, **kargs):
+        '''
+        Unified for less bugs, more fun!        
+        '''       
+        ret_data = None  
+        
+        if not "aspect" in kargs:
+            kargs["aspect"] = "square"
+        
+        fig = self.getfigure(**kargs)
+        ax = fig.add_subplot(111)         
+        
+        if only_plot_if_x_in_label:
+            newx = []
+            newy = []
+            newlab = []
+            newcols = []
+            for i, lab in enumerate(labels):
+                if True in [l in lab for l in only_plot_if_x_in_label]:
+                    if overplot and lab not in overplot: # Don't do twice
+                        newx.append(xdata[i])
+                        newy.append(ydata[i])
+                        newlab.append(labels[i])
+                        newcols.append(spot_cols[i])
+            xdata = newx
+            ydata = newy
+            labels = newlab
+            spot_cols = newcols
+            #print zip(spot_cols, labels)
+        
+        if overplot: # Make sure some spots are on the top
+            newx = []
+            newy = []
+            newcols = []
+            for i, lab in enumerate(labels):
+                if True in [l in lab for l in overplot]:
+                    newx.append(xdata[i])
+                    newy.append(ydata[i])
+                    newcols.append(spot_cols[i])
+            
+        if spots:
+            ax.scatter(xdata, ydata, s=spot_size, alpha=alpha, edgecolors="none", c=spot_cols, zorder=2)
+        else:
+            # if spots is false then the axis limits are set to 0..1. I will have to send my
+            # own semi-sensible limits:
+            dx = (max(xdata) - min(xdata)) * 0.05
+            dy = (max(ydata) - min(ydata)) * 0.05
+            ax.set_xlim([min(xdata)-dx, max(xdata)+dx])
+            ax.set_ylim([min(ydata)-dy, max(ydata)+dy])
+            
+        if overplot:
+            ax.scatter(newx, newy, s=spot_size+1, alpha=alpha, edgecolors="none", c=newcols, zorder=5)
+        
+        if label:
+            texts = []
+            for i, lab in enumerate(labels):
+                if not spots and isinstance(spot_cols, list):
+                    texts.append(ax.text(xdata[i], ydata[i], lab, size=label_font_size, color=spot_cols[i]))
+                else:
+                    texts.append(ax.text(xdata[i], ydata[i], lab, size=label_font_size, color="black"))
+            if adjust_labels:
+                adjust_text(texts, arrowprops=dict(arrowstyle="-", color='k', lw=0.5))                
+        
+        # Tighten the axis
+        if squish_scales:
+            # do_common_args will override these, so don't worry
+            dx = (max(xdata) - min(xdata)) * 0.05
+            dy = (max(ydata) - min(ydata)) * 0.05
+            ax.set_xlim([min(xdata)-dx, max(xdata)+dx])
+            ax.set_ylim([min(ydata)-dy, max(ydata)+dy])
+        
+        if perc_weights is not None: # perc_weights is often a numpy array
+            ax.set_xlabel("%s%s (%.1f%%)" % (mode, x, perc_weights[x-1])) # can be overridden via do_common_args()
+            ax.set_ylabel("%s%s (%.1f%%)" % (mode, y, perc_weights[y-1]))
+        else:
+            ax.set_xlabel("%s%s" % (mode, x)) # can be overridden via do_common_args()
+            ax.set_ylabel("%s%s" % (mode, y)) 
+        
+        if "logx" in kargs and kargs["logx"]:
+            ax.set_xscale("log", basex=kargs["logx"])
+        if "logy" in kargs and kargs["logy"]:
+            ax.set_yscale("log", basey=kargs["logy"])
+        
+        if cut:
+            rect = matplotlib.patches.Rectangle(cut[0:2], cut[2]-cut[0], cut[3]-cut[1], ec="none", alpha=0.2, fc="orange")
+            ax.add_patch(rect)
+
+            tdata = []
+            for i in xrange(0, len(xdata)):
+                if xdata[i] > cut[0] and xdata[i] < cut[2]:
+                    if ydata[i] < cut[1] and ydata[i] > cut[3]:
+                        if self.rowwise: # grab the full entry from the parent genelist
+                            dat = {"pcx": xdata[i], "pcy": ydata[i]}
+                            dat.update(self.parent.linearData[i])
+                            tdata.append(dat)
+                        else:
+                            tdata.append({"name": lab[i], "pcx": xdata[i], "pcy": ydata[i]})
+            if tdata:
+                ret_data = genelist()
+                ret_data.load_list(tdata)
+            
+        self.do_common_args(ax, **kargs)
+        
+        real_filename = self.savefigure(fig, filename)
+        config.log.info("scatter: Saved '%s%s' vs '%s%s' scatter to '%s'" % (mode, x, mode, y, real_filename)) 
+        return(ret_data)
