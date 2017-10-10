@@ -46,11 +46,13 @@ class flat_track(glbase.flat_track):
             returns a Numpy array, or a dictionary.
         """
         data = self.get(loc, **kargs)
-        
+        print data
         # flat_tracks do not respect a resolution argument.
         # This should probably be ported back to glbase
         
         newa = numpy.zeros(int(len(data)/resolution))
+        
+        print newa
         
         for i in xrange(len(newa)):
             newa[i] = data[int(i*resolution)]

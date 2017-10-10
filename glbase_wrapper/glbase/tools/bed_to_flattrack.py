@@ -154,10 +154,10 @@ def bed_to_flat(infilename, outfilename, name, isPE, read_extend=None, gzip=None
     
     f.meta_data['total_read_count'] = total_read_count
 
-    e = time.time()
-
     config.log.info("Finalising library")
     f.finalise()
-    config.log.info("Took: %s seconds" % (e-s))
+
+    e = time.time()
+    config.log.info("Took: %.1f seconds" % (e-s))
     return(True)
     

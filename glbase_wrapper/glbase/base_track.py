@@ -36,7 +36,7 @@ class base_track:
         self.meta_data = {"name": m, # Setup a dummy meta_data
             "source_filename": filename,
             "creation_date": time.strftime("%a, %d %b %Y %H:%M:%S +0000", time.gmtime()),
-            "version": "3.0",
+            "version": "4.0", # forth major revision of the track structures...
             "glbase_version": config.version,
             "bin_format": None}
         
@@ -47,6 +47,7 @@ class base_track:
             assert os.path.exists(filename), "track '%s' cannot be found" % filename
             self.__load_tables(filename)
             self._load_meta_data()
+            #print self.meta_data
             # Unpack any meta_data
             if name: # perform override of name metadata (if required)
                 self.meta_data["name"] = name
