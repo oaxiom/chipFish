@@ -56,11 +56,10 @@ class flat_track(base_track, track):
         
         if bin_format: # Change the bin_format of the db.
             self.meta_data["bin_format"] = bin_format
-            self._save_meta_data()
+            self.bin_format = bin_format
         else:
             self.bin_format = self.meta_data["bin_format"] # I unload this one 
         
-        self.bin_format = bin_format
         self.bin_len = struct.calcsize(self.bin_format)
         self.block_size = TRACK_BLOCK_SIZE # size of the blocks
         
@@ -71,7 +70,8 @@ class flat_track(base_track, track):
         self.cache = {}
         self.cacheQ = []
         
-        # Update any metadata etc, primarily the bin_len
+        # Update any metadata etc, primarily the bin_format
+        self._save_meta_data()
         
     def __repr__(self):
         return("glbase.flat_track")
@@ -349,6 +349,18 @@ class flat_track(base_track, track):
         else:
             raise Exception, "No Block!"
 
+    def get_total_num_reads(self):
+        """
+        **Purpose**
+            Get the total number of reads in this library,
+            generally for normalization purposes. Number of tags must be set at creation time,
+            not always avaialble for all flats
+        """
+        if 'total_read_count' in self.meta_data:
+            return(int(self.meta_data['total_read_count']))
+        return(None)
+        
+
     def get(self, loc, strand="+", mask_zero=False, **kargs):
         """
         **Purpose**
@@ -426,8 +438,8 @@ class flat_track(base_track, track):
             self.__commit_block(blockID, self.cache[blockID])
         self.cache = {} # Kill caches.
         self.cacheQ = []
+        self._save_meta_data()
         self._connection.commit() # commit all the __commit_block()
-
         base_track.finalise(self)
         
     def pileup(self, genelists=None, filename=None, window_size=None, average=True, 

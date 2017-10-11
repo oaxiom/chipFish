@@ -47,11 +47,10 @@ class base_track:
             assert os.path.exists(filename), "track '%s' cannot be found" % filename
             self.__load_tables(filename)
             self._load_meta_data()
-            #print self.meta_data
             # Unpack any meta_data
             if name: # perform override of name metadata (if required)
                 self.meta_data["name"] = name
-
+        
         self._c = None
         self._draw = None # Lazy set-up in track. Don't init draw unless needed.
         
@@ -121,12 +120,14 @@ class base_track:
 
         # First see if meta data exists.
         # This may be an old db, which has no info table - I'll need to make one then.
+        ''' # should be none of these in the wild by now, anyway, just broke the BLOCK_SIZE
         c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='info'")
         if not "info" in [k[0] for k in c.fetchall()]:
             # No meta data at all.
             c.execute("CREATE TABLE info (key TEXT PRIMARY KEY, value TEXT)")
             self._save_meta_data()
             return()
+        '''
 
         # Make certain there are no missing keys. 
         # If there are, add them to the table.
@@ -134,6 +135,7 @@ class base_track:
         c.execute("SELECT key FROM info")
         db_known_keys = [k[0] for k in c.fetchall()]
         
+        # This feels unwise to modify on a load
         for key in self.meta_data:
             if key not in db_known_keys: # This is a new metadata_attribute, save it
                 c.execute("INSERT INTO info VALUES (?, ?)", (key, self.meta_data[key]))
@@ -146,7 +148,7 @@ class base_track:
             else:
                 self.meta_data[item[0]] = item[1]
 
-        self._connection.commit()
+        #self._connection.commit()
         c.close()
         
     def _save_meta_data(self):
@@ -162,10 +164,9 @@ class base_track:
 
         for key in self.meta_data:
             if key in db_known_keys:
-                c.execute("UPDATE info SET value=? WHERE rowid=?", (self.meta_data[key], key))
+                c.execute("UPDATE info SET value=? WHERE key=?", (self.meta_data[key], key))
             else: # This is a new metadata_attribute, save it
                 c.execute("INSERT INTO info VALUES (?, ?)", (key, str(self.meta_data[key])))
-
         self._connection.commit()
         c.close()
         
