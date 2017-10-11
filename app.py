@@ -92,6 +92,7 @@ class app():
                         # The order of the following modes is important - for example, "bed:" will also
                         # collect "macs_bed" so "macs_bed" must go first.
                         # There can only be one mode
+                        # Gods, just do strip() and regex it!?!?!!!!
                         if "kde_track:" in line: # Must go before "track"
                             mode = "kde_track"
                         elif "split_track" in line:

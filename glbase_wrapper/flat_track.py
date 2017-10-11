@@ -25,7 +25,7 @@ class flat_track(glbase.flat_track):
     _default_draw_type = "graph"
     _available_draw_types = ("graph", "bar")
 
-    def get_data(self, type, loc, strand=None, resolution=1, **kargs):
+    def get_data(self, type, loc, strand=None, resolution=1, norm_by_lib_size=False, **kargs):
         """
         **Purpose**
             get data from the track.
@@ -46,16 +46,17 @@ class flat_track(glbase.flat_track):
             returns a Numpy array, or a dictionary.
         """
         data = self.get(loc, **kargs)
-        print data
+
         # flat_tracks do not respect a resolution argument.
         # This should probably be ported back to glbase
         
         newa = numpy.zeros(int(len(data)/resolution))
         
-        print newa
-        
         for i in xrange(len(newa)):
             newa[i] = data[int(i*resolution)]
+        
+        if norm_by_lib_size:
+            newa /= (self.get_total_num_reads() / 100000000.0)# Quick hack to get it back to ints.
         
         if type in self._available_draw_types:
             return(newa)
