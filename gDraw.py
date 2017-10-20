@@ -442,7 +442,7 @@ class gDraw:
         return( (0, base_loc[1]-opt.track.height_px[track_type], self.w, opt.track.height_px[track_type]-2) )
 
     def __drawTrackGraph(self, track_data, scaled=True, min_scaling=opt.track.min_scale, clamp=1, 
-        no_scaling=False, colour=None, name=None, **kargs):
+        no_scaling=False, colour=None, name=None, mid_line=False, **kargs):
         """
         **Arguments**
             track_data
@@ -465,6 +465,9 @@ class gDraw:
             name (Optional, default=None)
                 By default I will use the name of the genelist.
                 If you want to rename the track then set options name="Name of track" 
+                
+            mid_line (default=False)
+                draw a midline in to mark the center.
         """
 
         data = track_data["array"]
@@ -491,6 +494,14 @@ class gDraw:
             colbox = self.__drawTrackBackground(track_data["track_location"], "graph")
         else:
             colbox = []
+        
+        if mid_line: # appear behind any track
+            self.__setPenColour((0.5,0.5,0.5))
+            self.ctx.set_line_width(1.0)
+            loc = self.__realToLocal(0, track_data["track_location"]) # sampel the y position
+            self.ctx.move_to(self.w//2, loc[1])
+            self.ctx.line_to(self.w//2, loc[1]-opt.track.height_px["graph"])
+            self.ctx.stroke()
         
         if not colour:
             self.__setPenColour( (0,0,0) )

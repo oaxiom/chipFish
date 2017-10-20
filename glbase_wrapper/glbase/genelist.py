@@ -1259,7 +1259,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                 If None, all keys are searched.
 
             case_sensitive (Optional, default=True)
-                Set to True to make the search case sensitive.
+                Set to True to make the search case sensitive. Only works if use_re=True
                 
             use_re (Optional, default=True)
                 Unset this if you want exact matches or are getting unexpected behaviour 
@@ -1269,6 +1269,8 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             A new genelist containing only those items.
         """
         assert values, "getRowsByKey: 'values' argument cannot be None"
+        if not case_sensitive:
+            assert use_re, 'use_re must be True if case_sensitive is False'
         
         if not isinstance(values, list):
             values = [values]
