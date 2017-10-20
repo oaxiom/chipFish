@@ -5,6 +5,10 @@ track, part of chipFish
 
 Not for distribution.
 
+TODO:
+. never (?) seen in the wild, but it is presumably possible to have blocks with missing blockIDs that would throw an error in __Get_block()
+. Related to the above. blockID n:0 is almost always empty and not required, but gets committed anyway.
+
 """
 
 from __future__ import division
@@ -345,6 +349,8 @@ class flat_track(base_track, track):
         c.close()
 
         if result:
+            # Add it to the cache:
+            self.cache[blockID] = self._unformat_data(result[0]) # flats are never too big, so I don't bother flushing the cache
             return(self._unformat_data(result[0]))
         else:
             raise Exception, "No Block!"
@@ -390,7 +396,7 @@ class flat_track(base_track, track):
 
         blocks_required = ["%s:%s" % (loc["chr"], b) for b in xrange(left_most_block * self.block_size, right_most_block * self.block_size, self.block_size)]
 
-        ret_array = array(self.bin_format, [])
+        ret_array = [] # faster than array
             
         for blockID in blocks_required:
             # this is the span location of the block
@@ -403,7 +409,7 @@ class flat_track(base_track, track):
             else: # block not in db, fake a block instead.
                 this_block_array_data = array(self.bin_format, [0 for x in xrange(self.block_size)])
 
-            #print "b", block
+            #print blockID, len(this_block_array_data)
             #print self.__get_block(blockID)
 
             # modify the data
@@ -412,7 +418,10 @@ class flat_track(base_track, track):
                 # see add_location for details
                 if local_pos < (loc["right"]+1): # still within block
                     if local_pos >= loc["left"] and local_pos <= (loc["right"]+1): # within the span to increment.
-                        ret_array.append(this_block_array_data[pos])
+                        if pos >= len(this_block_array_data):
+                            ret_array.append(0)
+                        else:
+                            ret_array.append(this_block_array_data[pos])
         if mask_zero:
             mask = []
             for dd in ret_array:

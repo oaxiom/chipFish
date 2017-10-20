@@ -201,8 +201,8 @@ class draw:
         **Returns**
             The actual filename used to save the image.
         """
-        assert filename, "heatmap() - no specified filename"
-
+        assert filename, "heatmap() - no specified filename"       
+        
         # preprocess data
         if isinstance(kargs["data"], dict):
             # The data key should be a serialised Dict, I need to make an array.
@@ -260,7 +260,7 @@ class draw:
                 
             else:
                 # If no row cluster take advantage of the extra width available, but shift down to accomodate the scalebar
-                mmheat_hei = 0.85 - heat_hei # this is also the maximal value (heamap edge is against the bottom)
+                mmheat_hei = 0.90 - heat_hei # this is also the maximal value (heamap edge is against the bottom)
                 top_side_tree =          [0.03,   0.852,  heat_wid,   0.044]
                 heatmap_location =       [0.03,   mmheat_hei,   heat_wid,  heat_hei]
                 loc_row_colbar =         [0.03-0.016,   mmheat_hei,   0.014,  heat_hei] # No need to cut the tree, just squeeze i into the left edge

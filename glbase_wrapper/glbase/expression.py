@@ -942,7 +942,8 @@ class expression(base_expression):
         """
         # checks for option here please.
         assert filename, "heatmap: you must specify a filename"
-
+        assert row_label_key in self.keys(), 'row_label_key "%s" not found in this genelist' % row_label_key
+        
         data = self.serialisedArrayDataList
 
         if "log" in kargs:

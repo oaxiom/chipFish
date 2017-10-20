@@ -69,4 +69,3 @@ class flat_track(glbase.flat_track):
         "draw type": _available_draw_types
         }
 
-
