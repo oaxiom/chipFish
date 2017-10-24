@@ -87,6 +87,8 @@ def is_se_inner_loop(f, chr_sizes, infilename, gzip, read_extend):
                 else:
                     raise AssertionError, 'strand %s not found' % s
 
+                #print l, r
+
                 for bp in xrange(l, r):
                     this_chrom[bp] += 1
         
@@ -190,11 +192,11 @@ def bed_to_flat(infilename, outfilename, name, isPE, read_extend=None, strand=Fa
             # We assume a strict BED file, 
             ch = line[0]
             #l = int(line[1]) # Don't need, assume rightmost only
-            r = int(line[2])
+            r = int(line[2])+5000+read_extend # pad out any likely read extension
             if ch not in chr_sizes:
                 chr_sizes[ch] = r
             if r > chr_sizes[ch]:
-                chr_sizes[ch] = r+5000 # pad out any likely read extension
+                chr_sizes[ch] = r 
             if n % 1000000 == 0 and n>0:
                 config.log.info("%s,000,000 reads parsed" % ((n // 1000000),))
             n += 1 # need to do this 

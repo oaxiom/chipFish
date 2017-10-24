@@ -1819,7 +1819,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             
         newl._optimiseData()
         
-        config.log.info("pointified peaklist %s" % self.name)
+        config.log.info("Pointified peaklist '%s'" % self.name)
         return(newl)
         
     def addFakeKey(self, key=None, value=None):
@@ -1910,7 +1910,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             
         newl._optimiseData()
         
-        config.log.info("expanded locs in genelist %s by %s base pairs" % (self.name, base_pairs))
+        config.log.info("Expanded '%s' in genelist '%s' by %s base pairs" % (key, self.name, base_pairs))
         return(newl)
 
     def pointLeft(self, key="loc"):
