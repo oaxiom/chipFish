@@ -350,10 +350,11 @@ class flat_track(base_track, track):
 
         if result:
             # Add it to the cache:
-            self.cache[blockID] = self._unformat_data(result[0]) # flats are never too big, so I don't bother flushing the cache
+            # This seems to make little difference to speed, and consumes too much memory if >10 flats. (16Gb machine)
+            #self.cache[blockID] = self._unformat_data(result[0]) # flats are never too big, so I don't bother flushing the cache
             return(self._unformat_data(result[0]))
         else:
-            raise Exception, "No Block!"
+            raise Exception, "No Block! blockID=%s" % blockID # Not possible
 
     def get_total_num_reads(self):
         """
@@ -366,7 +367,6 @@ class flat_track(base_track, track):
             return(int(self.meta_data['total_read_count']))
         return(None)
         
-
     def get(self, loc, strand="+", mask_zero=False, **kargs):
         """
         **Purpose**
@@ -390,38 +390,44 @@ class flat_track(base_track, track):
         except TypeError: # probably a location string. try to cooerce
             loc = location(loc=loc)
             # Don't catch any exceptions here. Should break.
+            
+        # get is hitting location too hard. Unfold here:
+        c = str(loc['chr'])
+        left = int(loc['left'])
+        rite = int(loc['right'])
 
-        left_most_block = int(abs(math.floor(loc["left"] / self.block_size)))
-        right_most_block = int(abs(math.ceil((loc["right"]+1) / self.block_size)))
+        left_most_block = int(abs(math.floor(left / self.block_size)))
+        right_most_block = int(abs(math.ceil((rite+1) / self.block_size)))
 
-        blocks_required = ["%s:%s" % (loc["chr"], b) for b in xrange(left_most_block * self.block_size, right_most_block * self.block_size, self.block_size)]
+        blocks_required = ["%s:%s" % (c, b) for b in xrange(left_most_block * self.block_size, right_most_block * self.block_size, self.block_size)]
 
         ret_array = [] # faster than array
-            
+        
         for blockID in blocks_required:
             # this is the span location of the block
-            block_loc = location(chr=blockID.split(":")[0], left=blockID.split(":")[1], right=int(blockID.split(":")[1])+self.block_size-1)
-
+            #block_loc = location(chr=blockID.split(":")[0], left=blockID.split(":")[1], right=int(blockID.split(":")[1])+self.block_size-1)
+            block_loc_left = int(blockID.split(":")[1]) # this is all you actually need for the block location
             # check if the block already exists
             if self.__has_block(blockID): # it does, get it.
-                block = self.__get_block(blockID)
-                this_block_array_data = block # get back the usable data
+                this_block_array_data = self.__get_block(blockID)
             else: # block not in db, fake a block instead.
-                this_block_array_data = array(self.bin_format, [0 for x in xrange(self.block_size)])
+                this_block_array_data = [0] * self.block_size
 
-            #print blockID, len(this_block_array_data)
-            #print self.__get_block(blockID)
-
-            # modify the data
-            for pos in xrange(self.block_size): # iterate through the array.
-                local_pos = block_loc["left"] + pos
-                # see add_location for details
-                if local_pos < (loc["right"]+1): # still within block
-                    if local_pos >= loc["left"] and local_pos <= (loc["right"]+1): # within the span to increment.
-                        if pos >= len(this_block_array_data):
-                            ret_array.append(0)
-                        else:
-                            ret_array.append(this_block_array_data[pos])
+            # This feels like it would be a bit slow...
+            # Work out the spans to reduce iteration:
+            left_most = left - block_loc_left
+            if left_most < 0: left_most = 0 
+            rite_most = rite - block_loc_left
+            if rite_most > self.block_size: rite_most = self.block_size
+            #print left_most, rite_most
+            
+            for pos in xrange(left_most, rite_most): #self.block_size): # iterate through the array.
+                local_pos = block_loc_left + pos
+                if local_pos >= left and local_pos <= (rite+1): # within the span to increment.
+                    if pos >= len(this_block_array_data): # stop edge falloffs
+                        ret_array.append(0)
+                    else:
+                        ret_array.append(this_block_array_data[pos])
         if mask_zero:
             mask = []
             for dd in ret_array:
@@ -452,14 +458,14 @@ class flat_track(base_track, track):
         base_track.finalise(self)
         
     def pileup(self, genelists=None, filename=None, window_size=None, average=True, 
-        background=None, mask_zero=False, respect_strand=True, **kargs):
+        background=None, mask_zero=False, respect_strand=True, norm_by_read_count=False, **kargs):
         """
         **Purpose**
             Draw a set of pileup count scores (averages or cumulative scores)
         
         **Arguments**
             genelists
-                A genelist with a "loc" key
+                A list of genelist with a "loc" key
             
             filename
                 The filename to save the image to
@@ -493,6 +499,11 @@ class flat_track(base_track, track):
                 If available, respect the orientation of the strand from the genelist.
                 This is useful if you are, say, using the TSS's and want to maintain the
                 orientation with respect to the transcription direction.
+
+            norm_by_read_count (Optional, default=False)
+                If you are not using a norm_factor for this library then you probably want to set this to True. 
+                It will divide the resulting number of reads by the total number of reads, 
+                i.e. it will account for differences in library sizes. 
                 
         **Returns**
             (data, back)
@@ -516,6 +527,8 @@ class flat_track(base_track, track):
             if not isinstance(background, list):
                 background = [background] # make a one item'd list
     
+        read_count = float(self.get_total_num_reads())
+    
         # flats have lazy setup of draw:
         if not self._draw:
             self._draw = draw(self)
@@ -532,10 +545,11 @@ class flat_track(base_track, track):
         else:
             loc_span = len(genelists[0].linearData[0]["loc"]) # I have to assume all locs are identical.
         
-        for gl in genelists:
+        for gl in genelists:    
             if window_size:
                 hist = numpy.zeros(window_size*2)
                 counts = numpy.zeros(window_size*2)
+                gl = gl.pointify().expand('loc', window_size)
             else:
                 x = numpy.arange(loc_span) - int(loc_span/2)
                 hist = numpy.zeros(loc_span)
@@ -543,9 +557,7 @@ class flat_track(base_track, track):
                 
             for i in gl:
                 if window_size:
-                    l = i["loc"].pointify()
-                    l = l.expand(window_size)
-                    a = self.get(l)[0:window_size*2] # mask_zero is NOT asked of here. because I need to ignore zeros for the average calculation (below)
+                    a = self.get(i["loc"])[0:window_size*2] # mask_zero is NOT asked of here. because I need to ignore zeros for the average calculation (below)
                 else:
                     a = self.get(i["loc"])[0:loc_span]
                 
@@ -571,6 +583,9 @@ class flat_track(base_track, track):
                 hist /= counts
             elif average and not mask_zero:
                 hist /= len(gl)
+            
+            if norm_by_read_count:
+                hist /= read_count * 1e6
             
             ax.plot(x, hist, label=gl.name, alpha=0.7)
             
@@ -641,3 +656,4 @@ class flat_track(base_track, track):
         
         config.log.info("pileup(): Saved '%s'" % actual_filename)
         return(hist, bkgd)
+        
