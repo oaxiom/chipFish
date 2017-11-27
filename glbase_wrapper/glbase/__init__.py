@@ -17,6 +17,8 @@ try:
     import config
     from errors import LibraryNotFoundError
 except:
+    if sys.version[0] == '3':
+        print 'Error! If this line appears as an error, you are trying to run glbase3 under python 2!' 
     print "Error: Fatal - GLbase is not installed correctly, cannot find my own libraries"
     print "       Is the python 'sys.path' correct?"
     sys.exit() # no raise if I can't get errors, it's surely a fatal installation problem.
@@ -119,6 +121,7 @@ from .tools.wigstep_to_flattrack import wigstep_to_flat
 from .tools.gerp_to_flattrack import gerp_to_flat
 from .tools.bigwig_to_flattrack import bedgraph_to_flat
 from .tools.bed_to_flattrack import bed_to_flat
+from .tools.wig_to_flattrack import wig_to_flat
 from .tools.rnaseq import rnaseqqc
 
 def version():
@@ -132,7 +135,7 @@ __all__ = ["genelist", "fastq", "expression", "genome", "genome_sql", "track", "
             "location", "pwm", "pwms", #accesory objects 
             "flags",  "format",
             "utils", "glload", "seqToTrk", "logo", 
-            "glglob", "motif",  "wigstep_to_flat", "bedgraph_to_flat", 'bed_to_flat',
+            "glglob", "motif",  "wigstep_to_flat", "bedgraph_to_flat", 'bed_to_flat', 'wig_to_flat',
             "rnaseqqc", "gldata",
             "gerp_to_flat", "draw", "fc",
             "progressbar", "ecrbase", "region", "realtime", "realtime2", "tfbs_iter",

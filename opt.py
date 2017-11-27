@@ -119,9 +119,9 @@ class track:
     options for the tracks
     """
     # previously track_heights were 200 px
-    height_px = {"graph": 150, # These are the pixel heights of the tracks. Can be any reasonable value. These values are asthetically pleasing
-        "graph_split_strand": 150, # same as graph
-        "kde_graph": 150, # ditto
+    height_px = {"graph": 100, # These are the pixel heights of the tracks. Can be any reasonable value. These values are asthetically pleasing
+        "graph_split_strand": 100, # same as graph
+        "kde_graph": 100, # ditto
         "bar": 20,
         "spot": 20,
         "genome": 70,

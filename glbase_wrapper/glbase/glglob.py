@@ -1588,7 +1588,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         return(reversed(res["reordered_rows"]))
 
     def measure_density(self, trks, peaks, norm_by_library_size=True, log=False,
-        read_extend=200, pointify=True, expand=1000,
+        read_extend=0, pointify=True, expand=1000,
         **kargs):
         """
         **Purpose**
@@ -1596,7 +1596,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             
         **Arguments**
             trks (Required)
-                a list of tracks
+                a list of tracks/flats
             
             peaks (Required)
                 a list of peaks, a genelist containing a 'loc' key

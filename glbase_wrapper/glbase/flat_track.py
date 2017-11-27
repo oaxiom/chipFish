@@ -439,6 +439,49 @@ class flat_track(base_track, track):
             ret_array = numpy.ma.masked_array(ret_array, mask=mask)
         return(ret_array)
 
+    def get_array_chromosome(self, chrom=None, **kargs): # kargs for compat with trk    
+        """
+        **Purpose**
+            Get the enrire array for the chromosome chrom.
+            
+        **Arguments**
+            chrom (Required)
+                chromsome name to collect.
+                
+        """
+        #What is the maximum blockID size?
+        c = self._connection.cursor()
+        c.execute("SELECT blockID FROM data") # get all blockIDs
+        result = c.fetchall()
+        # get biggest blockID:
+        biggest_block = -1
+        for b in result:
+            bid, pos = b[0].split(':')
+            pos = int(pos)
+            if chrom.replace('chr', '') == bid:
+                if pos > biggest_block:
+                    biggest_block = pos
+    
+        right_most_block = int(abs(math.ceil((biggest_block+1) / self.block_size)))
+
+        blocks_required = ["%s:%s" % (chrom, b) for b in xrange(0, right_most_block * self.block_size, self.block_size)] # always in order?
+        ret_array = [] # faster than array
+        
+        for blockID in blocks_required:
+            # this is the span location of the block
+            #block_loc = location(chr=blockID.split(":")[0], left=blockID.split(":")[1], right=int(blockID.split(":")[1])+self.block_size-1)
+            block_loc_left = int(blockID.split(":")[1]) # this is all you actually need for the block location
+            # check if the block already exists
+            if self.__has_block(blockID): # it does, get it.
+                this_block_array_data = self.__get_block(blockID)
+            else: # block not in db, fake a block instead.
+                this_block_array_data = [0] * self.block_size
+
+            #print this_block_array_data
+            ret_array += this_block_array_data
+        
+        return(ret_array)
+
     def finalise(self):
         """
         {Override)
@@ -529,6 +572,8 @@ class flat_track(base_track, track):
     
         read_count = float(self.get_total_num_reads())
     
+        all_hists = {}
+        
         # flats have lazy setup of draw:
         if not self._draw:
             self._draw = draw(self)
@@ -556,10 +601,7 @@ class flat_track(base_track, track):
                 counts = numpy.zeros(loc_span) # used to get the average.
                 
             for i in gl:
-                if window_size:
-                    a = self.get(i["loc"])[0:window_size*2] # mask_zero is NOT asked of here. because I need to ignore zeros for the average calculation (below)
-                else:
-                    a = self.get(i["loc"])[0:loc_span]
+                a = self.get(i["loc"])#[0:window_size*2] # mask_zero is NOT asked of here. because I need to ignore zeros for the average calculation (below)
                 
                 if respect_strand:
                     # positive strand is always correct, so I leave as is.
@@ -585,9 +627,10 @@ class flat_track(base_track, track):
                 hist /= len(gl)
             
             if norm_by_read_count:
-                hist /= read_count * 1e6
+                hist /= read_count
             
             ax.plot(x, hist, label=gl.name, alpha=0.7)
+            all_hists[gl.name] = hist
             
         bkgd = None
         if background:
@@ -629,6 +672,9 @@ class flat_track(base_track, track):
                 elif average and not mask_zero:
                     bkgd /= bkgd_items
                 
+                if norm_by_read_count:
+                    hist /= read_count
+                
                 if i == 0: # add only a single legend.
                     ax.plot(x, bkgd, color="grey", alpha=0.3, label="Random Background") 
                 else:
@@ -655,5 +701,5 @@ class flat_track(base_track, track):
         actual_filename = self._draw.savefigure(fig, filename)
         
         config.log.info("pileup(): Saved '%s'" % actual_filename)
-        return(hist, bkgd)
+        return(all_hists, bkgd)
         
