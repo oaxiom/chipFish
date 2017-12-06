@@ -10,9 +10,9 @@ import sys, os, numpy
 #sys.path.append("..") # get the parent options
 import opt
 
-import glbase # import like this to get around namespace issues
+from . import glbase_stage # import like this to get around namespace issues
 
-class flat_track(glbase.flat_track):
+class flat_track(glbase_stage.flat_track):
     """
     chipFish override of vanilla glbase track.py
 
@@ -52,18 +52,18 @@ class flat_track(glbase.flat_track):
         
         newa = numpy.zeros(int(len(data)/resolution)) # Possible to get here with no data...
         
-        for i in xrange(len(newa)):
+        for i in range(len(newa)):
             newa[i] = data[int(i*resolution)]
         
         if norm_by_lib_size:
             if not self.get_total_num_reads():
-                raise AssertionError, 'Asked for norm_by_lib_size=True, but this flat does not have a valid total_num_reads'
+                raise AssertionError('Asked for norm_by_lib_size=True, but this flat does not have a valid total_num_reads')
             newa /= (self.get_total_num_reads() / 100000000.0)# Quick hack to get it back to ints.
         
         if type in self._available_draw_types:
             return(newa)
 
-        raise AssertionError, "draw mode not available"
+        raise AssertionError("draw mode not available")
 
     # gui stuff.
     # available for the gui on this class

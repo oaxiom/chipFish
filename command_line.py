@@ -18,7 +18,7 @@ oh = open(os.path.expanduser("~/Projects/AP2aGCM/trks/For raw signal.txt"), "rU"
 for lin in oh:
     tt = lin.strip().split("\t")
     
-    print tt
+    print(tt)
     if tt[0] != "gname":
     
         a.draw.setLocation(loc=location(loc=tt[1]).expand(10000))

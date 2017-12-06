@@ -110,7 +110,7 @@ class app():
                         elif 'genome_sql:' in line:
                             mode = 'genome_sql'
                         else:
-                            raise ErrorUnrecognisedTrackMode, mode
+                            raise ErrorUnrecognisedTrackMode(mode)
                             
                         # process options
                         options = self.__do_options(line.split(":")[-1], mode)

@@ -6,7 +6,7 @@ override for chipFish
 
 contains misc data from glbase, stuff found in helpers, data, flags etc...
 
-(c) 2009-2011 oAxiom
+(c) 2009-2017 oAxiom
 
 """
 import sys, os
@@ -19,25 +19,25 @@ import sys, os
 #sys.path.append(opt.path.glbase_package)
 #import glbase # import like this to get around namespace issues
 
-import glbase
-VERSION = glbase.config.VERSION
+from . import glbase_stage
+VERSION = glbase_stage.config.VERSION
 
 # pass through directly from glbase
-from glbase.flags import * # just pass through.
-from glbase.location import location
-from glbase.helpers import * # pass through
-from glbase.delayedlist import delayedlist
-from glbase.tools.seqToTrk import seqToTrk 
-import glbase.format as format
+from .glbase_stage.flags import * # just pass through.
+from .glbase_stage.location import location
+from .glbase_stage.helpers import * # pass through
+from .glbase_stage.delayedlist import delayedlist
+from .glbase_stage.tools.seqToTrk import seqToTrk 
+from .glbase_stage import format
 
 # get the wrapped versions.
-from genelist import genelist
-from genome import genome
-from genome_sql import genome_sql
-from track import track
-from flat_track import flat_track
+from .genelist import genelist
+from .genome import genome
+from .genome_sql import genome_sql
+from .track import track
+from .flat_track import flat_track
 
 # make these functions available in the package
 __all__ = ["genelist", "location", "genome", "delayedlist", "VERSION",
     "track", "format",
-    ] + dir(glbase.flags) + dir(glbase.helpers) 
+    ] + dir(glbase_stage.flags) + dir(glbase_stage.helpers) 

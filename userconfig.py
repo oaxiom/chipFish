@@ -122,4 +122,4 @@ if __name__ == "__main__":
     # this goes in a test suite later
 
     a = userconfig()
-    print a # should print the current userpath.
+    print(a) # should print the current userpath.

@@ -6,7 +6,7 @@ abstraction of a generic ruler class.
 
 """
 
-from __future__ import division
+
 from error import AssertionError
 
 import opt
@@ -130,7 +130,7 @@ class ruler:
         major = []
         mi = int((self.min / int(best))) * int(best) # get the closest min
         ma = int((self.max / int(best))) * int(best) # and max
-        for v in xrange(mi, ma, int(best)): 
+        for v in range(mi, ma, int(best)): 
             px_location = (self.display_px_w * ((v - self.min) / self.wid))
             if self.units:
                 lab = "%s %s%s" % (int(v/best_div_lookback[scales_and_labels[best]]), scales_and_labels[best], self.units)
@@ -184,17 +184,17 @@ class ruler:
 if __name__ == "__main__":
     #min, max, display_pixel_size, useSI_label=True
     r = ruler(5, 10, (0, 100), "bp", True)
-    print r.get_ruler_data()
+    print(r.get_ruler_data())
     
     r = ruler(0, 30, (0, 100))
-    print r.get_ruler_data()
+    print(r.get_ruler_data())
 
     r = ruler(100, 1000, (0, 100))
-    print r.get_ruler_data()
+    print(r.get_ruler_data())
 
     r = ruler(10000000, 15000000, (0, 500))
-    print r.get_ruler_data()
+    print(r.get_ruler_data())
     
     r = ruler(10000000, 10200000, (0, 500))
-    print r.get_ruler_data()
+    print(r.get_ruler_data())
     

@@ -134,4 +134,4 @@ if __name__ == "__main__":
     b = bookmarks("mm8")
     b.add_bookmark(location(loc="chr17:15064087-15088782"), "Dll1")
     b.add_bookmark(location(loc="chr17:15064087-15088782"), "Dll3")
-    print b._get_all_bookmarks()
+    print(b._get_all_bookmarks())

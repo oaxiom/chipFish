@@ -112,35 +112,35 @@ class frame_mainFrame_parent(wx.Frame):
         # end wxGlade
 
     def OnBigViewLeft(self, event): # wxGlade: frame_mainFrame_parent.<event_handler>
-        print "Event handler `OnBigViewLeft' not implemented!"
+        print("Event handler `OnBigViewLeft' not implemented!")
         event.Skip()
 
     def OnViewLeft(self, event): # wxGlade: frame_mainFrame_parent.<event_handler>
-        print "Event handler `OnViewLeft' not implemented!"
+        print("Event handler `OnViewLeft' not implemented!")
         event.Skip()
 
     def OnGotoLocationEdit(self, event): # wxGlade: frame_mainFrame_parent.<event_handler>
-        print "Event handler `OnGotoLocationEdit' not implemented!"
+        print("Event handler `OnGotoLocationEdit' not implemented!")
         event.Skip()
 
     def OnJumpToGenomicLoc(self, event): # wxGlade: frame_mainFrame_parent.<event_handler>
-        print "Event handler `OnJumpToGenomicLoc' not implemented!"
+        print("Event handler `OnJumpToGenomicLoc' not implemented!")
         event.Skip()
 
     def OnViewRight(self, event): # wxGlade: frame_mainFrame_parent.<event_handler>
-        print "Event handler `OnViewRight' not implemented!"
+        print("Event handler `OnViewRight' not implemented!")
         event.Skip()
 
     def OnViewBigRight(self, event): # wxGlade: frame_mainFrame_parent.<event_handler>
-        print "Event handler `OnViewBigRight' not implemented!"
+        print("Event handler `OnViewBigRight' not implemented!")
         event.Skip()
 
     def OnButZoomIn(self, event): # wxGlade: frame_mainFrame_parent.<event_handler>
-        print "Event handler `OnButZoomIn' not implemented!"
+        print("Event handler `OnButZoomIn' not implemented!")
         event.Skip()
 
     def OnButZoomOut(self, event): # wxGlade: frame_mainFrame_parent.<event_handler>
-        print "Event handler `OnButZoomOut' not implemented!"
+        print("Event handler `OnButZoomOut' not implemented!")
         event.Skip()
 
 # end of class frame_mainFrame_parent

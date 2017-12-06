@@ -26,9 +26,9 @@ mm8_refGene_format = {
 
 if os.path.exists("mm8_refGene.tsv"):
     mm8 = glbase_wrapper.genome(name="mm8", filename="mm8_refGene.tsv", format=mm8_refGene_format)
-    print mm8
+    print(mm8)
     mm8.save("mm8_refGene.glb")
-    print mm8._findByLabel("name", "Nanog")
+    print(mm8._findByLabel("name", "Nanog"))
 
 format_mm9_refgene = {
         "loc": {"code": "location(chr=column[2], left=int(column[4]), right=int(column[5]))"},
@@ -45,40 +45,40 @@ format_mm9_refgene = {
 
 if os.path.exists("mm9_refGene.tsv"):
     mm9 = glbase_wrapper.genome(name="mm9", filename="mm9_refGene.tsv", format=format_mm9_refgene)
-    print mm9
+    print(mm9)
     mm9.save("mm9_refGene.glb")
-    print mm9._findByLabel("name", "Nanog")
+    print(mm9._findByLabel("name", "Nanog"))
 
 if os.path.exists("hg19_refGene.tsv"):
     hg19 = glbase_wrapper.genome(name="hg19", filename="hg19_refGene.tsv", format=format_mm9_refgene)
-    print hg19
+    print(hg19)
     hg19.save("hg19_refGene.glb")
-    print hg19._findByLabel("name", "NANOG")
+    print(hg19._findByLabel("name", "NANOG"))
 
 if os.path.exists("mm10_refGene.tsv"):
     mm10 = glbase_wrapper.genome(name="mm10", filename="mm10_refGene.tsv", format=format_mm9_refgene)
-    print mm10
+    print(mm10)
     mm10.save("mm10_refGene.glb")
-    print mm10._findByLabel("name", "Nanog")
+    print(mm10._findByLabel("name", "Nanog"))
 
 if os.path.exists("mm10_gencode.tsv"):
     mm10 = glbase_wrapper.genome(name="mm10", filename="mm10_gencode.tsv", format=format_mm9_refgene)
-    print mm10
+    print(mm10)
     mm10.save("mm10_gencode.glb")
-    print mm10._findByLabel("name", "Nanog")
+    print(mm10._findByLabel("name", "Nanog"))
     mm10.getFeatures('chr12:7,786,960-7,801,578')
 
 if os.path.exists("hg38_refGene.tsv"):
     hg38 = glbase_wrapper.genome(name="hg38", filename="hg38_refGene.tsv", format=format_mm9_refgene)
-    print hg38
+    print(hg38)
     hg38.save("hg38_refGene.glb")
-    print hg38._findByLabel("name", "NANOG")
+    print(hg38._findByLabel("name", "NANOG"))
     hg38.getFeatures('chr12:7,786,960-7,801,578')
 
 if os.path.exists("hg38_gencode.tsv"):
     hg38 = glbase_wrapper.genome(name="hg38", filename="hg38_gencode.tsv", format=format_mm9_refgene)
-    print hg38
+    print(hg38)
     hg38.save("hg38_gencode.glb")
-    print hg38._findByLabel("name", "NANOG")
+    print(hg38._findByLabel("name", "NANOG"))
     hg38.getFeatures('chr12:7,786,960-7,801,578')
 

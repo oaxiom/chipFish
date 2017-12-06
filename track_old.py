@@ -7,9 +7,9 @@ Not for distribution.
 
 """
 
-from __future__ import division
 
-import cPickle, sys, os, struct, ConfigParser, math, sqlite3, zlib # renamed to configparser in >2.6
+
+import pickle, sys, os, struct, configparser, math, sqlite3, zlib # renamed to configparser in >2.6
 
 from glbase_wrapper import location as location
 from glbase_wrapper import positive_strand_labels, negative_strand_labels
@@ -112,7 +112,7 @@ class track:
         left_most_block = int(abs(math.floor(loc["left"] / self.block_size)))
         right_most_block = int(abs(math.ceil((loc["right"]+1) / self.block_size)))
 
-        blocks_required = ["%s:%s" % (loc["chr"], b) for b in xrange(left_most_block * self.block_size, right_most_block * self.block_size, self.block_size)]
+        blocks_required = ["%s:%s" % (loc["chr"], b) for b in range(left_most_block * self.block_size, right_most_block * self.block_size, self.block_size)]
 
         for blockID in blocks_required:
             # this is the span location of the block
@@ -131,7 +131,7 @@ class track:
             lleft = int(loc["left"])
             lright = int(loc["right"])
             # modify the data
-            for pos in xrange(self.block_size): # iterate through the array.
+            for pos in range(self.block_size): # iterate through the array.
                 local_pos = bleft + pos # only require "left"
                 # some funny stuff here:
                 # right is inc'd by 1
@@ -150,7 +150,7 @@ class track:
         does not return the block, you must use __get_block()
         to get the actual block.
         """
-        if self.cache.has_key(blockID):
+        if blockID in self.cache:
             return(True) # on cache, so must exist.
 
         has = False
@@ -192,7 +192,7 @@ class track:
         You need to flush the cache for that to happen
         """
         if not data: # fill a blank entry
-            data = array('i', [0 for x in xrange(self.block_size)])
+            data = array('i', [0 for x in range(self.block_size)])
             #data.extend([1 for x in xrange(self.block_size)])
             #for n in xrange(self.block_size):
             #    data.append(0)
@@ -220,7 +220,7 @@ class track:
         """
         get the block identified by chr and left coordinates and return a Python Object.
         """
-        if self.cache.has_key(blockID):
+        if blockID in self.cache:
             return(self.cache[blockID])
 
         # not on the cache. get the block and put it on the cache.
@@ -232,7 +232,7 @@ class track:
         if result:
             return(self.__unformat_data(result[0]))
         else:
-            raise Exception, "No Block!"
+            raise Exception("No Block!")
 
     def __format_data(self, data):
         """
@@ -272,7 +272,7 @@ class track:
         left_most_block = int(abs(math.floor(loc["left"] / self.block_size)))
         right_most_block = int(abs(math.ceil((loc["right"]+1) / self.block_size)))
 
-        blocks_required = ["%s:%s" % (loc["chr"], b) for b in xrange(left_most_block * self.block_size, right_most_block * self.block_size, self.block_size)]
+        blocks_required = ["%s:%s" % (loc["chr"], b) for b in range(left_most_block * self.block_size, right_most_block * self.block_size, self.block_size)]
 
         ret_array = array('i', [])
 
@@ -285,13 +285,13 @@ class track:
                 block = self.__get_block(blockID)
                 this_block_array_data = block # get back the usable data
             else: # block not in db, fake a block instead.
-                this_block_array_data = array('i', [0 for x in xrange(self.block_size)])
+                this_block_array_data = array('i', [0 for x in range(self.block_size)])
 
             #print "b", block
             #print self.__get_block(blockID)
 
             # modify the data
-            for pos in xrange(self.block_size): # iterate through the array.
+            for pos in range(self.block_size): # iterate through the array.
                 local_pos = block_loc["left"] + pos
                 # see add_location for details
                 if local_pos < (loc["right"]+1): # still within block
@@ -343,15 +343,15 @@ if __name__ == "__main__":
     t.add_location(location(loc="chr2:120-220"), strand="-")
     t.add_location(location(loc="chr2:250-260"), strand="-")
 
-    print "Finalise:"
+    print("Finalise:")
     t.finalise() # must call this
 
-    print t.get(location(loc="chr1:1-26"))
-    print t.get(location(loc="chr1:10-20"))
-    print t.get(location(loc="chr1:20-25"))
+    print(t.get(location(loc="chr1:1-26")))
+    print(t.get(location(loc="chr1:10-20")))
+    print(t.get(location(loc="chr1:20-25")))
 
-    print "\nReload"
+    print("\nReload")
     t = track(filename="data/test.trk")
-    print t.get(location(loc="chr1:1-26"))
-    print t.get(location(loc="chr1:10-20"))
-    print t.get(location(loc="chr1:20-25"))
+    print(t.get(location(loc="chr1:1-26")))
+    print(t.get(location(loc="chr1:10-20")))
+    print(t.get(location(loc="chr1:20-25")))

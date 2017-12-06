@@ -9,9 +9,9 @@ import sys, os
 
 sys.path.append("..") # get the parent options
 import opt
-import glbase # import like this to get around namespace issues
+from . import glbase_stage # import like this to get around namespace issues
 
-class track(glbase.track):
+class track(glbase_stage.track):
     """
     chipFish override of vanilla glbase track.py
 
@@ -46,7 +46,7 @@ class track(glbase.track):
             returns a Numpy array, or a dictionary.
         """
         if type not in self._available_draw_types:
-            raise AssertionError, "draw mode not available"
+            raise AssertionError("draw mode not available")
 
         if type == "kde_graph":
             return(self.get(loc, resolution=resolution, kde_smooth=True, **kargs))

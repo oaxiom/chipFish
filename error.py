@@ -17,7 +17,7 @@ import sys, os
 # A generic error class.
 class error:
     def __init__(self, message, bFatal=False):
-        print "Error: ", message
+        print("Error: ", message)
         if bFatal:
             sys.exit()
 
@@ -37,7 +37,7 @@ class AssertionError(Exception):
         """
         Output the error message and tidy up the traceback, and perform other stuff.
         """
-        print "Error: %s" % (message)
+        print("Error: %s" % (message))
 
 # ---------------------------------------------------------------------
 # Exceptions

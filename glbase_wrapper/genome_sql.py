@@ -8,15 +8,15 @@ genome pass through for chipFish, see the accompanying readme.txt for details.
 
 import sys, os
 
-from utils import qcollide
+from .utils import qcollide
 
 sys.path.append("..") # get the parent options
 import opt
 
 sys.path.append(opt.path.glbase_package)
-import glbase # import like this to get around namespace issues
+from . import glbase_stage # import like this to get around namespace issues
 
-class genome_sql(glbase.genome_sql):
+class genome_sql(glbase_stage.genome_sql):
     """
     chipFish override of vanilla glbase
 
