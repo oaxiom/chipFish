@@ -20,7 +20,7 @@ from app import app
 from glbase_wrapper import location
 
 if len(sys.argv) < 1:
-    print "serve.py <track_list_file.txt>"
+    print("serve.py <track_list_file.txt>")
     quit()
 
 cf = app() # Startup chipFish
@@ -32,18 +32,18 @@ __all__ = ["HTTPRequestHandler"]
 
 import os, sys, time
 import posixpath
-import BaseHTTPServer
-import urllib
+import http.server
+import urllib.request, urllib.parse, urllib.error
 import cgi
 import shutil
 import mimetypes
 
 try:
-    from cStringIO import StringIO
+    from io import StringIO
 except ImportError:
-    from StringIO import StringIO
+    from io import StringIO
 
-class chipfishHTTPServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+class chipfishHTTPServerHandler(http.server.BaseHTTPRequestHandler):
     """
     HTTP request handler with GET and HEAD commands.
 
@@ -83,7 +83,7 @@ class chipfishHTTPServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         """
         path, query = self.translate_get(self.path)
 
-        print path, query
+        print(path, query)
 
         if query:
             if "loc" in query and query["loc"]:
@@ -149,9 +149,9 @@ class chipfishHTTPServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 query[q.split("=")[0]] = q.split("=")[1]
 
         path = path.split('#',1)[0]
-        path = posixpath.normpath(urllib.unquote(path))
+        path = posixpath.normpath(urllib.parse.unquote(path))
         words = path.split('/')
-        words = filter(None, words)
+        words = [_f for _f in words if _f]
         path = os.getcwd()
         for word in words:
             drive, word = os.path.splitdrive(word)
@@ -211,7 +211,7 @@ class chipfishHTTPServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         '.h': 'text/plain',
         })
 
-def serve(handler_class=chipfishHTTPServerHandler, server_class=BaseHTTPServer.HTTPServer):
+def serve(handler_class=chipfishHTTPServerHandler, server_class=http.server.HTTPServer):
     # Hack the port.
     sys.argv[1] = 8080
     

@@ -28,7 +28,7 @@ TODO:
 . DXF/PS exporter?
 """
 
-from __future__ import division
+
 
 import sys, os, math
 
@@ -69,7 +69,7 @@ class gDraw:
         self.colBoxes = [] # list of boundbox objects.
         self.paintQ = []
         self.tracks = [] # currently visible tracks
-        self.trackBoxes = [False for n in xrange(MAX_TRACKS)] # list of TrackBoxes in use.
+        self.trackBoxes = [False for n in range(MAX_TRACKS)] # list of TrackBoxes in use.
 
         self.genome = genome
 
@@ -205,7 +205,7 @@ class gDraw:
             track_type = track._default_draw_type
 
         if track_type not in valid_track_draw_types:
-            raise ErrorTrackDrawTypeNotFound, track_type
+            raise ErrorTrackDrawTypeNotFound(track_type)
 
         self.tracks.append({"data": track, "track_location": self.__getNextTrackBox(track_type), "type": track_type})
 
@@ -389,7 +389,7 @@ class gDraw:
             nearest = int(math.ceil(float(self.lbp+1) / window_size) * window_size)
             self.ctx.set_line_width(opt.ruler.line_width * index+0.5)
 
-            for real_offset in xrange(nearest, self.rbp, int(window_size)):
+            for real_offset in range(nearest, self.rbp, int(window_size)):
                 screen_offset = (self.w * (float(real_offset - self.lbp) / self.delta))
                 self.ctx.move_to(screen_offset, 0)
                 self.ctx.line_to(screen_offset, opt.ruler.height_px * index+0.5)
@@ -867,5 +867,5 @@ class gDraw:
         for box in self.colBoxes:
             c = box.collideB((x,y))
             if c:
-                print c["type"]
+                print(c["type"])
                 return(c["type"])

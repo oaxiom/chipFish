@@ -42,7 +42,7 @@ def sliding_window(listIn, window):
 
     y = []
 
-    for n in xrange(half_window_left, len(listIn)-half_window_right):
+    for n in range(half_window_left, len(listIn)-half_window_right):
         y.append(sum(listIn[n-half_window_left:n+half_window_right]))
 
     return(y)

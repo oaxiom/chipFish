@@ -29,9 +29,9 @@ class genomes:
         
 if __name__ == "__main__":
     g = genomes()
-    print g.genomes
+    print(g.genomes)
     
-    print "mm9" in g
-    print "mm9_refGene" in g
+    print("mm9" in g)
+    print("mm9_refGene" in g)
     
-    print g.get_genome("mm10_refGene")
+    print(g.get_genome("mm10_refGene"))

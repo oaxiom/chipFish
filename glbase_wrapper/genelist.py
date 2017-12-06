@@ -11,9 +11,9 @@ sys.path.append("..") # get the parent options
 import opt
 
 sys.path.append(opt.path.glbase_package)
-import glbase # import like this to get around namespace issues
+from . import glbase_stage # import like this to get around namespace issues
 
-class genelist(glbase.genelist):
+class genelist(glbase_stage.genelist):
     """
     chipFish override of vanilla glbase
 
@@ -27,7 +27,7 @@ class genelist(glbase.genelist):
 
     # I have to redefine the methods chipFish respects here:
     def annotate(self, **kargs):
-        glbase.genelist.annotate(self, **kargs)
+        glbase_stage.genelist.annotate(self, **kargs)
 
     # define gui interfaces
     annotate.tooltype = "Annotate a list of genes"
@@ -43,7 +43,7 @@ class genelist(glbase.genelist):
         """
         if key == "info": # catch this special key
             for k in self.meta_data:
-                print "%s\t:\t%s" % (k, self.meta_data[k])
+                print(("%s\t:\t%s" % (k, self.meta_data[k])))
         elif key == "name":
             return(self.name)
         else:

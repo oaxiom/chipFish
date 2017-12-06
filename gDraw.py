@@ -9,7 +9,7 @@ This is ripped out of gDraw and others.
 
 """
 
-from __future__ import division
+
 
 import sys, os, math, time
 
@@ -41,7 +41,7 @@ class gDraw:
         self.colBoxes = [] # list of boundbox objects.
         self.paintQ = []
         self.tracks = [] # currently visible tracks
-        self.trackBoxes = [False for n in xrange(MAX_TRACKS)] # list of TrackBoxes in use.
+        self.trackBoxes = [False for n in range(MAX_TRACKS)] # list of TrackBoxes in use.
 
         self.chromosome = "1"
         self.lbp = 1
@@ -202,7 +202,7 @@ class gDraw:
             track_type = track._default_draw_type
 
         if track_type not in valid_track_draw_types:
-            raise ErrorTrackDrawTypeNotFound, track_type
+            raise ErrorTrackDrawTypeNotFound(track_type)
 
         if not options:
             options = {} # solves a lot of problems if it is an empty dict
@@ -758,7 +758,7 @@ class gDraw:
         self.__setPenColour( (col,col,col) )
         self.ctx.move_to(posLeft[0], posLeft[1]-9) # start x,y
 
-        print new_array
+        print(new_array)
 
         for index, value in enumerate(new_array):
             fraction_along_array = index / len(new_array)

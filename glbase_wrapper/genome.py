@@ -7,15 +7,15 @@ genome pass through for chipFish, see the accompanying readme.txt for details.
 
 import sys, os
 
-from utils import qcollide
+from .utils import qcollide
 
 sys.path.append("..") # get the parent options
 import opt
 
 sys.path.append(opt.path.glbase_package)
-import glbase # import like this to get around namespace issues
+from . import glbase_stage # import like this to get around namespace issues
 
-class genome(glbase.genome):
+class genome(glbase_stage.genome):
     """
     chipFish override of vanilla glbase
 
@@ -98,7 +98,7 @@ class genome(glbase.genome):
 
     # I have to redefine the methods chipFish respects here:
     def annotate(self, **kargs):
-        glbase.genome.annotate(self, **kargs)
+        glbase_stage.genome.annotate(self, **kargs)
 
     # define gui interfaces
     annotate.tooltype = "Annotate a list of genes"

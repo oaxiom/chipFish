@@ -55,7 +55,7 @@ class cfApp(wx.App):
             sys.stderr = self # silence errors.
             sys.stdout = self
 
-        print "chipFish (c) 2009, oAxiom, %s" % (time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())) # log.
+        print("chipFish (c) 2009, oAxiom, %s" % (time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime()))) # log.
 
         #load locale:
         self.locale = locale("en-gb")
@@ -139,7 +139,7 @@ class cfApp(wx.App):
         self.main.Maximize(True)
         # force a redraw:
         #self._updateDisplay()
-        print "End %s" % time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())
+        print("End %s" % time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime()))
         return(True)
 
     #------------------------------------------------------------------
@@ -165,7 +165,7 @@ class cfApp(wx.App):
         (Interal)
         Deal with mouse down presses
         """
-        print "mouse down"
+        print("mouse down")
 
     def __mouseLeftUp(self, event):
         """
@@ -192,7 +192,7 @@ class cfApp(wx.App):
         menu_head = self.main.GetMenuBar().GetMenu(3) # Bookmarks is 3... IS this stable?
 
         # clear the previous bookmarks:
-        for i in xrange(50000, 50100): # this is a limit to the number of bookmarks...
+        for i in range(50000, 50100): # this is a limit to the number of bookmarks...
             # could you even display 100 bookmarks?
             try:
                 menu_head.Delete(id=i)
