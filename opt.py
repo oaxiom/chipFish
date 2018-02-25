@@ -137,7 +137,7 @@ class track:
     background = False # Draw a grey background defining the span of the track
     draw_names = True
     draw_scales = True
-    scale_bar_font_size = 52
+    scale_bar_font_size = 18
     label_fontsize = 22
     min_scale = 20 # The minimum x axis value for tracks. 
     lock_scales = False # Lock all scales on the Tracks together. Make this per trk file settable?
