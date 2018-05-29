@@ -1,3 +1,17 @@
+"""
+--------------------------
+chipFish, part of chipFish
+
+(c) 2008-2018 oAxiom
+
+--------------------------
+
+Main app entry
+
+NOTES:
+------
+
+"""
 
 import sys, os, copy
 
