@@ -940,7 +940,14 @@ class gDraw:
         draw_modes_dict = { # In case I ever add other drawing modes...
             'LINE': self.__drawRepeat, 
             'LTR': self.__drawRepeat, 
-            'SINE': self.__drawRepeat
+            'SINE': self.__drawRepeat,
+            'Simple_repeat': None, # These are not currently supported
+            'DNA': None, 
+            'scRNA': None,
+            'Low_complexity': None,
+            'tRNA': None,
+            'Retroposon': None,
+            'Satellite': None,
             }
 
         self.__drawTrackBackground(track_data["track_location"], "repeats")
@@ -960,9 +967,12 @@ class gDraw:
         for item in track_data["array"]:
             # Should assert here if not in draw_modes
             if item['type'] not in draw_modes_dict:
-                log.warning('type=%s not found in draw modes, skipping.')
+                log.warning('type=%s not found in draw modes, skipping.' % item['type'])
                 continue
-            draw_modes_dict[item["type"]](item, track_data)
+            elif draw_modes_dict[item['type']] is None:
+                pass # Silenty pass missing but known types
+            else:
+                draw_modes_dict[item["type"]](item, track_data)
 
     def __drawRepeat(self, data, track_data=None):
         """
