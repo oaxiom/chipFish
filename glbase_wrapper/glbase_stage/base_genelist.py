@@ -382,27 +382,38 @@ class _base_genelist:
             pickle.dump(self, oh, -1)
         oh.close()
         config.log.info("Saved binary version of list: '%s'" % filename)
+
+    def from_pandas(self, pandas_data_frame):
+        """
+        **Purpose**
+
+            Convert a pandas dataFrame to a genelist
+            
+            NOTE: This is an INPLACE method that will REPLACE any exisiting data
+            in the 
+
+        **Arguments**
+
+            pandas_data_frame (Required)
+                The pandas data frame to convert
+
+        **Result**
+            None
+            The object is populated by 
+
+        """
+        if len(self) > 0:
+            config.log.warning('genelist.from_pandas() will overwrite the existing data in the genelist')
         
-    # ----------- special file loaders:
-    # Unbelievably stupid format for hmmer:
-    def _load_hmmer_tbl(self, filename):
-        """
-        Load the hmmer tbl_out table
-        """
-        oh = open(filename, "rU")
-        res = []
-        for line in oh:
-            if "#" not in line:
-                ll = line.split()
-                
-                name = ll[18:]
-                gene = "NA"
-                # split the name up into k:v pairs
-                for item in name:
-                    if ":" in item:
-                        if "gene:" in item:
-                            gene = item.split(":")[1]
-                
-                res.append({"peptide": ll[0], "dom_acc": ll[3], "dom_name": ll[2], "score": ll[4],
-                    "gene": gene})
-        return(res)
+        newl = []
+        key_names = pandas_data_frame.columns
+        for index, row in pandas_data_frame.iterrows():
+            newitem = {}
+            for k, item in zip(key_names, row):
+                newitem[k] = item
+            newl.append(newitem)
+        self.linearData = newl
+        self._optimiseData()
+
+        config.log.info("genelist.from_pandas() imported dataFrame")
+        

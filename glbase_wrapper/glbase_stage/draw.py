@@ -54,6 +54,7 @@ from scipy import polyfit, polyval
 from scipy.stats import linregress
 import scipy.stats
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plot
 import matplotlib.cm as cm
 from matplotlib.colors import ColorConverter, rgb2hex
@@ -65,6 +66,9 @@ from .adjustText import adjust_text
 from . import config, cmaps, utils
 from .flags import *
 from .errors import AssertionError
+
+# This helps AI recognise the text as text:
+matplotlib.rcParams['pdf.fonttype']=42
 
 # this is a work around in the implementation of
 # scipy.cluster.hierarchy. It does some heavy
@@ -246,22 +250,23 @@ class draw:
             if row_cluster:
                 mmheat_hei = 0.93 - heat_hei # this is also the maximal value (heamap edge is against the bottom)
                 
-                left_side_tree =         [0.05,  mmheat_hei,   0.248, heat_hei]
-                top_side_tree =          [0.3,   0.932,  heat_wid,   0.044]
-                heatmap_location =       [0.3,   mmheat_hei,   heat_wid,  heat_hei]
+                left_side_tree =         [0.01,  mmheat_hei,   0.186,      heat_hei]
+                top_side_tree =          [0.198,   0.932,        heat_wid,   0.044]
+                heatmap_location =       [0.198,   mmheat_hei,   heat_wid,   heat_hei]
                 
                 if col_colbar: # Slice a little out of the tree
-                    top_side_tree =          [0.3,   0.946,  heat_wid,   0.040]
-                    loc_col_colbar =         [0.3,   mmheat_hei+heat_hei+0.002,   heat_wid,  0.012]
+                    top_side_tree =          [0.198,   0.946,  heat_wid,   0.040]
+                    loc_col_colbar =         [0.198,   mmheat_hei+heat_hei+0.002,   heat_wid,  0.012]
                     
                 if row_colbar: # Slice a little out of the tree
-                    left_side_tree =         [0.05,  mmheat_hei,   0.248-0.018, heat_hei]
-                    loc_row_colbar =         [0.3-0.016,   mmheat_hei,   0.014,  heat_hei]
+                    left_side_tree =         [0.01,  mmheat_hei,   0.186-0.018, heat_hei]
+                    loc_row_colbar =         [0.198-0.016,   mmheat_hei,   0.014,  heat_hei]
                 
             else:
                 # If no row cluster take advantage of the extra width available, but shift down to accomodate the scalebar
-                mmheat_hei = 0.90 - heat_hei # this is also the maximal value (heamap edge is against the bottom)
-                top_side_tree =          [0.03,   0.852,  heat_wid,   0.044]
+                mmheat_hei = 0.89 - heat_hei # this is also the maximal value (heamap edge is against the bottom)
+                #top_side_tree =          [0.03,   0.852,  heat_wid,   0.044]
+                top_side_tree =          [0.03,   0.891,  heat_wid,   0.020]
                 heatmap_location =       [0.03,   mmheat_hei,   heat_wid,  heat_hei]
                 loc_row_colbar =         [0.03-0.016,   mmheat_hei,   0.014,  heat_hei] # No need to cut the tree, just squeeze i into the left edge
                 
@@ -269,7 +274,7 @@ class draw:
                     top_side_tree =          [0.03,   0.864,  heat_wid,   0.040] # squeeze up the colbar
                     loc_col_colbar =         [0.03,   0.852,   heat_wid,  0.012] # 
                 
-        scalebar_location = [0.01,  0.96,   0.24,   0.03]
+        scalebar_location = [0.01,  0.98,   0.18,   0.015]
         
         # set size of the row text depending upon the number of items:
         row_font_size = 0
@@ -376,10 +381,10 @@ class draw:
                 
             if row_color_threshold:
                 row_color_threshold = row_color_threshold*((Y.max()-Y.min())+Y.min()) # Convert to local threshold.
-                a = dendrogram(Z, orientation='left', color_threshold=row_color_threshold)
+                a = dendrogram(Z, orientation='left', color_threshold=row_color_threshold, ax=ax1)
                 ax1.axvline(row_color_threshold, color="grey", ls=":")
             else:
-                a = dendrogram(Z, orientation='left')
+                a = dendrogram(Z, orientation='left', ax=ax1)
 
             ax1.set_position(left_side_tree)
             ax1.set_frame_on(False)
@@ -428,7 +433,7 @@ class draw:
             else:
                 Y = pdist(transposed_data, metric=cluster_mode)
                 Z = linkage(Y, method='complete', metric=cluster_mode)
-            a = dendrogram(Z, orientation='top')
+            a = dendrogram(Z, orientation='top', ax=ax2)
 
             ax2.tick_params(top=False, bottom=False, left=False, right=False)
             
@@ -552,7 +557,7 @@ class draw:
 
         cb = fig.colorbar(hm, orientation="horizontal", cax=ax0, cmap=colour_map)
         cb.set_label(kargs["colbar_label"])
-        [label.set_fontsize(5) for label in ax0.get_xticklabels()]
+        cb.ax.tick_params(labelsize=4)
 
         return({"real_filename": self.savefigure(fig, filename), "reordered_cols": col_names, "reordered_rows": kargs["row_names"],
             "reordered_data": data})
@@ -1718,7 +1723,7 @@ class draw:
                 xlims - x axis limits
                 ylims - y-axis limits
                 zlims - z-axis limits (For 3D plots only)
-                xticklabels -list (or not) of labels for the x axis
+                xticklabels - list (or not) of labels for the x axis
                 logx - set the x scale to a log scale argument should equal the base
                 logy - set the y scale to a log scale
                 legend_size - size of the legend, small, normal, medium
@@ -2007,7 +2012,7 @@ class draw:
             
             # Only draw if specified:
             if do_best_fit_line:
-                ax.plot(mx, my, "r.-")
+                ax.plot(mx, my, "r-.", lw=0.5)
             
             if print_correlation:
                 if print_correlation == "r":
@@ -2192,7 +2197,7 @@ class draw:
         return(self.savefigure(fig, filename))
         
     def beanplot(self, data, filename, violin=True, order=None, mean=False, median=True, alpha=0.2, 
-        beans=True, IQR=False, **kargs):
+        beans=True, IQR=False, covariance=0.2, **kargs):
         """
         http://statsmodels.sourceforge.net/devel/_modules/statsmodels/graphics/boxplots.html#beanplot
         **Purpose**
@@ -2242,6 +2247,9 @@ class draw:
                 xlims - x axis limits
                 ylims - y-axis limits
             
+            covariance (Optional, default=2)
+                
+            
         **Returns**
             None
         """
@@ -2261,7 +2269,7 @@ class draw:
             # get the violin: required, even if not drawn.
             # Check that there is some variation. If no variation then utils.kde will break
             if numpy.std(data[d]) > 0:
-                y_violin = utils.kde(data[d], range=(min(data[d]), max(data[d])), bins=bins, covariance=0.2)
+                y_violin = utils.kde(data[d], range=(min(data[d]), max(data[d])), bins=bins)
                 y_violin = ((y_violin / max(y_violin)) * 0.4) # normalise
                 y_violin = numpy.insert(y_violin, 0, 0)
                 y_violin = numpy.append(y_violin, 0)

@@ -247,6 +247,18 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
 
             result_table = corr_result_table
 
+        if pearson_tsv:
+            names = [i.name for i in self.linearData]
+            oh = open(pearson_tsv, "w")
+            oh.write("%s\n" % "\t".join([] + names))
+            
+            for ia, la in enumerate(names):
+                oh.write("%s" % la)
+                for ib, lb in enumerate(names):
+                    oh.write("\t%s" % corr_result_table[ia,ib])
+                oh.write("\n")
+            oh.close()
+
         # need to add the labels and serialise into a doct of lists.
         dict_of_lists = {}
         row_names = []
@@ -1285,8 +1297,8 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         if log:
             for index in range(len(list_of_tables)):
                 # multiply the data so that max() = 100000
-                list_of_tables[index] /= tab_max
-                list_of_tables[index] *= 1000        
+                #list_of_tables[index] /= tab_max
+                #list_of_tables[index] *= 1000        
                 if log == 2:
                     list_of_tables[index] = numpy.log2(list_of_tables[index]+1)
                     colbar_label = "tag density (log2)"
@@ -1310,7 +1322,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             bracket = [tab_max*range_bracket[0], tab_max*range_bracket[1]]
         elif bracket:
             bracket = bracket # Fussyness for clarity.
-        else: # guess a range: This should really be done on a per-heatmap basis.
+        else: # guess a range: 
             bracket = [tab_median+tab_stdev, tab_median+(tab_stdev*2.0)] 
             config.log.info("chip_seq_cluster_heatmap: suggested bracket = [%s, %s]" % (bracket[0], bracket[1]))   
      
@@ -1485,8 +1497,9 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
     def GO_heatmap(self, filename, p_value_limit=0.01, num_top=5, pvalue_key='pvalue',
             size=[8, 6], bracket=[1.3,4], row_cluster=True, col_cluster=False, # heatmap args
             heat_wid=0.15, cmap=cm.Reds, border=True, row_font_size=7, 
-            heat_hei=0.80, grid=True, ontology=None, draw_numbers_fmt='%.1f',
-            draw_numbers=True, draw_numbers_threshold=2.0, draw_numbers_font_size=5, **kargs):
+            heat_hei='proportional', grid=True, ontology=None, draw_numbers_fmt='%.1f',
+            draw_numbers=True, draw_numbers_threshold=2.0, draw_numbers_font_size=5, do_negative_log10=True, 
+            **kargs):
         '''
         **Purpose**
             Produce a heatmap of GO categories from a glglob of GO genelists (glgo's)
@@ -1520,10 +1533,18 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             This function will also accept all glbase heatmap arguments (see expression.heatmap). 
             A few args have altered defaults:
             
+            heat_hei (Optional, default='proportional')
+                Sets the heatmap to a fixed y-size for each row. 
+                Set to a normal heat_wid value if you prefer.
+            
             bracket (Optional, default=[1.3, 4.0])
                 the bracket for the min and max of the heatmap. This sort of bracket
                 assumes your data is -log10 transformed and so the p-value would 
                 range from 0.05 to 0.0001
+                
+            do_negative_log10 (Optional, default=True)
+                By default convert the value in pvalue into the -log10()
+                Set this to False if you don't want to convert
             
         **Returns**
             The resorted row names (as a list) and a heatmap in filename
@@ -1545,27 +1566,46 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 continue
                 
             go.sort(pvalue_key)
+            #go.reverse() # huh?
+            
+            #print(go)
             
             if ontology:
                 this_ont = go.getRowsByKey('ontology', ontology)
-                top5 = this_ont[0:num_top]
+                topN = this_ont[0:num_top]
             else:
-                top5 = go[0:num_top]
-      
-            for item in top5:
-                if item[pvalue_key] < 0.01: 
-                    if item['name'] not in go_store:
-                        go_store[item['name']] = [-1] * (number_of_clusters)
-                    go_store[item['name']][idx] = -math.log10(item['pvalue'])
-                    #main_cluster_membership[item['name']] = clus_number-1
-                
+                topN = go[0:num_top]
+
+            for item in topN:
+                if do_negative_log10:
+                    if float(item[pvalue_key]) < p_value_limit: 
+                        if item['name'] not in go_store:
+                            go_store[item['name']] = [-1] * (number_of_clusters)
+                        go_store[item['name']][idx] = -math.log10(item['pvalue'])
+                else:
+                    if float(item[pvalue_key]) > -math.log10(p_value_limit): # i.e. 0.01
+                        if item['name'] not in go_store:
+                            go_store[item['name']] = [-1] * (number_of_clusters)
+                        go_store[item['name']][idx] = item['pvalue']
+
+
         # fill in the holes:
         for go in self.linearData:   
             for k in go_store:
                 this_k = go.get(key='name', value=k, mode='lazy') # by default
                 if this_k:
-                    go_store[k][cond_names_idx[go.name]] = -math.log10(float(this_k[0]['pvalue']))
-
+                
+                    if do_negative_log10:
+                        if float(item[pvalue_key]) < p_value_limit: 
+                            if item['name'] not in go_store:
+                                go_store[item['name']] = [-1] * (number_of_clusters)
+                            go_store[k][cond_names_idx[go.name]] = -math.log10(float(this_k[0]['pvalue']))
+                    else:
+                        if float(item[pvalue_key]) > -math.log10(p_value_limit): # i.e. 0.01
+                            if item['name'] not in go_store:
+                                go_store[item['name']] = [-1] * (number_of_clusters)
+                            go_store[k][cond_names_idx[go.name]] = float(this_k[0]['pvalue'])
+                
         newe = []
 
         for k in go_store:
@@ -1575,13 +1615,19 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         cond_names = [i[0] for i in cond_names]
         
         goex = expression(loadable_list=newe, cond_names=cond_names)
+        if len(goex) == 0:
+            config.log.warning('GO list was empty, skipping')
+            return(False)
+        
+        if heat_hei == 'proportional':
+            heat_hei=0.012*len(goex)
         
         res = goex.heatmap(filename=filename, size=size, bracket=bracket, 
             row_cluster=row_cluster, col_cluster=col_cluster, 
             heat_wid=heat_wid, cmap=cmap, border=border,
             row_font_size=row_font_size, heat_hei=heat_hei, grid=grid, 
             draw_numbers=draw_numbers, colbar_label='-log10(%s)' % pvalue_key, 
-            draw_numbers_threshold=draw_numbers_threshold, 
+            draw_numbers_threshold = -math.log10(p_value_limit), 
             draw_numbers_fmt=draw_numbers_fmt,
             draw_numbers_font_size=draw_numbers_font_size)
         config.log.warning("GO_heatmap: Saved heatmap '%s'" % filename)

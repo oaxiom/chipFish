@@ -18,7 +18,7 @@ from .history import historyContainer
 from .errors import AssertionError, UnRecognisedCSVFormatError, UnrecognisedFileFormatError, ArgumentError
 from .progress import progressbar
 from .base_genelist import _base_genelist
-from .format import sniffer, sniffer_tsv
+from .format import sniffer, sniffer_tsv, _load_hmmer_tbl
 
 class Genelist(_base_genelist): # gets a special uppercase for some dodgy code in map() I don't dare refactor.
     """
@@ -213,7 +213,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                     self._optimiseData()
                     return(True)
                 if format["special"] == "hmmer_tbl":
-                    self.linearData = self._load_hmmer_tbl(filename)
+                    self.linearData = _load_hmmer_tbl(filename)
                     self._optimiseData()
                     return(True)
         else:
@@ -1063,6 +1063,27 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         self.linearData = sorted(self.linearData, key=itemgetter(key))
         if reverse:
             self.linearData.reverse()
+        self._optimiseData()
+        return(True)
+
+    def shuffle(self, key=None, reverse=False):
+        """
+        Randomly shuffle the order of the genelist
+
+        **Arguments**
+            None
+
+        **Result**
+        Returns None, and shuffles the list IN PLACE
+        """
+        new_order = list(range(0, len(self)))
+        random.shuffle(new_order)
+        
+        newl = []
+        for p in new_order:
+            newl.append(self.linearData[p])
+        self.linearData = newl
+        
         self._optimiseData()
         return(True)
 
@@ -2319,7 +2340,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         newl._optimiseData()
         return(newl)
 
-    def removeDuplicatesByLoc(self, key="loc", delta=200):
+    def removeDuplicatesByLoc(self, mode, key="loc", delta=200):
         """
         **Purpose**
             Remove duplicates in the list based on a location tag.
@@ -2332,13 +2353,29 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             answers:
             
             The results you get may be influenced by the order of the list.
+            
+            Also note that any pair of peaks can only be merged a single time. 
+            This stops a condition where peaks can just keep merging into larger and larger peaks
+            this is particularly a problem in the 'overlap' mode.
         
         **Arguments**
+            mode (Required)
+                You must set one of two modes either:
+                    'pointify_expand':
+                        first pointify() (i.e. take the mid point between the left and right coords)
+                        and then expand(delta) (i.e. symmetrically expand the left and right by 'delta')
+                    'overlap':
+                        use the left and right span of the coords to perform an overlap. 
+                        Note that the new peak will take the min(l1, l2) and the max(r1, r2) where
+                        l = left, r = right and 1 = the first genelist and 2 = the second genelist.
+        
             key (Optional, default="loc")
                 the loc key to use
                 
             delta (Optional, default=200)
-                The number of base pairs to search across
+                The number of base pairs to search across.
+                
+                Note that delta is NOT used when the mode = 'overlap'
                 
         **Returns**
             A new genelist containing only unique sites
@@ -2347,41 +2384,84 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             all_keys = list(self.keys())
             assert 'tss_loc' not in all_keys, 'removeDuplicatesByLoc will give incorrect results if your genelist contains both a loc and tss_loc key. Please delete one or the other key'
         
-        mask = [0] * len(self.linearData) # keep track of masked entries
+        assert mode in ('pointify_expand', 'overlap'), "mode is not one of 'pointify_expand', or 'overlap'"
         
-        newl = []
-        
-        for index, item in enumerate(self.linearData):
-            locA = item[key].pointify().expand(delta)
-            if mask[index] == 0: # only do if not already masked/searched
-                # Do a collision check
+        if mode == 'pointify_expand':
+            mask = [0] * len(self.linearData) # keep track of masked entries
+            newl = []
+            for index, item in enumerate(self.linearData):
+                locA = item[key].pointify().expand(delta)
+                if mask[index] == 0: # only do if not already masked/searched
+                    # Do a collision check
                 
-                # work out which of the buckets required:
-                left_buck = int((locA["left"]-1-delta)/config.bucket_size)*config.bucket_size # Add an extra delta for accurate bucket spanning overlaps
-                right_buck = int((locA["right"]+1+delta)/config.bucket_size)*config.bucket_size
-                buckets_reqd = list(range(left_buck, right_buck+config.bucket_size, config.bucket_size)) # make sure to get the right spanning and left spanning sites
+                    # work out which of the buckets required:
+                    left_buck = int((locA["left"]-1-delta)/config.bucket_size)*config.bucket_size # Add an extra delta for accurate bucket spanning overlaps
+                    right_buck = int((locA["right"]+1+delta)/config.bucket_size)*config.bucket_size
+                    buckets_reqd = list(range(left_buck, right_buck+config.bucket_size, config.bucket_size)) # make sure to get the right spanning and left spanning sites
 
-                # get the ids reqd.                
-                loc_ids = set()
-                if buckets_reqd:
-                    for buck in buckets_reqd:
-                        if locA["chr"] in self.buckets:
-                            if buck in self.buckets[locA["chr"]]:
-                                loc_ids.update(self.buckets[locA["chr"]][buck]) # set = unique ids
-                # loc_ids now contains all of the indeces of the items in linearData that need checking        
+                    # get the ids reqd.                
+                    loc_ids = set()
+                    if buckets_reqd:
+                        for buck in buckets_reqd:
+                            if locA["chr"] in self.buckets:
+                                if buck in self.buckets[locA["chr"]]:
+                                    loc_ids.update(self.buckets[locA["chr"]][buck]) # set = unique ids
+                    # loc_ids now contains all of the indeces of the items in linearData that need checking        
                 
-                for indexB in loc_ids: 
-                    if indexB != index:
-                        other = self.linearData[indexB]
-                        locB = self.linearData[indexB][key].pointify().expand(delta)
-                        if locA.qcollide(locB):
-                            mask[indexB] = 1
+                    for indexB in loc_ids: 
+                        if indexB != index:
+                            other = self.linearData[indexB]
+                            locB = self.linearData[indexB][key].pointify().expand(delta)
+                            if locA.qcollide(locB):
+                                mask[indexB] = 1
                             
-                mask[index] = 1       
-                newl.append(item) # add in the item    
+                    mask[index] = 1       
+                    newl.append(item) # add in the item    
 
-        ov = self.shallowcopy()
-        ov.load_list(newl)
+            ov = self.shallowcopy()
+            ov.load_list(newl)
+        elif mode == 'overlap':
+            # get the maximum peak size for a decent estimate of delta:
+            delta = 0 # This is a pad to make sure the correct buckets are selected. It should be the maximum peak width.
+            for i in self:
+                delta = max([delta, len(i['loc'])])
+            print('max delta = ', delta)
+            if delta > 1000:
+                config.log.warning("removeDuplicatesByLoc: The maximum peak size is >1000 bp, performance may be poor for removeDuplicatesByLoc()")      
+        
+            mask = [0] * len(self.linearData) # keep track of masked entries
+            newl = []
+            for index, item in enumerate(self.linearData):
+                locA = item[key]
+                if mask[index] == 0: # only do if not already masked/searched
+                    # Do a collision check
+                
+                    # work out which of the buckets required:
+                    left_buck = int((locA["left"]-1-delta)/config.bucket_size)*config.bucket_size # Add an extra delta for accurate bucket spanning overlaps
+                    right_buck = int((locA["right"]+1+delta)/config.bucket_size)*config.bucket_size
+                    buckets_reqd = list(range(left_buck, right_buck+config.bucket_size, config.bucket_size)) # make sure to get the right spanning and left spanning sites
+
+                    # get the ids reqd.                
+                    loc_ids = set()
+                    if buckets_reqd:
+                        for buck in buckets_reqd:
+                            if locA["chr"] in self.buckets:
+                                if buck in self.buckets[locA["chr"]]:
+                                    loc_ids.update(self.buckets[locA["chr"]][buck]) # set = unique ids
+                    # loc_ids now contains all of the indeces of the items in linearData that need checking        
+                
+                    for indexB in loc_ids: 
+                        if indexB != index:
+                            other = self.linearData[indexB]
+                            locB = self.linearData[indexB][key]
+                            if locA.qcollide(locB):
+                                mask[indexB] = 1
+                            
+                    mask[index] = 1       
+                    newl.append(item) # add in the item    
+
+            ov = self.shallowcopy()
+            ov.load_list(newl)
         
         config.log.info("Removed %s duplicates, %s remain" % ((len(self) - len(ov)), len(ov)))        
         return(ov)
@@ -3465,11 +3545,16 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             for d in ann:
                 if i == 0:
                     for k in hist:
+                        if k == 'desert': # Py3 no longer evaluates >= for str/float
+                            continue
+                        
                         c = d["dist_to_tss"] / 1000
                         if c >= k[0] and c < k[1]:
                             hist[k] += 1
                 else:
                     for k in back:
+                        if k == 'desert': # Py3 no longer evaluates >= for str/float
+                            continue
                         c = d["dist_to_tss"] / 1000
                         if c >= k[0] and c < k[1]:
                             tback[k] += 1

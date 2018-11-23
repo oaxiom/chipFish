@@ -1601,11 +1601,8 @@ class expression(base_expression):
                     cell_expressing.append(n)
             
         cell_expressing = list(set(cell_expressing))
-        print(cell_expressing)
 
         e = e.sliceConditions(cell_expressing)
-        print(e)
-        print(e.getConditionNames())
         
         return(newe)
 
@@ -1665,6 +1662,40 @@ class expression(base_expression):
                 newl.linearData.append(row)
         newl._optimiseData()
         config.log.info("filter_by_CV: removed %s items, list now %s items long" % (len(self) - len(newl), len(newl)))
+        return(newl)
+
+    def bracket(self, min, max):
+        """
+        **Purpose**
+            force the data to span only min and max:
+            
+            for each_value:
+                if each_value > max:
+                    each_value = max
+                elif each_value <min:
+                    each_value = min
+        
+        **Arguments**
+            min, max (Required)
+                minimum and maximum values
+        
+        **Returns**
+            A new expn object.
+        
+        """
+        newl = self.deepcopy()
+        
+        for item in newl:
+            newc = []
+            for c in item['conditions']:
+                if c > max:
+                    newc.append(max)
+                elif c < min:
+                    newc.append(min)
+                else:
+                    newc.append(c)
+            item['conditions'] = newc
+        newl._optimiseData()
         return(newl)
 
     def draw_cumulative_CV(self, filename, pad=0.1, label_genes=None, label_genes_key=None, 
@@ -1784,7 +1815,7 @@ class expression(base_expression):
         return(None)
 
     def scatter(self, x_condition_name, y_condition_name, filename=None, genelist=None, key=None, 
-        label=False, label_fontsize=14, **kargs):
+        label=False, label_fontsize=12, **kargs):
         """
         **Purpose**
             draw an X/Y dot plot or scatter plot, get R^2 correlation etc.
@@ -1806,7 +1837,7 @@ class expression(base_expression):
                 and a key to use and all of the spots will be labelled.
 
             label_fontsize (Optional, default=14)
-            	labels fontsize
+                labels fontsize
 
             do_best_fit_line (Optional, default=False)
                 draw a best fit line on the scatter
@@ -1934,7 +1965,7 @@ class expression(base_expression):
         **Results**
 
         saves an image with the correct filetype extension for the current
-        config.DEFAULT_DRAWER.
+        config.DEFAULT_DRAWER
         returns the actual filename used to save the file.
         """
         assert filename, "must provide a filename"
@@ -2887,8 +2918,6 @@ class expression(base_expression):
             
         link = linkage(dist, 'complete', metric=cluster_mode)
         
-        print(link)
-        
         rtree = radial_tree.tree(link)
 
         ax = fig.add_subplot(111)
@@ -3023,7 +3052,6 @@ class expression(base_expression):
         **Returns**
             A dict containing::
                 "data": 2D numpy array containing the correlation scores (depending upon the mode)
-                "p": 2D numpy array of p-values.
                 "labels": the labels along the top and bottom of the array, sorted according to the 
                 clustering (if any)
                 
@@ -3598,9 +3626,7 @@ class expression(base_expression):
         
         # expression table needs to be transformed.
         data = numpy.array(self.serialisedArrayDataList).T
-        
-        print("data", data.shape)
-        
+                
         if dowhiten:
             config.log.info("kmeans: whiten...")
             wt = whiten(data) # features are columns
@@ -3619,27 +3645,19 @@ class expression(base_expression):
                 cents.append(self[col]["conditions"])    
                 seed_names.append(i[key])
             seeds = numpy.array(cents)
-            
-            print("seeds", seeds.shape)
-        
+                    
         config.log.info("kmeans: kmeans...")
         centroids, variance = kmeans(wt, seeds)
         
-        print(centroids.shape)
-        print(centroids)
-        
+       
         config.log.info("kmeans: vq...")
         code, distance = vq(wt, centroids)
-
-        print(code)
 
         clusters = {}
         for feature, cluster in enumerate(code):
             if not cluster in clusters:
                 clusters[cluster] = []
             clusters[cluster].append(data[feature])
-    
-        print(list(clusters.keys()))
         
         # Guess a suitable arrangement
         sq = math.ceil(math.sqrt(len(clusters)))

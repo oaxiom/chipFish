@@ -18,7 +18,7 @@ from .flags import *
 from .draw import draw
 from .genelist import genelist
 from .progress import progressbar
-from .errors import AssertionError, ArgumentError
+from .errors import AssertionError, ArgumentError, ExpressionNonUniqueConditionNameError
 from .utils import qdeepcopy
 
 class base_expression(genelist):
@@ -28,6 +28,7 @@ class base_expression(genelist):
         
         This is the underlying base expression object and is not designed for direct usage.
         """
+        '''
         if not loadable_list:
             # these are only required if not loading a list
             assert expn, "'expn' argument cannot be empty"
@@ -37,6 +38,7 @@ class base_expression(genelist):
         else:
             # probably should put some more sanity checking in here.
             assert loadable_list[0], "the list to load does not appear to be a proper list"
+        '''
         
         if "cv_err" in kargs or "err_up" in kargs or "err_dn" in kargs:
             raise NotImplementedError("Whoops! I haven't finished expression class - cv_err, err_up and err_dn are not implemented")
@@ -56,6 +58,10 @@ class base_expression(genelist):
             self.name = kargs["name"]
         elif filename:
             self.name = "".join(self.filename.split(".")[:-1])
+        
+        if not loadable_list and not expn:
+            config.log.info("expression(): made an empty expression object")
+            return()
         
         if loadable_list:
             self.load_list(loadable_list, expn, **kargs)
@@ -110,9 +116,10 @@ class base_expression(genelist):
                             self._conditions = [str(k) for k in names]
                         break
                 oh.close()
+                
                 if not silent: 
                     config.log.info("expression(): I found the following conditions:")
-                print("\n".join(["%s\t%s" % (n, i) for n, i in enumerate(self._conditions)]))
+                    config.log.info("\n".join(["%s\t%s" % (n, i) for n, i in enumerate(self._conditions)]))
   
         # coerce the conditions errs etc to floats
         for idx, i in enumerate(self):
@@ -128,9 +135,20 @@ class base_expression(genelist):
             if "cv_err" in i:
                 i["cv_err"] = [float(t) for t in i["cv_err"]]
 
+        self.__check_condition_names_are_unique()
         self._optimiseData()
         if not silent:
             config.log.info("expression(): loaded %s items, %s conditions" % (len(self), len(self.getConditionNames())))
+
+    def __check_condition_names_are_unique(self):
+        """
+        Bit of gotcha this one, but expression objects must have unique condition names
+        or lots of things break. Here, check the condition names are unique.
+        
+        """
+        if len(self._conditions) > len(set(self._conditions)):
+            raise ExpressionNonUniqueConditionNameError(self._conditions)
+        return(False)
         
     def __repr__(self):
         return("glbase.expression")
@@ -222,7 +240,7 @@ class base_expression(genelist):
             returns None
 
         """
-        self._save_TSV_CSV(filename=filename, tsv=True, interleave_errors=True, no_header=False, no_col1_header=False, **kargs)
+        self._save_TSV_CSV(filename=filename, tsv=tsv, interleave_errors=True, no_header=False, no_col1_header=False, **kargs)
         config.log.info("saveTSV(): Saved '%s'" % filename)
         
     def _save_TSV_CSV(self, filename=None, tsv=True, interleave_errors=True, no_header=False, no_col1_header=False, **kargs):
@@ -296,7 +314,7 @@ class base_expression(genelist):
 
         return(None)
         
-    def sort(self, key):
+    def sort(self, key, reverse=False):
         """
         This is slightly different from the vanilla genelist's sort - you can pass it the name of
         a condition. Take care to make sure the condition name is not also a valid list key.
@@ -310,6 +328,10 @@ class base_expression(genelist):
         key
             must be a valid key in the genelist or the name of an array condition.
 
+        reverse (Optional, default=False)
+            By default the list is sorted smallest to largest.
+            reverse = True sorts largest to smallest.
+
         **Result**
 
         returns True if succesful.
@@ -319,11 +341,13 @@ class base_expression(genelist):
         assert (key in self.linearData[0]) or key in self._conditions, "'%s' search key not found in list or array data" % key
 
         if key in self.linearData[0]:
-            return(genelist.sort(self, key)) # use the parents sort.
+            return(genelist.sort(self, key, reverse=reverse)) # use the parents sort.
         else:
             if key in self._conditions:
                 name_index = self._conditions.index(key)
                 self.linearData = sorted(self.linearData, cmp=lambda x, y: cmp(x["conditions"][name_index],y["conditions"][name_index])) # the original sort() was overridden.
+                if reverse:
+                    self.linearData.reverse()
                 self._optimiseData()
                 return(True)
         return(False)
@@ -399,6 +423,54 @@ class base_expression(genelist):
                 
         # Now call parent with new list
         genelist.load_list(self, newl, name)
+
+    def from_pandas(self, pandas_data_frame, condition_names=None):
+        """
+        **Purpose**
+
+            Convert a pandas dataFrame to a genelist
+            
+            NOTE: This is an INPLACE method that will REPLACE any exisiting data
+            in the 
+
+        **Arguments**
+
+            pandas_data_frame (Required)
+                The pandas data frame to convert
+                
+            condition_names (Required)
+                A list of Column names from the Pandas frame to use as expression data
+
+        **Result**
+            None
+            The object is populated by the Pandas object
+
+        """
+        assert condition_names, 'You must specify condition_names'
+        assert isinstance(condition_names, list), 'condition_names must be a list of colun names'
+        if len(self) >0:
+            config.log.warning('expression.from_pandas() will overwrite the existing data in the expression')
+        
+        newl = []
+        key_names = pandas_data_frame.columns
+        for index, row in pandas_data_frame.iterrows():
+            newitem = {}
+            
+            # load normal keys:
+            for k, item in zip(key_names, row):
+                if k not in condition_names:
+                    newitem[k] = item
+            # load conditions, in-order:
+            dict_items = dict(zip(key_names, row))
+            newitem['conditions'] = [dict_items[z] for z in condition_names]
+            
+            newl.append(newitem)
+            
+        self._conditions = condition_names
+        self.linearData = newl
+        self._optimiseData()
+
+        config.log.info("expression.from_pandas() imported dataFrame")
         
     def getConditionNames(self):
         """
@@ -413,10 +485,8 @@ class base_expression(genelist):
         THIS IS AN IN-PLACE method and returns None
         """
         assert len(new_cond_names) == len(self._conditions), "setConditionNames(): new and old condition names are different lengths (%s vs. %s)" % (len(new_cond_names), len(self._conditions))
-        if len(set(new_cond_names)) != len(self._conditions):
-            dupes = [x for x, y in list(collections.Counter(new_cond_names).items()) if y > 1]
-            raise AssertionError("setConditionNames(): Due to a variety of complicated reasons, condition names MUST be unique, non-unique names are: %s" % (", ".join(dupes)))
         
+        self.__check_condition_names_are_unique()
         self._conditions = list(new_cond_names)
         self._optimiseData()
         return(self._conditions)
