@@ -1,11 +1,8 @@
 """
 
-This is a cli interface into chipfish.
+This is the main draw routine for chipFish
 
-I had to make this as the python bindings for wxwidgets failed to build
-on the Mac, so I needed a way to output the images.
-
-This is ripped out of gDraw and others.
+(c) 2009-2018 oAxiom
 
 """
 
@@ -948,6 +945,7 @@ class gDraw:
             'tRNA': None,
             'Retroposon': None,
             'Satellite': None,
+            'snRNA': None,
             }
 
         self.__drawTrackBackground(track_data["track_location"], "repeats")
@@ -1037,7 +1035,7 @@ class gDraw:
             #self.ctx.line_to(loc[0], loc[1]-8)
             #self.ctx.fill()
             #self.__drawText(loc[0]+opt.graphics.arrow_width_px+3, loc[1]-8+opt.graphics.arrow_height_px, "Helvetica", data["name"], size=opt.graphics.repeat_label_font_size, style=opt.graphics.repeat_label_font_style)
-            self.__drawText(loc[0], loc[1]-opt.graphics.repeat_height-2, "Helvetica", data["name"], size=opt.graphics.repeat_label_font_size, style=opt.graphics.repeat_label_font_style)
+            #self.__drawText(loc[0], loc[1]-opt.graphics.repeat_height-2, "Helvetica", data["name"], size=opt.graphics.repeat_label_font_size, style=opt.graphics.repeat_label_font_style)
         elif data["strand"] == "-":
             loc = self.__realToLocal(data["loc"]["right"], track_slot_base)
             # arrow.
@@ -1048,7 +1046,7 @@ class gDraw:
             #self.ctx.line_to(loc[0], loc[1]+8)
             #self.ctx.fill()
             #self.__drawText(loc[0]+opt.graphics.arrow_width_px-13, loc[1]+10+opt.graphics.arrow_height_px, "Helvetica", data["name"], size=opt.graphics.repeat_label_font_size, align="right", style=opt.graphics.repeat_label_font_style)
-            self.__drawText(loc[0], loc[1]+opt.graphics.repeat_height+opt.graphics.repeat_label_font_size-2, "Helvetica", data["name"], size=opt.graphics.repeat_label_font_size, align="right", style=opt.graphics.repeat_label_font_style)
+            #self.__drawText(loc[0], loc[1]+opt.graphics.repeat_height+opt.graphics.repeat_label_font_size-2, "Helvetica", data["name"], size=opt.graphics.repeat_label_font_size, align="right", style=opt.graphics.repeat_label_font_style)
         else:
             raise ErrorInvalidGeneDefinition
 

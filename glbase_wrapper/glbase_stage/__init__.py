@@ -39,7 +39,7 @@ except Exception:
 
 try:
     import matplotlib
-    matplotlib.use("Agg") # cluster friendly!
+    #matplotlib.use("Agg") # cluster friendly!
     config.MATPLOTLIB_AVAIL = True
 except Exception:
     raise LibraryNotFoundError("Fatal - matplotlib not available or not installed")
@@ -107,6 +107,7 @@ from .draw import draw
 from .format_container import fc
 from .fastq import fastq
 from .glgo import glgo
+from .draw import adjust_text
 #from .rigidgrids import rigidgrid # Available only through expn objects in future?
 from . import realtime
 from . import gldata
@@ -126,6 +127,8 @@ def version():
     config.log.info("glbase - version: %s %s" % (config.version, config.DATE))
     config.log.info("The working directory is: '%s'" % (os.getcwd()))
 
+config.set_log_level('info')
+
 # export all of the libraries, methods and helpers.
 __all__ = ["genelist", "fastq", "expression", "genome", "genome_sql", "track", "flat_track", "delayedlist", 
             "glgo", # primary objects
@@ -137,6 +140,7 @@ __all__ = ["genelist", "fastq", "expression", "genome", "genome_sql", "track", "
             "rnaseqqc", "gldata",
             "gerp_to_flat", "draw", "fc",
             "progressbar", "ecrbase", "region", "realtime", "realtime2", "tfbs_iter",
-            "strandSorter",
+            "strandSorter", 
+            'adjust_text',
             "cmaps"] + dir(helpers)
             # in future I want to get rid of dir() and control what gets exported.

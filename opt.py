@@ -75,7 +75,7 @@ class graphics:
     # Font related defaults
     font = "Helvetica"
     default_font_size = 11 # Fall back font size
-    repeat_label_font_size = 12
+    repeat_label_font_size = 8
     repeat_label_font_style = 'normal'
 
     right_border_width = 0 # in pixels, size of rightmost click border.

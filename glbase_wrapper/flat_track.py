@@ -1,7 +1,7 @@
 """
 track pass through for chipFish, see the accompanying readme.txt for details.
 
-(c) 2009-2012 oAxiom
+(c) 2009-2018 oAxiom
 
 """
 
