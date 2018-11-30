@@ -74,6 +74,7 @@ class gDraw:
             "spot": self.__drawTrackSpot,
             "genome": self.__drawGenome,
             "repeats": self.__drawRepeats,
+            'splice': self.__drawSplice,
             }
 
         self.delta = self.rbp - self.lbp
@@ -109,8 +110,8 @@ class gDraw:
                 item["array"] = track["data"].get_data("graph", location(loc=self.curr_loc),
                     resolution=self.bps_per_pixel, kde_smooth=True, view_wid=self.w, **track["options"])
                     
-            elif track["type"] == "bar":
-                item["array"] = track["data"].get_data("bar", location(loc=self.curr_loc),
+            elif track["type"] in ("bar", 'splice'):
+                item["array"] = track["data"].get_data(track["type"], location(loc=self.curr_loc),
                     resolution=self.bps_per_pixel, **track["options"])
                     
             elif track["type"] == "spot":
@@ -315,22 +316,18 @@ class gDraw:
         posLeft = self.__realToLocal(self.rbp - best, -40)
         posRight = self.__realToLocal(self.rbp, -40)
 
-        self.ctx.set_line_width(4.0)
+        self.ctx.set_line_width(3.0)
         self.__setPenColour((0,0,0))
         
-        self.ctx.move_to(posLeft[0]-20, opt.ruler.height_px + 8) # move 20px arbitrarily left
+        self.ctx.move_to(posLeft[0]-20, opt.ruler.height_px + 8) # move 8px arbitrarily left
         self.ctx.line_to(posRight[0]-20, opt.ruler.height_px + 8)
+        self.ctx.move_to(posLeft[0]-20, opt.ruler.height_px + 8 -6) # move 8px arbitrarily left
+        self.ctx.line_to(posLeft[0]-20, opt.ruler.height_px + 8 +6)
+        self.ctx.move_to(posRight[0]-20, opt.ruler.height_px + 8 -6) # move 8px arbitrarily left
+        self.ctx.line_to(posRight[0]-20, opt.ruler.height_px + 8 +6)
         self.ctx.stroke()
 
-        self.ctx.move_to(posLeft[0]-20, opt.ruler.height_px + 8 -4) # move 20px arbitrarily left
-        self.ctx.line_to(posLeft[0]-20, opt.ruler.height_px + 8 +4)
-        self.ctx.stroke()
-
-        self.ctx.move_to(posRight[0]-20, opt.ruler.height_px + 8 -4) # move 20px arbitrarily left
-        self.ctx.line_to(posRight[0]-20, opt.ruler.height_px + 8 +4)
-        self.ctx.stroke()
-
-        self.__drawText(posLeft[0], opt.ruler.height_px + 21, opt.graphics.font, scales_and_labels[best], size=opt.draw.scale_bar_fontsize)
+        self.__drawText(posLeft[0], opt.ruler.height_px + 23, opt.graphics.font, scales_and_labels[best], size=opt.draw.scale_bar_fontsize)
 
     def exportImage(self, filename, scale=1, type=None):
         """
@@ -729,6 +726,58 @@ class gDraw:
         #self.__drawText(0, sc[1]-17 , opt.graphics.font, track_data["name"])
         return(None)
 
+    def __drawSplice(self, track_data, min_scale=1, **kargs):
+        """
+        track_type=splice
+        
+        draw a bar, but like a splice, with thick ends, and a thin middle.
+
+        **Arguments**
+            track_data
+                must be some kind of array/iterable, with a nbp:1px resolution.
+
+        """
+        #colbox = self.__drawTrackBackground(track_data["track_location"], "spot")
+
+        sc = self.__realToLocal(0, track_data["track_location"])
+
+        self.__setPenColour((1,1,1))
+        #self.ctx.rectangle(0, sc[1], self.w, (opt.track.bar_height-1)) # 30 = half genomic track size
+        #self.ctx.fill()
+
+        colour = opt.track.bar_default_colour # black
+        if "colour" in kargs:
+            colour = kargs["colour"]
+        self.ctx.set_line_width(0.5)
+        self.__setPenColour(colour)
+
+        for bar in track_data["array"]:   
+            # iterate over each bar        
+            left = self.__realToLocal(bar['left'], track_data["track_location"])
+            rite = self.__realToLocal(bar['right'], track_data["track_location"])
+            
+            # thick left:
+            self.ctx.set_line_width(2.0)
+            self.ctx.move_to(left[0], left[1]-9) # defalt track is 20px
+            self.ctx.line_to(left[0], left[1]+9)
+            #self.ctx.stroke()
+            
+            # thick right
+            self.ctx.move_to(rite[0], rite[1]-9)
+            self.ctx.line_to(rite[0], rite[1]+9)
+            #self.ctx.stroke()
+
+            # two lines running between left and rite
+            self.ctx.move_to(rite[0], rite[1]-3)
+            self.ctx.line_to(left[0], left[1]-3)
+            #self.ctx.stroke()
+            self.ctx.move_to(rite[0], rite[1]+3)
+            self.ctx.line_to(left[0], left[1]+3)
+            self.ctx.stroke()
+            
+        #self.__drawText(0, sc[1]-17 , opt.graphics.font, track_data["name"])
+        return(None)
+
     def __drawTrackHeatmap(self, track_data, min_scale=1, **kargs):
         """
         draw a 'bar-heatmap' format track
@@ -1035,7 +1084,7 @@ class gDraw:
             #self.ctx.line_to(loc[0], loc[1]-8)
             #self.ctx.fill()
             #self.__drawText(loc[0]+opt.graphics.arrow_width_px+3, loc[1]-8+opt.graphics.arrow_height_px, "Helvetica", data["name"], size=opt.graphics.repeat_label_font_size, style=opt.graphics.repeat_label_font_style)
-            #self.__drawText(loc[0], loc[1]-opt.graphics.repeat_height-2, "Helvetica", data["name"], size=opt.graphics.repeat_label_font_size, style=opt.graphics.repeat_label_font_style)
+            self.__drawText(loc[0], loc[1]-opt.graphics.repeat_height-2, "Helvetica", data["name"], size=opt.graphics.repeat_label_font_size, style=opt.graphics.repeat_label_font_style)
         elif data["strand"] == "-":
             loc = self.__realToLocal(data["loc"]["right"], track_slot_base)
             # arrow.
@@ -1046,7 +1095,7 @@ class gDraw:
             #self.ctx.line_to(loc[0], loc[1]+8)
             #self.ctx.fill()
             #self.__drawText(loc[0]+opt.graphics.arrow_width_px-13, loc[1]+10+opt.graphics.arrow_height_px, "Helvetica", data["name"], size=opt.graphics.repeat_label_font_size, align="right", style=opt.graphics.repeat_label_font_style)
-            #self.__drawText(loc[0], loc[1]+opt.graphics.repeat_height+opt.graphics.repeat_label_font_size-2, "Helvetica", data["name"], size=opt.graphics.repeat_label_font_size, align="right", style=opt.graphics.repeat_label_font_style)
+            self.__drawText(loc[0], loc[1]+opt.graphics.repeat_height+opt.graphics.repeat_label_font_size-2, "Helvetica", data["name"], size=opt.graphics.repeat_label_font_size, align="right", style=opt.graphics.repeat_label_font_style)
         else:
             raise ErrorInvalidGeneDefinition
 
