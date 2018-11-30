@@ -123,6 +123,7 @@ class track:
         "graph_split_strand": 100, # same as graph
         "kde_graph": 100, # ditto
         "bar": 20,
+        "splice": 20,
         "spot": 20,
         "genome": 70,
         "repeats": 200} # height's of the tracks in pixels.
