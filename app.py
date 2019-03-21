@@ -35,27 +35,27 @@ class app():
     def restart(self, tracklist=None):
         """
         see startup()
-        
+
         Any clearing out can be performed here.
         This is not currently in use and is untested.
         This method would be used to rebind a tracklist
         """
         # Presumably here I should clean-out the tracklists...
         # Whoops!
-        
+
         # reload through the normal route.
         self.startup(genome, tracklist)
 
     def __do_options(self, options, mode):
         """
         sort out the options. returns a dictionary of option:value pairs
-        
+
         options should be a string containing option=value. Several options can be passed.
         mode will set default options for the track type
         """
         if not "=" in options:
             return({}) # No valid parseable options
-        
+
         # Standardise input string:
         s = options.strip(" ").replace("\t", " ").replace("  ", " ").replace("\n", "").replace("\r", "")
         t = s.split(" ")
@@ -74,7 +74,7 @@ class app():
                         res[i.split("=")[0]] = int(i.split("=")[1])
                 except ValueError:
                     res[i.split("=")[0]] = i.split("=")[1] # String literal
-        
+
         return(res)
 
     def startup(self, tracklist=None):
@@ -94,15 +94,15 @@ class app():
             oh = open(tracklist, "rU")
             track_path = os.path.dirname(tracklist)
             mode = None
-            for line in oh:                
+            for line in oh:
                 if not line.strip(): # tolerate empty lines in spec sheet
                     continue
-            
-                if "#" in line:
+
+                if "#" in line[0]:
                     # Options should go here?
                     pass # Anything useful to do with these?
                 else:
-                    if ":" in line: 
+                    if ":" in line:
                         # The order of the following modes is important - for example, "bed:" will also
                         # collect "macs_bed" so "macs_bed" must go first.
                         # There can only be one mode
@@ -125,7 +125,7 @@ class app():
                             mode = 'genome_sql'
                         else:
                             raise ErrorUnrecognisedTrackMode(mode)
-                            
+
                         # process options
                         options = self.__do_options(line.split(":")[-1], mode)
                     elif mode:
@@ -135,19 +135,19 @@ class app():
                         track_opts = {}
                         if len(tt) > 1:
                             track_opts = self.__do_options(tt[1], mode)
-                            
+
                         if "abs_path" in options and options["abs_path"] == "True":
                             tail, head = os.path.split(name)
                             # The path will be relative to the path, not relative to chipFish. Which could be anywhere
-                            # 
+                            #
                             path = os.path.normpath(os.path.join(track_path, tail))
                             name = head
                             #print path, name
-                            
+
                         if name:
                             options = copy.deepcopy(options)
                             options.update(track_opts)
-                                                        
+
                             if mode == "track":
                                 self.draw.bindTrack(track(filename=os.path.join(path, name)), options=options)
                             elif mode == "split_track":
@@ -175,7 +175,7 @@ class app():
                                     continue
                                 # Okay, assume the user knows what they are doing and just grab the file they asked for:
                                 self.draw.bindTrack(glload(name))
-                            elif mode == "genome_sql": 
+                            elif mode == "genome_sql":
                                 self.draw.bindTrack(genome_sql(filename=os.path.join(path, name)))
             oh.close()
 

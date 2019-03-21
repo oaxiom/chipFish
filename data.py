@@ -20,3 +20,6 @@ colour_lookup_name = {"red": (1, 0, 0),
     "yellow": (0.8, 0.8, 0.0), # Made darker for visibility. Rename?
     "violet": (0.5, 0.0, 1.0),
     }
+
+def hex_to_rgb(h):
+    return tuple(int(h.lstrip('#')[i:i+2], 16)/256 for i in (0, 2 ,4))

@@ -21,7 +21,7 @@ from data import *
 from ruler import ruler
 from log import log
 
-MAX_TRACKS = 100 # maximum number of tracks This is kind of ludicrously high. 
+MAX_TRACKS = 100 # maximum number of tracks This is kind of ludicrously high.
 
 import cairo, numpy
 
@@ -49,14 +49,14 @@ class gDraw:
         self.h = 200
         self.ctx = None
         self.last_guess_height = -1
-        
+
         self.ruler = ruler(self.lbp, self.rbp, (0, self.w), "bp", True)
 
     def paint(self, cairo_context):
         """
         **Purpose**
             paint the current display on a cairo context
-        
+
         **Arguments**
             cairo_context
                 I need a valid cairo_context to draw to
@@ -105,22 +105,22 @@ class gDraw:
             if track["type"] == "graph":
                 item["array"] = track["data"].get_data("graph", location(loc=self.curr_loc),
                     resolution=self.bps_per_pixel, **track["options"])
-                    
+
             elif track["type"] == "kde_graph":
                 item["array"] = track["data"].get_data("graph", location(loc=self.curr_loc),
                     resolution=self.bps_per_pixel, kde_smooth=True, view_wid=self.w, **track["options"])
-                    
+
             elif track["type"] in ("bar", 'splice'):
                 item["array"] = track["data"].get_data(track["type"], location(loc=self.curr_loc),
                     resolution=self.bps_per_pixel, **track["options"])
-                    
+
             elif track["type"] == "spot":
                 item["array"] = track["data"].get_data("spot", location(loc=self.curr_loc), **track["options"])
-                
+
             elif track["type"] == "graph_split_strand":
                 item["array"] = track["data"].get_data("graph", location(loc=self.curr_loc),
                     strand=True, resolution=self.bps_per_pixel, **track["options"])
-                
+
             elif track["type"] == "genome":
                 item["array"] = track["data"].get_data("genome", location(loc=self.curr_loc))
                 #print item["array"]
@@ -132,7 +132,7 @@ class gDraw:
 
         # If we need to lock the tracks:
         if opt.track.lock_scales:
-            # Fid the max_values for all of the tracks and then load min_scaling 
+            # Fid the max_values for all of the tracks and then load min_scaling
             scale = opt.track.min_scale
             for item in draw_data:
                 mmax = 0
@@ -140,20 +140,20 @@ class gDraw:
                     mmax = max(item["array"])
                 elif item["type"] == "graph_split_strand": # got two max's to do.
                     mmax = max([max(item["array"]["+"]), max(item["array"]["-"])])
-                
+
                 if mmax > scale: # see if we need to adjust scale
                     scale = mmax
-                    
+
             # Now set all tracks to the same scale.
             for item in draw_data:
                 if item["type"] in ["graph", "kde_graph", "graph_split_strand"]:
                     item["options"]["min_scaling"] = scale
-                                
+
         # And finally draw:
         for item in draw_data:
             #print item
             colbox = draw_modes_dict[item["type"]](item, **item["options"])
-             
+
             # the collision boxes are not used. But I suppose in future...
             if colbox:
                 self.__col_boxs.append(bbox(colbox, track, "track"))
@@ -161,10 +161,10 @@ class gDraw:
         #self.__col_boxs.append(bbox(self.__drawRuler(), None, "ruler")) # Unused at the moment, but may be useful later.
         if opt.ruler.draw:
             self.ruler.draw(self.ctx, (0,0))
-            
+
         if opt.draw.genomic_location:
             self.__drawText(5, opt.ruler.height_px + 22, opt.graphics.font, str(self.curr_loc), size=opt.draw.genomic_location_font_size)
-            
+
         if opt.draw.scale_bar:
             self.__drawScaleBar()
 
@@ -188,14 +188,14 @@ class gDraw:
     def bindTrack(self, track, options=None, track_type=None):
         """
         bind a drawing track extra to genome.
-        
+
         valid track types:
         %s
         """ % valid_track_draw_types
         # if no track_type try to guess from the track object
         if options and 'track_type' in options:
             track_type = options['track_type']
-            
+
         if not track_type:
             track_type = track._default_draw_type
 
@@ -205,7 +205,7 @@ class gDraw:
         if not options:
             options = {} # solves a lot of problems if it is an empty dict
 
-        self.tracks.append({"data": track, "track_location": 
+        self.tracks.append({"data": track, "track_location":
             self.__getNextTrackBox(track_type), "type": track_type,
             "options": options})
 
@@ -219,13 +219,13 @@ class gDraw:
                 currentLoc += opt.track.height_px[track]
             if not track:
                 self.trackBoxes[index] = track_type
-                return(-(index + (currentLoc))) 
+                return(-(index + (currentLoc)))
 
     def setViewPortSize(self, width):
         """
         **Purpose**
             set the size of the viewport
-        
+
         **Arguments**
             width
                 sets the width of the display
@@ -262,7 +262,7 @@ class gDraw:
             self.lbp = loc["left"]
             self.rbp = loc["right"]
             self.loc = loc
-        
+
         # sanity checking? Neccesary? yes
         # There's a bug here is the d[lbp, rbp] is less than w
         self.ruler.set(self.lbp, self.rbp, (0, self.w))
@@ -305,7 +305,7 @@ class gDraw:
             10000000: "10Mbp",
             100000000: "100Mbp", # Human chr 1 is 250Mbp.
             1000000000: "1000Mbp", # Just in case there are some wierd genomes.
-            10000000000: "1Gbp" # And like, some aliens or something 
+            10000000000: "1Gbp" # And like, some aliens or something
             }
 
         for i, v in enumerate(scales_and_labels):
@@ -318,7 +318,7 @@ class gDraw:
 
         self.ctx.set_line_width(3.0)
         self.__setPenColour((0,0,0))
-        
+
         self.ctx.move_to(posLeft[0]-20, opt.ruler.height_px + 8) # move 8px arbitrarily left
         self.ctx.line_to(posRight[0]-20, opt.ruler.height_px + 8)
         self.ctx.move_to(posLeft[0]-20, opt.ruler.height_px + 8 -6) # move 8px arbitrarily left
@@ -338,7 +338,7 @@ class gDraw:
             If no obvious extension is given then the string value in 'types'
             will be used.
             Finally, if that doens't make sense then it will default to a png
-            
+
             <This is not implented - it only saves as a png>
 
         **Arguments**
@@ -351,7 +351,7 @@ class gDraw:
                 extension in the filename. If not type is given and
                 the extension doesn't make any sense then a png will be
                 used.
-                
+
             scale (Optional, default=1)
                 rescale the svg
 
@@ -377,12 +377,12 @@ class gDraw:
 
         # forceRedraw onto my surface.
         if scale != 1:
-            self.ctx.scale(scale, scale) 
-            
+            self.ctx.scale(scale, scale)
+
         self.paint(self.ctx)
-        
+
         if scale != 1:
-            self.ctx.scale(1.0/scale, 1.0/scale) 
+            self.ctx.scale(1.0/scale, 1.0/scale)
 
 
         if type in ("svg", "pdf", "ps", "eps"):
@@ -435,7 +435,7 @@ class gDraw:
         self.ctx.fill()
         return( (0, base_loc[1]-opt.track.height_px[track_type], self.w, opt.track.height_px[track_type]-2) )
 
-    def __drawTrackGraph(self, track_data, scaled=True, min_scaling=opt.track.min_scale, clamp=1, 
+    def __drawTrackGraph(self, track_data, scaled=True, min_scaling=opt.track.min_scale, clamp=1,
         no_scaling=False, colour=None, name=None, mid_line=False, **kargs):
         """
         **Arguments**
@@ -451,15 +451,15 @@ class gDraw:
                 sets it so that a height of 1 is not expanded to the
                 full height of the track. Instead the track will be scaled to
                 this value as a minimum.
-            
+
             clamp (default=1)
                 clamp the display scale from <clamp> .. n
                 rather than 0 .. n
-                
+
             name (Optional, default=None)
                 By default I will use the name of the genelist.
-                If you want to rename the track then set options name="Name of track" 
-                
+                If you want to rename the track then set options name="Name of track"
+
             mid_line (default=False)
                 draw a midline in to mark the center.
         """
@@ -482,13 +482,13 @@ class gDraw:
         if scaled:
             scaling_value = max(min_scaling+clamp, track_max) / float(opt.track.height_px["graph"])
             data = data / scaling_value
-        #print ":", track_max, scaling_value, min_scaling,  max(min_scaling, track_max) 
+        #print ":", track_max, scaling_value, min_scaling,  max(min_scaling, track_max)
 
         if opt.track.background:
             colbox = self.__drawTrackBackground(track_data["track_location"], "graph")
         else:
             colbox = []
-        
+
         if mid_line: # appear behind any track
             self.__setPenColour((0.5,0.5,0.5))
             self.ctx.set_line_width(1.0)
@@ -496,15 +496,12 @@ class gDraw:
             self.ctx.move_to(self.w//2, loc[1])
             self.ctx.line_to(self.w//2, loc[1]-opt.track.height_px["graph"])
             self.ctx.stroke()
-        
+
         if not colour:
             self.__setPenColour( (0,0,0) )
         else:
-            if isinstance(colour, str):
-                self.__setPenColour(colour_lookup_name[colour])
-            else:
-                self.__setPenColour(colour) # this will probably not work.
-        
+            self.__setPenColour(colour) # this will probably not work.
+
         self.ctx.set_line_width(1.0)
         coords = []
         lastpx = -1
@@ -513,40 +510,40 @@ class gDraw:
             coords.append( (index, loc[1] - value)) # +30 locks it to the base of the track
 
         self.ctx.move_to(0, coords[0][1]) # start x,y
-        
+
         for item in coords:
             self.ctx.line_to(item[0], item[1])
-            
+
         if opt.track.filled:
             if clamp:
                 loc = self.__realToLocal(0, track_data["track_location"])
             else:
                 loc = self.__realToLocal(0, track_data["track_location"])
             #if clamp:
-            self.ctx.line_to(item[0], loc[1] ) # move to the base line on the far right 
+            self.ctx.line_to(item[0], loc[1] ) # move to the base line on the far right
             self.ctx.line_to(0, loc[1] ) # the 0th far left
             self.ctx.fill()
         else:
             self.ctx.stroke()
-            
+
         if opt.track.draw_names:
             if not name:
                 name = track_data["name"]
-            self.__drawText(opt.track.label_fontsize, loc[1] - opt.track.height_px["graph"] + (opt.track.label_fontsize*2), 
+            self.__drawText(opt.track.label_fontsize, loc[1] - opt.track.height_px["graph"] + (opt.track.label_fontsize*2),
                 opt.graphics.font, name, size=opt.track.label_fontsize)
-            
+
         if opt.track.draw_scales:
-            self.__drawText(self.w - 10, loc[1] - 5, opt.graphics.font, 
+            self.__drawText(self.w - 10, loc[1] - 5, opt.graphics.font,
                 int(clamp), # Must be clamp
                 size=opt.track.scale_bar_font_size, align="right", colour=(0,0,0))
-            self.__drawText(self.w - 10, loc[1] - opt.track.height_px["graph"] + opt.track.scale_bar_font_size + 5, 
-                opt.graphics.font, 
+            self.__drawText(self.w - 10, loc[1] - opt.track.height_px["graph"] + opt.track.scale_bar_font_size + 5,
+                opt.graphics.font,
                 int(max(min_scaling+clamp, track_max+clamp)), # You must add the clamp, otherwise you end up with maximums less than the clamp
                 size=opt.track.scale_bar_font_size, align="right", colour=(0,0,0))
 
         return(colbox)# collision box dimensions
 
-    def __drawTrackGraph_split_strand(self, track_data, scaled=True, min_scaling=opt.track.min_scale, 
+    def __drawTrackGraph_split_strand(self, track_data, scaled=True, min_scaling=opt.track.min_scale,
         name=None, clamp=True, **kargs):
         """
         **Purpose**
@@ -585,10 +582,10 @@ class gDraw:
                 scaling_value = min_scaling / float(half_way_point)
             else:
                 scaling_value = track_max / float(half_way_point)
-                
+
             # only works if numpy array?
             new_f_array = track_data["array"]["+"] / scaling_value # okay numpy can be sweet
-            new_r_array = track_data["array"]["-"] / scaling_value 
+            new_r_array = track_data["array"]["-"] / scaling_value
         else:
             new_f_array = track_data["array"]["+"]
             new_r_array = track_data["array"]["-"]
@@ -598,21 +595,21 @@ class gDraw:
 
         colbox = self.__drawTrackBackground(track_data["track_location"], "graph")
 
-        for i, s in enumerate([new_f_array, new_r_array]): 
+        for i, s in enumerate([new_f_array, new_r_array]):
             if i == 0:# + strand:
                 self.__setPenColour( (0, 0, 0.8) )
             elif i == 1:
                 self.__setPenColour( (0.8, 0, 0) )
-                
+
             self.ctx.set_line_width(2)
-            
+
             # work out the list of screen-space coords
             #coords = []
             #lastpx = -1
             #for index, value in enumerate(data):
             #    loc = self.__realToLocal(self.lbp + index, track_data["track_location"])
             #    coords.append( (index, loc[1] - value)) # +30 locks it to the base of the track
-            
+
             coords = []
             lastpx = -1
             for index, value in enumerate(s):
@@ -627,14 +624,14 @@ class gDraw:
             self.ctx.move_to(coords[0][0], coords[0][1]) # start x,y
             for index, item in enumerate(coords):
                 self.ctx.line_to(item[0], item[1]) # move along each coord
-                
+
             if opt.track.filled:
                 if clamp:
                     loc = self.__realToLocal(1, track_data["track_location"])
                 else:
                     loc = self.__realToLocal(0, track_data["track_location"])
 
-                self.ctx.line_to(item[0], middle) # move to the base line on the far right 
+                self.ctx.line_to(item[0], middle) # move to the base line on the far right
                 self.ctx.line_to(0, middle) # the nth far left
                 self.ctx.fill()
             else:
@@ -643,13 +640,13 @@ class gDraw:
         if opt.track.draw_names:
             if not name:
                 name = track_data["name"]
-            self.__drawText(opt.track.label_fontsize, loc[1] - opt.track.height_px["graph"] + (opt.track.label_fontsize*2), 
+            self.__drawText(opt.track.label_fontsize, loc[1] - opt.track.height_px["graph"] + (opt.track.label_fontsize*2),
                 opt.graphics.font, name, size=opt.track.label_fontsize)
-            
+
         if opt.track.draw_scales: # only track_max is drawn on split_graphs
-            self.__drawText(self.w - 10, loc[1] - opt.track.height_px["graph"] + opt.track.scale_bar_font_size + 5, 
-                opt.graphics.font, 
-                int(max(min_scaling, track_max)), 
+            self.__drawText(self.w - 10, loc[1] - opt.track.height_px["graph"] + opt.track.scale_bar_font_size + 5,
+                opt.graphics.font,
+                int(max(min_scaling, track_max)),
                 size=opt.track.scale_bar_font_size, align="right", colour=(0,0,0))
 
         return(colbox)
@@ -681,7 +678,7 @@ class gDraw:
                 centre_point = (spot["left"] + spot["right"]) / 2
                 sc = self.__realToLocal(centre_point, track_data["track_location"])
                 self.ctx.arc(sc[0], sc[1]-(opt.track.spot_pixel_radius*2)+2, opt.track.spot_pixel_radius, 0, 2 * math.pi)
-                
+
             elif opt.track.spot_shape == "triangle":
                 pass
 
@@ -716,10 +713,10 @@ class gDraw:
         self.ctx.set_line_width(0.5)
         self.__setPenColour(colour)
 
-        for bar in track_data["array"]:           
+        for bar in track_data["array"]:
             left = self.__realToLocal(bar['left'], track_data["track_location"])
             rite = self.__realToLocal(bar['right'], track_data["track_location"])
-            
+
             self.ctx.rectangle(left[0], sc[1]-opt.track.bar_height, rite[0]-left[0], opt.track.bar_height)
             self.ctx.fill()
 
@@ -729,7 +726,7 @@ class gDraw:
     def __drawSplice(self, track_data, min_scale=1, **kargs):
         """
         track_type=splice
-        
+
         draw a bar, but like a splice, with thick ends, and a thin middle.
 
         **Arguments**
@@ -751,17 +748,17 @@ class gDraw:
         self.ctx.set_line_width(0.5)
         self.__setPenColour(colour)
 
-        for bar in track_data["array"]:   
-            # iterate over each bar        
+        for bar in track_data["array"]:
+            # iterate over each bar
             left = self.__realToLocal(bar['left'], track_data["track_location"])
             rite = self.__realToLocal(bar['right'], track_data["track_location"])
-            
+
             # thick left:
             self.ctx.set_line_width(2.0)
             self.ctx.move_to(left[0], left[1]-9) # defalt track is 20px
             self.ctx.line_to(left[0], left[1]+9)
             #self.ctx.stroke()
-            
+
             # thick right
             self.ctx.move_to(rite[0], rite[1]-9)
             self.ctx.line_to(rite[0], rite[1]+9)
@@ -774,7 +771,7 @@ class gDraw:
             self.ctx.move_to(rite[0], rite[1]+3)
             self.ctx.line_to(left[0], left[1]+3)
             self.ctx.stroke()
-            
+
         #self.__drawText(0, sc[1]-17 , opt.graphics.font, track_data["name"])
         return(None)
 
@@ -846,7 +843,7 @@ class gDraw:
             self.ctx.move_to(x, y)
         elif align == "right":
             t = self.ctx.text_extents(str(text))
-            self.ctx.move_to(x - t[2], y) 
+            self.ctx.move_to(x - t[2], y)
         self.ctx.show_text(str(text))
         self.ctx.stroke() # unset the path.
 
@@ -857,7 +854,7 @@ class gDraw:
             "lncRNA": self.__drawGene,
             "microRNA": self.__drawGene,
             }
-    
+
         if opt.draw.double_lines_for_genome:
             self.__drawChr(None)
 
@@ -930,8 +927,8 @@ class gDraw:
         coords.reverse()
         for item in coords:
             self.ctx.line_to(item[0], posBase + (posBase - item[1]))
-            
-        self.ctx.line_to(coords[0][0], coords[0][1]) # Finish so fill works 
+
+        self.ctx.line_to(coords[0][0], coords[0][1]) # Finish so fill works
         #self.ctx.stroke()
         self.ctx.fill()
 
@@ -939,7 +936,7 @@ class gDraw:
 
         #---------------------------------------------------------------
         # Draw gene arrow
-        
+
         if data["strand"] == "+": # top strand
             loc = self.__realToLocal(data["loc"]["left"], track_slot_base)
             # arrow.
@@ -984,11 +981,11 @@ class gDraw:
     def __drawRepeats(self, track_data, **kargs):
         # Draw a genome
         draw_modes_dict = { # In case I ever add other drawing modes...
-            'LINE': self.__drawRepeat, 
-            'LTR': self.__drawRepeat, 
+            'LINE': self.__drawRepeat,
+            'LTR': self.__drawRepeat,
             'SINE': self.__drawRepeat,
             'Simple_repeat': None, # These are not currently supported
-            'DNA': None, 
+            'DNA': None,
             'scRNA': None,
             'Low_complexity': None,
             'tRNA': None,
@@ -998,7 +995,7 @@ class gDraw:
             }
 
         self.__drawTrackBackground(track_data["track_location"], "repeats")
-        
+
         one_third = ((opt.track.height_px['repeats']) / 4.0)
         # Three genome lines for the repeats
         self.ctx.set_line_width(1)
@@ -1028,8 +1025,8 @@ class gDraw:
         type: repeat
         loc: location span of gene
         strand: strand of gene
-        Class: 
-        """        
+        Class:
+        """
         one_third = ((opt.track.height_px['repeats']) / 4.0)
         # order = LINE, SINE, LTR
         if data['type'] == 'LINE':
@@ -1064,8 +1061,8 @@ class gDraw:
         for index, item in enumerate(coords):
             self.ctx.line_to(item[0], item[1])
         self.ctx.move_to(coords[0][0], coords[0][1])
-            
-        self.ctx.line_to(coords[0][0], coords[0][1]) # Finish so fill works 
+
+        self.ctx.line_to(coords[0][0], coords[0][1]) # Finish so fill works
         self.ctx.fill()
 
         self.ctx.set_line_width(1)
@@ -1107,10 +1104,16 @@ class gDraw:
         A macro for changing the current pen colour.
         deals with rgb and rgba intelligently.
         """
-        if len(colour) == 3:
+        if '#' in colour:
+            rgb = hex_to_rgb(colour)
+            self.ctx.set_source_rgb(rgb[0], rgb[1], rgb[2])
+        elif isinstance(colour, str):
+            assert colour in colour_lookup_name, 'colour (%s) not found in the colour_lookup' % (colour,)
+            rgb = colour_lookup_name[colour]
+            self.ctx.set_source_rgb(rgb[0], rgb[1], rgb[2])
+        elif len(colour) == 3:
             self.ctx.set_source_rgb(colour[0], colour[1], colour[2])
         elif len(colour) == 4:
             self.ctx.set_source_rgba(colour[0], colour[1], colour[2], colour[3])
         else:
-            return(False)
-        return(True)
+            raise ValueError('colour (%s) not found' % (colour,))
