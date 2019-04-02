@@ -100,7 +100,7 @@ class draw:
     genomic_location_font_size = 28 # font size for the genomic location label
 
 class gene:
-    font_size = 26
+    font_size = 18
     font_style = "normal"
 
 class ruler:
@@ -125,9 +125,9 @@ class track:
         "bar": 20,
         "splice": 20,
         "spot": 20,
-        "genome": 70,
+        "genome": 60,
+        'genome_sql': 60,
         "repeats": 200,
-        'genome_sql': 70,
         } # height's of the tracks in pixels.
     bar_height = 12 # Height of the bars for bar tracks
     spot_pixel_radius = 7 # Size of the spot circle

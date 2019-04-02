@@ -21,9 +21,9 @@ from data import *
 from ruler import ruler
 from log import log
 
-MAX_TRACKS = 100 # maximum number of tracks This is kind of ludicrously high.
-
 import cairo, numpy
+
+
 
 class gDraw:
     def __init__(self):
@@ -38,32 +38,8 @@ class gDraw:
         self.colBoxes = [] # list of boundbox objects.
         self.paintQ = []
         self.tracks = [] # currently visible tracks
-        self.trackBoxes = [False for n in range(MAX_TRACKS)] # list of TrackBoxes in use.
 
-        self.chromosome = "1"
-        self.lbp = 1
-        self.rbp = 1000
-
-        # set up dummy values for the view
-        self.w = 100
-        self.h = 200
-        self.ctx = None
-        self.last_guess_height = -1
-
-        self.ruler = ruler(self.lbp, self.rbp, (0, self.w), "bp", True)
-
-    def paint(self, cairo_context):
-        """
-        **Purpose**
-            paint the current display on a cairo context
-
-        **Arguments**
-            cairo_context
-                I need a valid cairo_context to draw to
-        """
-        self.ctx = cairo_context
-
-        draw_modes_dict = {
+        self.draw_modes_dict = {
             "gene": self.__drawGene,
             "lncRNA": self.__drawGene,
             "microRNA": self.__drawGene,
@@ -78,85 +54,100 @@ class gDraw:
             'splice': self.__drawSplice,
             }
 
+        self.chromosome = "1"
+        self.lbp = 1
+        self.rbp = 1000
+
+        # set up dummy values for the view
+        self.w = 100
+        self.h = 200
+        self.ctx = None
+        self.last_guess_height = -1
+
+        self.ruler = ruler(self.lbp, self.rbp, (0, self.w), "bp", True)
+
+
+    def get_draw_data(self):
+        '''
+        Populate the tracks with the drawing data
+        '''
         self.delta = self.rbp - self.lbp
         self.deltaf = float(self.delta)
         self.bps_per_pixel = self.delta / float(self.w)
 
         self.curr_loc = location(chr=self.chromosome, left=self.lbp, right=self.rbp)
 
-        # kill all the colission boxes
-        self.__col_boxs = []
+        draw_data = []
+        # collect the data for the tracks and draw them on the screen.
+        for track in self.tracks:
+            # Big If statement coming:
+            if track["type"] == "graph":
+                track["draw_data"] = track["data"].get_data("graph", location(loc=self.curr_loc),
+                    resolution=self.bps_per_pixel, **track["options"])
+
+            elif track["type"] == "kde_graph":
+                track["draw_data"] = track["data"].get_data("graph", location(loc=self.curr_loc),
+                    resolution=self.bps_per_pixel, kde_smooth=True, view_wid=self.w, **track["options"])
+
+            elif track["type"] in ("bar", 'splice'):
+                track["draw_data"] = track["data"].get_data(track["type"], location(loc=self.curr_loc),
+                    resolution=self.bps_per_pixel, **track["options"])
+
+            elif track["type"] == "spot":
+                track["draw_data"] = track["data"].get_data("spot", location(loc=self.curr_loc), **track["options"])
+
+            elif track["type"] == "graph_split_strand":
+                track["draw_data"] = track["data"].get_data("graph", location(loc=self.curr_loc),
+                    strand=True, resolution=self.bps_per_pixel, **track["options"])
+
+            elif track["type"] == "genome":
+                track["draw_data"] = track["data"].get_data("genome", location(loc=self.curr_loc))
+            elif track["type"] == "genome_sql":
+                track["draw_data"] = track["data"].get_data(location(loc=self.curr_loc))
+
+            elif track["type"] == "repeats":
+                track["draw_data"] = track["data"].get_data(location(loc=self.curr_loc))
+
+        # If we need to lock the tracks:
+        if opt.track.lock_scales:
+            # Fid the max_values for all of the tracks and then load min_scaling
+            scale = opt.track.min_scale
+            for track in self.tracks:
+                mmax = 0
+                if track["type"] in ["graph", "kde_graph"]:
+                    mmax = max(track["draw_data"])
+                elif track["type"] == "graph_split_strand": # got two max's to do.
+                    mmax = max([max(track["draw_data"]["+"]), max(track["draw_data"]["-"])])
+
+                if mmax > scale: # see if we need to adjust scale
+                    scale = mmax
+
+            # Now set all tracks to the same scale.
+            for track in self.tracks:
+                if track["type"] in ["graph", "kde_graph", "graph_split_strand"]:
+                    track["options"]["min_scaling"] = scale
+
+    def paint(self, cairo_context):
+        """
+        **Purpose**
+            paint the current display on a cairo context
+
+        **Arguments**
+            cairo_context
+                I need a valid cairo_context to draw to
+        """
+
+        self.ctx = cairo_context
 
         # blank the screen:
         self.__setPenColour(opt.graphics.screen_colour)
         self.ctx.rectangle(0,0,self.fullw,self.h)
         self.ctx.fill()
 
-        draw_data = []
-        # collect the data for the tracks and draw them on the screen.
-        for track in self.tracks:
-            #print track
-            # basic data:
-            item = {"type": track["type"],
-                "track_location": track["track_location"],
-                "name": track["data"]["name"], # This is problematic for genome() and genelist
-                "options": track["options"]}
-
-            # Big If statement coming:
-            if track["type"] == "graph":
-                item["array"] = track["data"].get_data("graph", location(loc=self.curr_loc),
-                    resolution=self.bps_per_pixel, **track["options"])
-
-            elif track["type"] == "kde_graph":
-                item["array"] = track["data"].get_data("graph", location(loc=self.curr_loc),
-                    resolution=self.bps_per_pixel, kde_smooth=True, view_wid=self.w, **track["options"])
-
-            elif track["type"] in ("bar", 'splice'):
-                item["array"] = track["data"].get_data(track["type"], location(loc=self.curr_loc),
-                    resolution=self.bps_per_pixel, **track["options"])
-
-            elif track["type"] == "spot":
-                item["array"] = track["data"].get_data("spot", location(loc=self.curr_loc), **track["options"])
-
-            elif track["type"] == "graph_split_strand":
-                item["array"] = track["data"].get_data("graph", location(loc=self.curr_loc),
-                    strand=True, resolution=self.bps_per_pixel, **track["options"])
-
-            elif track["type"] == "genome":
-                item["array"] = track["data"].get_data("genome", location(loc=self.curr_loc))
-                print('genome:', item["array"])
-            elif track["type"] == "genome_sql":
-                item["array"] = track["data"].get_data(location(loc=self.curr_loc))
-                print('genome_sql:', item["array"])
-
-            elif track["type"] == "repeats":
-                item["array"] = track["data"].get_data(location(loc=self.curr_loc))
-
-            draw_data.append(item)
-
-        # If we need to lock the tracks:
-        if opt.track.lock_scales:
-            # Fid the max_values for all of the tracks and then load min_scaling
-            scale = opt.track.min_scale
-            for item in draw_data:
-                mmax = 0
-                if item["type"] in ["graph", "kde_graph"]:
-                    mmax = max(item["array"])
-                elif item["type"] == "graph_split_strand": # got two max's to do.
-                    mmax = max([max(item["array"]["+"]), max(item["array"]["-"])])
-
-                if mmax > scale: # see if we need to adjust scale
-                    scale = mmax
-
-            # Now set all tracks to the same scale.
-            for item in draw_data:
-                if item["type"] in ["graph", "kde_graph", "graph_split_strand"]:
-                    item["options"]["min_scaling"] = scale
-
         # And finally draw:
-        for item in draw_data:
+        for item in self.tracks:
             #print item
-            colbox = draw_modes_dict[item["type"]](item, **item["options"])
+            colbox = self.draw_modes_dict[item["type"]](item, **item["options"])
 
             # the collision boxes are not used. But I suppose in future...
             if colbox:
@@ -209,21 +200,31 @@ class gDraw:
         if not options:
             options = {} # solves a lot of problems if it is an empty dict
 
-        self.tracks.append({"data": track, "track_location":
-            self.__getNextTrackBox(track_type), "type": track_type,
+        self.tracks.append({"data": track, "type": track_type,
             "options": options})
 
-    def __getNextTrackBox(self, track_type):
+    def __calculateTrackBoxes(self):
         """
-        get the next available track location and return the base (y-axis) of the block.
+        for all of the tracks; work out how big they need to be
+
+        and add a new key into the self.tracks 'track_location' that specifies the
+        baseline for the track;
         """
         currentLoc = 0
-        for index, track in enumerate(self.trackBoxes):
-            if track:
-                currentLoc += opt.track.height_px[track]
-            if not track:
-                self.trackBoxes[index] = track_type
-                return(-(index + (currentLoc)))
+        for t in self.tracks:
+            if t['type'] == 'genome_sql' or t['type'] == 'genome': # Ask the track how much space it is going to need;
+                hdelta = (opt.track.height_px[t['type']] * len(t['draw_data']))
+                t['track_top'] = currentLoc + hdelta
+                t['track_location'] = currentLoc
+                currentLoc += hdelta
+            else:
+                t['track_top'] = currentLoc + opt.track.height_px[t['type']]
+                t['track_location'] = currentLoc
+                currentLoc += opt.track.height_px[t['type']]
+
+        # For reasons that are not entirely clear, Cairo uses negative values:
+        for t in self.tracks:
+            t['track_location'] = -t['track_location']
 
     def setViewPortSize(self, width):
         """
@@ -363,8 +364,12 @@ class gDraw:
             returns the actual filename used to save.
             and a file saved in filename
         """
+        self.get_draw_data()
+        # track_heights are now dynamic; so calculate them here:
+        self.__calculateTrackBoxes()
+
         # guess the maximum height required:
-        guess_height = abs(self.tracks[-1]["track_location"]) + opt.track.height_px[self.tracks[-1]["type"]] + opt.ruler.height_px + 30 + 32 # 32 is the 'chromosome %s' padding, 30 is some other padding I'm not really certain where it comes from...
+        guess_height = abs(self.tracks[-1]["track_top"]) + opt.track.height_px[self.tracks[-1]["type"]] + opt.ruler.height_px + 32 # 32 is the 'chromosome %s' padding, 30 is some other padding I'm not really certain where it comes from...
 
         if not self.ctx or guess_height != self.last_guess_height or type in ("svg", "pdf"):
             # If the surface size changed between the last call and this, I need a newly sized surface.
@@ -428,6 +433,8 @@ class gDraw:
         """
         return(self.ctx.text_extents(text)[:4])
 
+    '''
+    # This is currently invalid as it uses hard-coded track_heights;
     def __drawTrackBackground(self, track_location, track_type):
         """
         track_location is the bottom edge of the track block
@@ -438,6 +445,7 @@ class gDraw:
         self.ctx.rectangle(0, base_loc[1]-opt.track.height_px[track_type]+4, self.w, opt.track.height_px[track_type]-4) # 30 = half genomic track size
         self.ctx.fill()
         return( (0, base_loc[1]-opt.track.height_px[track_type], self.w, opt.track.height_px[track_type]-2) )
+    '''
 
     def __drawTrackGraph(self, track_data, scaled=True, min_scaling=opt.track.min_scale, clamp=1,
         no_scaling=False, colour=None, name=None, mid_line=False, **kargs):
@@ -467,8 +475,7 @@ class gDraw:
             mid_line (default=False)
                 draw a midline in to mark the center.
         """
-
-        data = track_data["array"]
+        data = track_data["draw_data"]
         data = numpy.array(data, dtype=numpy.float32)
 
         if clamp:
@@ -532,7 +539,7 @@ class gDraw:
 
         if opt.track.draw_names:
             if not name:
-                name = track_data["name"]
+                name = track_data['data']["name"]
             self.__drawText(opt.track.label_fontsize, loc[1] - opt.track.height_px["graph"] + (opt.track.label_fontsize*2),
                 opt.graphics.font, name, size=opt.track.label_fontsize)
 
@@ -571,16 +578,16 @@ class gDraw:
                 full height of the track. Instead the track will be scaled to
                 this value as a minimum.
         """
-        assert "+" in track_data["array"], "__splitgraph data is missing + strand"
-        assert "-" in track_data["array"], "__splitgraph data is missing - strand"
+        assert "+" in track_data["draw_data"], "__splitgraph data is missing + strand"
+        assert "-" in track_data["draw_data"], "__splitgraph data is missing - strand"
 
         half_way_point = opt.track.height_px["graph"] / 2
 
-        track_max = max([track_data["array"]["+"].max(), track_data["array"]["-"].max()])
-        track_min = min([track_data["array"]["+"].min(), track_data["array"]["-"].min()])
+        track_max = max([track_data["draw_data"]["+"].max(), track_data["draw_data"]["-"].max()])
+        track_min = min([track_data["draw_data"]["+"].min(), track_data["draw_data"]["-"].min()])
 
         if scaled:
-            track_max = max([min_scaling, max(track_data["array"]["+"]), max(track_data["array"]["-"])])
+            track_max = max([min_scaling, max(track_data["draw_data"]["+"]), max(track_data["draw_data"]["-"])])
 
             if min_scaling and track_max < min_scaling:
                 scaling_value = min_scaling / float(half_way_point)
@@ -588,11 +595,11 @@ class gDraw:
                 scaling_value = track_max / float(half_way_point)
 
             # only works if numpy array?
-            new_f_array = track_data["array"]["+"] / scaling_value # okay numpy can be sweet
-            new_r_array = track_data["array"]["-"] / scaling_value
+            new_f_array = track_data["draw_data"]["+"] / scaling_value # okay numpy can be sweet
+            new_r_array = track_data["draw_data"]["-"] / scaling_value
         else:
-            new_f_array = track_data["array"]["+"]
-            new_r_array = track_data["array"]["-"]
+            new_f_array = track_data["draw_data"]["+"]
+            new_r_array = track_data["draw_data"]["-"]
 
         #print new_f_array
         #print track_data["array"]
@@ -677,7 +684,7 @@ class gDraw:
             colour = kargs["colour"]
         self.__setPenColour(colour)
 
-        for spot in track_data["array"]:
+        for spot in track_data["draw_data"]:
             if opt.track.spot_shape == "circle":
                 centre_point = (spot["left"] + spot["right"]) / 2
                 sc = self.__realToLocal(centre_point, track_data["track_location"])
@@ -717,7 +724,7 @@ class gDraw:
         self.ctx.set_line_width(0.5)
         self.__setPenColour(colour)
 
-        for bar in track_data["array"]:
+        for bar in track_data["draw_data"]:
             left = self.__realToLocal(bar['left'], track_data["track_location"])
             rite = self.__realToLocal(bar['right'], track_data["track_location"])
 
@@ -752,7 +759,7 @@ class gDraw:
         self.ctx.set_line_width(0.5)
         self.__setPenColour(colour)
 
-        for bar in track_data["array"]:
+        for bar in track_data["draw_data"]:
             # iterate over each bar
             left = self.__realToLocal(bar['left'], track_data["track_location"])
             rite = self.__realToLocal(bar['right'], track_data["track_location"])
@@ -788,10 +795,10 @@ class gDraw:
                 must be some kind of array/iterable, with a nbp:1px resolution.
 
         """
-        track_max = max(track_data["array"]) # bartrack must be normalised
+        track_max = max(track_data["draw_data"]) # bartrack must be normalised
         if track_max < min_scale:
             track_max = min_scale
-        new_array = track_data["array"]
+        new_array = track_data["draw_data"]
 
         posLeft = self.__realToLocal(self.lbp, track_data["track_location"])
         posRight = self.__realToLocal(self.rbp, track_data["track_location"])
@@ -863,10 +870,13 @@ class gDraw:
             self.__drawChr(None)
 
         # draw the genome:
-        for item in track_data["array"]:
-            draw_modes_dict[item["type"]](item, track_data)
+        full_track_height = opt.track.height_px['genome']
+        half_track_height = (full_track_height / 2.0)
+        for idx, item in enumerate(track_data["draw_data"]):
+            track_slot_base = track_data["track_location"] - half_track_height - (full_track_height * idx)
+            draw_modes_dict[item["type"]](item, track_data, track_slot_base)
 
-    def __drawGene(self, data, track_data=None):
+    def __drawGene(self, data, track_data, track_slot_base):
         """
         draw Features of the type "Gene"
         should be an dict containing the following keys:
@@ -877,11 +887,6 @@ class gDraw:
         exonStarts: list of exon start locations
         exonEnds: list of ends
         """
-        if not track_data: # See if we are bound into a track slot.
-            track_slot_base = 0
-        else:
-            track_slot_base = track_data["track_location"] - (opt.track.height_px['genome'] / 2.0)
-
         posLeft = self.__realToLocal(data["loc"]["left"], track_slot_base)[0]
         posBase = self.__realToLocal(data["loc"]["left"], track_slot_base)[1]
         posRight = self.__realToLocal(data["loc"]["right"], track_slot_base)[0]
@@ -943,24 +948,10 @@ class gDraw:
 
         if data["strand"] == "+": # top strand
             loc = self.__realToLocal(data["loc"]["left"], track_slot_base)
-            # arrow.
-            #self.ctx.move_to(loc[0], loc[1]-20)
-            #self.ctx.line_to(loc[0], loc[1]-20-opt.graphics.arrow_height_px)
-            #self.ctx.line_to(loc[0] + opt.graphics.arrow_width_px, loc[1]-20)
-            #self.ctx.line_to(loc[0], loc[1]-20+opt.graphics.arrow_height_px)
-            #self.ctx.line_to(loc[0], loc[1]-20)
-            #self.ctx.fill()
-            self.__drawText(loc[0]+opt.graphics.arrow_width_px+3, loc[1]-20+opt.graphics.arrow_height_px, "Arial", data["name"], size=opt.gene.font_size, style=opt.gene.font_style)
+            self.__drawText(loc[0], loc[1]-18+opt.graphics.arrow_height_px, "Helvetica", data["name"], size=opt.gene.font_size, style=opt.gene.font_style)
         elif data["strand"] == "-":
             loc = self.__realToLocal(data["loc"]["right"], track_slot_base)
-            # arrow.
-            #self.ctx.move_to(loc[0], loc[1]+20)
-            #self.ctx.line_to(loc[0], loc[1]+20-opt.graphics.arrow_height_px)
-            #self.ctx.line_to(loc[0]-opt.graphics.arrow_width_px, loc[1]+20)
-            #self.ctx.line_to(loc[0], loc[1]+20+opt.graphics.arrow_height_px)
-            #self.ctx.line_to(loc[0], loc[1]+20)
-            #self.ctx.fill()
-            self.__drawText(loc[0]+opt.graphics.arrow_width_px-13, loc[1]+22+opt.graphics.arrow_height_px, "Arial", data["name"], size=opt.gene.font_size, align="right", style=opt.gene.font_style)
+            self.__drawText(loc[0], loc[1]+18+opt.graphics.arrow_height_px, "Helvetica", data["name"], size=opt.gene.font_size, align="right", style=opt.gene.font_style)
         else:
             raise ErrorInvalidGeneDefinition
 
@@ -998,7 +989,7 @@ class gDraw:
             'snRNA': None,
             }
 
-        self.__drawTrackBackground(track_data["track_location"], "repeats")
+        #self.__drawTrackBackground(track_data["track_location"], "repeats")
 
         one_third = ((opt.track.height_px['repeats']) / 4.0)
         # Three genome lines for the repeats
@@ -1012,7 +1003,7 @@ class gDraw:
             self.ctx.stroke()
 
         # draw the genome:
-        for item in track_data["array"]:
+        for item in track_data["draw_data"]:
             # Should assert here if not in draw_modes
             if item['type'] not in draw_modes_dict:
                 log.warning('type=%s not found in draw modes, skipping.' % item['type'])
