@@ -4,7 +4,7 @@ data.py
 
 """
 
-valid_track_draw_types = frozenset(["graph", "graph_split_strand", "bar", "spot", "kde_graph", "genome", "repeats", 'splice'])
+valid_track_draw_types = frozenset(["graph", "graph_split_strand", "bar", "spot", "kde_graph", "genome", "repeats", 'splice', 'genome_sql'])
 
 valid_move_modes = frozenset(["left", "right", "zoomin", "zoomout"])
 

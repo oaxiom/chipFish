@@ -73,6 +73,7 @@ class gDraw:
             "bar": self.__drawTrackBar,
             "spot": self.__drawTrackSpot,
             "genome": self.__drawGenome,
+            "genome_sql": self.__drawGenome,
             "repeats": self.__drawRepeats,
             'splice': self.__drawSplice,
             }
@@ -123,7 +124,10 @@ class gDraw:
 
             elif track["type"] == "genome":
                 item["array"] = track["data"].get_data("genome", location(loc=self.curr_loc))
-                #print item["array"]
+                print('genome:', item["array"])
+            elif track["type"] == "genome_sql":
+                item["array"] = track["data"].get_data(location(loc=self.curr_loc))
+                print('genome_sql:', item["array"])
 
             elif track["type"] == "repeats":
                 item["array"] = track["data"].get_data(location(loc=self.curr_loc))

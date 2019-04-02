@@ -1,7 +1,7 @@
 """
 genome pass through for chipFish, see the accompanying readme.txt for details.
 
-(c) 2009-2015 oAxiom
+(c) 2009-2019 oAxiom
 
 
 """
@@ -28,7 +28,7 @@ class genome_sql(glbase_stage.genome_sql):
     __tooltype__ = "Genome"
     _default_draw_type = "repeats"
     _available_draw_types = ("genome", "genome_stack") # genome_stack not implemented.
-    
+
     # extra methods:
     def get_data(self, location):
        return(self.getFeatures(location))
