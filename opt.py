@@ -28,7 +28,7 @@ class generic:
         v.append("web")
     if debug:
         v.append("debug")
-        
+
     version = " ".join(v)
 
 __VERSION__ = generic.version
@@ -71,7 +71,7 @@ class graphics:
     lncrna_colour = (0.1, 0.8, 0.1)
     microRNA_colour = (0.6, 0.1, 0)
     repeat_cols = {"LINE": (0, 0, 0.7), "SINE": (0,0.7,0), "LTR": (0.7,0,0), "DNA": (0.5, 0.5, 0.5)}
-        
+
     # Font related defaults
     font = "Helvetica"
     default_font_size = 11 # Fall back font size
@@ -94,7 +94,7 @@ class draw:
     chevrons_inside_introns = False # not implemented draws chevrons inside the gene indicating direction
     braces_between_exons = False # not implemented draws braces across the exons
     scale_bar = True # The scale bar at the top right of the image just below the ruler
-    scale_bar_fontsize = 16 # scale bar font size. 
+    scale_bar_fontsize = 16 # scale bar font size.
     view_port_width = 1000 # The width of the genome view in pixels
     genomic_location = True # draw the chrN:nnnnnn-nnnnnn label just above the first track
     genomic_location_font_size = 28 # font size for the genomic location label
@@ -126,8 +126,10 @@ class track:
         "splice": 20,
         "spot": 20,
         "genome": 70,
-        "repeats": 200} # height's of the tracks in pixels.
-    bar_height = 12 # Height of the bars for bar tracks    
+        "repeats": 200,
+        'genome_sql': 70,
+        } # height's of the tracks in pixels.
+    bar_height = 12 # Height of the bars for bar tracks
     spot_pixel_radius = 7 # Size of the spot circle
     spot_default_colour = (0.1, 0.1, 0.1) # The colour of the spot for spot tracks
     bar_default_colour = (0.1, 0.1, 0.1) # The colour of the spot for spot tracks
@@ -140,5 +142,5 @@ class track:
     draw_scales = True
     scale_bar_font_size = 18
     label_fontsize = 22
-    min_scale = 20 # The minimum x axis value for tracks. 
+    min_scale = 20 # The minimum x axis value for tracks.
     lock_scales = False # Lock all scales on the Tracks together. Make this per trk file settable?

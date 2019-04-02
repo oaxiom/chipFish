@@ -123,6 +123,8 @@ class app():
                             mode = "flat"
                         elif 'genome_sql:' in line:
                             mode = 'genome_sql'
+                        elif 'repeat_sql:' in line:
+                            mode = 'repeat_sql'
                         else:
                             raise ErrorUnrecognisedTrackMode(mode)
 
@@ -175,8 +177,10 @@ class app():
                                     continue
                                 # Okay, assume the user knows what they are doing and just grab the file they asked for:
                                 self.draw.bindTrack(glload(name))
+                            elif mode == "repeat_sql":
+                                self.draw.bindTrack(genome_sql(filename=os.path.join(path, name)), track_type='repeats')
                             elif mode == "genome_sql":
-                                self.draw.bindTrack(genome_sql(filename=os.path.join(path, name)))
+                                self.draw.bindTrack(genome_sql(filename=os.path.join(path, name)), track_type='genome_sql')
             oh.close()
 
         self.draw.setViewPortSize(opt.draw.view_port_width)
