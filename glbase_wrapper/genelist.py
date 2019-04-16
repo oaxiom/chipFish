@@ -37,9 +37,9 @@ class genelist(glbase_stage.genelist):
     def __getitem__(self, key):
         """
         Emulate a dict
-        
+
         I need to override this, to only return metadata.
-        glbase genome objects return self.qkewyfind[key] by default.
+        glbase genome objects return self.qkeyfind[key] by default.
         """
         if key == "info": # catch this special key
             for k in self.meta_data:
@@ -47,8 +47,9 @@ class genelist(glbase_stage.genelist):
         elif key == "name":
             return(self.name)
         else:
-            assert key in self.meta_data, "'%s' not found in this track" % key
-            return(self.meta_data[key])
+            pass
+            #assert key in self.meta_data, "'%s' not found in this track" % key
+            #return(self.meta_data[key])
 
     # new methods:
     def get_data(self, type, loc, strand=None, resolution=1, **kargs):

@@ -2,7 +2,7 @@
 --------------------------
 chipFish, part of chipFish
 
-(c) 2008-2018 oAxiom
+(c) 2008-2019 oAxiom
 
 --------------------------
 
@@ -169,6 +169,7 @@ class app():
                                 try:
                                     g = genomes()
                                     if name in g:
+                                        print(name)
                                         self.draw.bindTrack(g.get_genome(name))
                                         continue
                                 except AssertionError:
@@ -176,7 +177,7 @@ class app():
                                     self.draw.bindTrack(glload(os.path.join(path, name)))
                                     continue
                                 # Okay, assume the user knows what they are doing and just grab the file they asked for:
-                                self.draw.bindTrack(glload(name))
+                                self.draw.bindTrack(glload(name), track_type="genome")
                             elif mode == "repeat_sql":
                                 self.draw.bindTrack(genome_sql(filename=os.path.join(path, name)), track_type='repeats')
                             elif mode == "genome_sql":

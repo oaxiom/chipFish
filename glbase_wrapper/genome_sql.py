@@ -26,7 +26,7 @@ class genome_sql(glbase_stage.genome_sql):
     name = 'None' # For compatability with vanilla genomes
     __doc__ = "Overriden: Not Present"
     __tooltype__ = "Genome"
-    _default_draw_type = "repeats"
+    _default_draw_type = "genome_sql"
     _available_draw_types = ("genome", "genome_stack") # genome_stack not implemented.
 
     # extra methods:

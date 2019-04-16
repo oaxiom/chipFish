@@ -1,16 +1,12 @@
 """
 opt, part of chipFish
 
-(c) 2008-2015 oAxiom
+(c) 2008-2019 oAxiom
 
 Not for distribution.
 
 Class container for mutable constants and other data
 
-. These should be loadable/savable and changable.
-. save as a editable text file (No, this is the editable file)!
-. But perhaps an editor is required? - If I get funding!
-. This is actually more accurately consts and options together?
 """
 
 import sys, os
@@ -60,11 +56,11 @@ class graphics:
     """
     graphics options.
     """
-    gene_height = 8        # width to draw the genes
-    cds_height = 12
-    lncrna_height = 7
-    microRNA_height = 6
-    repeat_height = 10 # Height of the repeats
+    gene_height = 5        # width to draw the genes
+    cds_height = 9
+    lncrna_height = 5
+    microRNA_height = 7
+    repeat_height = 9 # Height of the repeats
 
     screen_colour = (1,1,1,1)
     gene_colour = (0,0,0) #Black
@@ -74,8 +70,8 @@ class graphics:
 
     # Font related defaults
     font = "Helvetica"
-    default_font_size = 11 # Fall back font size
-    repeat_label_font_size = 8
+    default_font_size = 10 # Fall back font size
+    repeat_label_font_size = 10
     repeat_label_font_style = 'normal'
 
     right_border_width = 0 # in pixels, size of rightmost click border.
@@ -94,20 +90,20 @@ class draw:
     chevrons_inside_introns = False # not implemented draws chevrons inside the gene indicating direction
     braces_between_exons = False # not implemented draws braces across the exons
     scale_bar = True # The scale bar at the top right of the image just below the ruler
-    scale_bar_fontsize = 16 # scale bar font size.
+    scale_bar_fontsize = 10 # scale bar font size.
     view_port_width = 1000 # The width of the genome view in pixels
     genomic_location = True # draw the chrN:nnnnnn-nnnnnn label just above the first track
     genomic_location_font_size = 28 # font size for the genomic location label
 
 class gene:
-    font_size = 18
+    font_size = 12
     font_style = "normal"
 
 class ruler:
     """
     options specific to the genome ruler.
     """
-    font_size = 18
+    font_size = 12
     height_px = 10 # height of ruler in pixels.
     text_height = 10 # distance from top of screen of the ruler text.
     colour = (0,0,0)
@@ -125,8 +121,8 @@ class track:
         "bar": 20,
         "splice": 20,
         "spot": 20,
-        "genome": 60,
-        'genome_sql': 60,
+        "genome": 40,
+        'genome_sql': 40,
         "repeats": 200,
         } # height's of the tracks in pixels.
     bar_height = 12 # Height of the bars for bar tracks
@@ -135,12 +131,12 @@ class track:
     bar_default_colour = (0.1, 0.1, 0.1) # The colour of the spot for spot tracks
     spot_filled = True # fill the spot circle?
     spot_shape = "circle" # supported = circle, triangle
-    font_scale_size = 24 # Size of the font on the tracks
+    font_scale_size = 12 # Size of the font on the tracks
     filled = True
     background = False # Draw a grey background defining the span of the track
     draw_names = True
     draw_scales = True
-    scale_bar_font_size = 18
-    label_fontsize = 22
+    scale_bar_font_size = 12
+    label_fontsize = 12
     min_scale = 20 # The minimum x axis value for tracks.
     lock_scales = False # Lock all scales on the Tracks together. Make this per trk file settable?
