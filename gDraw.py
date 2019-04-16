@@ -2,7 +2,7 @@
 
 This is the main draw routine for chipFish
 
-(c) 2009-2018 oAxiom
+(c) 2009-2019 oAxiom
 
 """
 
@@ -948,10 +948,10 @@ class gDraw:
 
         if data["strand"] == "+": # top strand
             loc = self.__realToLocal(data["loc"]["left"], track_slot_base)
-            self.__drawText(loc[0], loc[1]-18+opt.graphics.arrow_height_px, "Helvetica", data["name"], size=opt.gene.font_size, style=opt.gene.font_style)
+            self.__drawText(loc[0], loc[1]-opt.graphics.gene_height-4, "Helvetica", data["name"], size=opt.gene.font_size, align="left", style=opt.gene.font_style)
         elif data["strand"] == "-":
             loc = self.__realToLocal(data["loc"]["right"], track_slot_base)
-            self.__drawText(loc[0], loc[1]+18+opt.graphics.arrow_height_px, "Helvetica", data["name"], size=opt.gene.font_size, align="right", style=opt.gene.font_style)
+            self.__drawText(loc[0], loc[1]+opt.graphics.gene_height+4+opt.gene.font_size, "Helvetica", data["name"], size=opt.gene.font_size, align="right", style=opt.gene.font_style)
         else:
             raise ErrorInvalidGeneDefinition
 
@@ -1006,7 +1006,7 @@ class gDraw:
         for item in track_data["draw_data"]:
             # Should assert here if not in draw_modes
             if item['type'] not in draw_modes_dict:
-                log.warning('type=%s not found in draw modes, skipping.' % item['type'])
+                log.warning('__drawRepeats(): type=%s not found in draw modes, skipping.' % item['type'])
                 continue
             elif draw_modes_dict[item['type']] is None:
                 pass # Silenty pass missing but known types

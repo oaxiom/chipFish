@@ -2,6 +2,8 @@
 'make' a genome
 
 turn refGene table into a genome.
+
+These files are downloaded from UCSC genome browser;
 """
 
 import sys, csv, os
@@ -61,13 +63,6 @@ if os.path.exists("mm10_refGene.tsv"):
     mm10.save("mm10_refGene.glb")
     print(mm10._findByLabel("name", "Nanog"))
 
-if os.path.exists("mm10_gencode.tsv"):
-    mm10 = glbase_wrapper.genome(name="mm10", filename="mm10_gencode.tsv", format=format_mm9_refgene)
-    print(mm10)
-    mm10.save("mm10_gencode.glb")
-    print(mm10._findByLabel("name", "Nanog"))
-    mm10.getFeatures('chr12:7,786,960-7,801,578')
-
 if os.path.exists("hg38_refGene.tsv"):
     hg38 = glbase_wrapper.genome(name="hg38", filename="hg38_refGene.tsv", format=format_mm9_refgene)
     print(hg38)
@@ -75,10 +70,22 @@ if os.path.exists("hg38_refGene.tsv"):
     print(hg38._findByLabel("name", "NANOG"))
     hg38.getFeatures('chr12:7,786,960-7,801,578')
 
+'''
+# The gencode is a bit trickier now as they changed to format of hte UCSC, so it must be built directly from the GTF
+# See the make_gencode.py script for that
+if os.path.exists("mm10_gencode.tsv"):
+    mm10 = glbase_wrapper.genome(name="mm10", filename="mm10_gencode.tsv", format=format_mm9_refgene)
+    print(mm10)
+    mm10.save("mm10_gencode.glb")
+    print(mm10._findByLabel("name", "Nanog"))
+    mm10.getFeatures('chr12:7,786,960-7,801,578')
+
+# The gencode is a bit trickier now as they changed to format of hte UCSC, so it must be built directly from the GTF
+# See the make_gencode.py script for that
 if os.path.exists("hg38_gencode.tsv"):
     hg38 = glbase_wrapper.genome(name="hg38", filename="hg38_gencode.tsv", format=format_mm9_refgene)
     print(hg38)
     hg38.save("hg38_gencode.glb")
     print(hg38._findByLabel("name", "NANOG"))
     hg38.getFeatures('chr12:7,786,960-7,801,578')
-
+'''
