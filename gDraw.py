@@ -102,6 +102,7 @@ class gDraw:
 
             elif track["type"] == "genome":
                 track["draw_data"] = track["data"].get_data("genome", location(loc=self.curr_loc))
+
             elif track["type"] == "genome_sql":
                 track["draw_data"] = track["data"].get_data(location(loc=self.curr_loc))
 
@@ -448,7 +449,7 @@ class gDraw:
     '''
 
     def __drawTrackGraph(self, track_data, scaled=True, min_scaling=opt.track.min_scale, clamp=1,
-        no_scaling=False, colour=None, name=None, mid_line=False, **kargs):
+        no_scaling=False, colour=None, name=None, mid_line=False, inverted=False, **kargs):
         """
         **Arguments**
             track_data
@@ -471,6 +472,9 @@ class gDraw:
             name (Optional, default=None)
                 By default I will use the name of the genelist.
                 If you want to rename the track then set options name="Name of track"
+
+            inverted (Optional, default=False)
+                Draw the bottom at the top, and the graph moves down.
 
             mid_line (default=False)
                 draw a midline in to mark the center.
@@ -516,26 +520,49 @@ class gDraw:
         self.ctx.set_line_width(1.0)
         coords = []
         lastpx = -1
-        for index, value in enumerate(data):
-            loc = self.__realToLocal(self.lbp + index, track_data["track_location"])
-            coords.append( (index, loc[1] - value)) # +30 locks it to the base of the track
+        if inverted:
+            for index, value in enumerate(data):
+                loc = self.__realToLocal(self.lbp + index, track_data["track_location"])
+                coords.append( (index, (loc[1]-opt.track.height_px['graph']) + value))
 
-        self.ctx.move_to(0, coords[0][1]) # start x,y
+            self.ctx.move_to(0, coords[0][1]) # start x,y
 
-        for item in coords:
-            self.ctx.line_to(item[0], item[1])
+            for item in coords:
+                self.ctx.line_to(item[0], item[1])
 
-        if opt.track.filled:
-            if clamp:
-                loc = self.__realToLocal(0, track_data["track_location"])
+            if opt.track.filled:
+                if clamp:
+                    loc = self.__realToLocal(0, track_data["track_location"])
+                else:
+                    loc = self.__realToLocal(0, track_data["track_location"])
+                #if clamp:
+                self.ctx.line_to(item[0], loc[1]-opt.track.height_px['graph']) # move to the base line on the far right
+                self.ctx.line_to(0, loc[1]-opt.track.height_px['graph']) # the 0th far left
+                self.ctx.fill()
             else:
-                loc = self.__realToLocal(0, track_data["track_location"])
-            #if clamp:
-            self.ctx.line_to(item[0], loc[1] ) # move to the base line on the far right
-            self.ctx.line_to(0, loc[1] ) # the 0th far left
-            self.ctx.fill()
+                self.ctx.stroke()
+
         else:
-            self.ctx.stroke()
+            for index, value in enumerate(data):
+                loc = self.__realToLocal(self.lbp + index, track_data["track_location"])
+                coords.append( (index, loc[1] - value)) # +30 locks it to the base of the track
+
+            self.ctx.move_to(0, coords[0][1]) # start x,y
+
+            for item in coords:
+                self.ctx.line_to(item[0], item[1])
+
+            if opt.track.filled:
+                if clamp:
+                    loc = self.__realToLocal(0, track_data["track_location"])
+                else:
+                    loc = self.__realToLocal(0, track_data["track_location"])
+                #if clamp:
+                self.ctx.line_to(item[0], loc[1]) # move to the base line on the far right
+                self.ctx.line_to(0, loc[1] ) # the 0th far left
+                self.ctx.fill()
+            else:
+                self.ctx.stroke()
 
         if opt.track.draw_names:
             if not name:
@@ -984,19 +1011,19 @@ class gDraw:
             'scRNA': None,
             'Low_complexity': None,
             'tRNA': None,
-            'Retroposon': None,
+            'Retroposon': self.__drawRepeat, # SVA
             'Satellite': None,
             'snRNA': None,
             }
 
         #self.__drawTrackBackground(track_data["track_location"], "repeats")
 
-        one_third = ((opt.track.height_px['repeats']) / 4.0)
+        one_quart = ((opt.track.height_px['repeats']) / 5.0)
         # Three genome lines for the repeats
         self.ctx.set_line_width(1)
         self.__setPenColour((0.6, 0.6, 0.6))
-        for i in (1.0, 2.0, 3.0):
-            track_slot_base = track_data["track_location"] - (one_third * i)
+        for i in (1.0, 2.0, 3.0, 4.0):
+            track_slot_base = track_data["track_location"] - (one_quart * i)
             loc = self.__realToLocal(0, track_slot_base)
             self.ctx.move_to(0, loc[1])
             self.ctx.line_to(self.w, loc[1])
@@ -1022,14 +1049,16 @@ class gDraw:
         strand: strand of gene
         Class:
         """
-        one_third = ((opt.track.height_px['repeats']) / 4.0)
+        one_quart = ((opt.track.height_px['repeats']) / 5.0)
         # order = LINE, SINE, LTR
         if data['type'] == 'LINE':
-            track_slot_base = track_data["track_location"] - one_third
+            track_slot_base = track_data["track_location"] - one_quart
         elif data['type'] == 'SINE':
-            track_slot_base = track_data["track_location"] - (one_third * 2.0)
+            track_slot_base = track_data["track_location"] - (one_quart * 2.0)
         elif data['type'] == 'LTR':
-            track_slot_base = track_data["track_location"] - (one_third * 3.0)
+            track_slot_base = track_data["track_location"] - (one_quart * 3.0)
+        elif data['type'] == 'Retroposon':
+            track_slot_base = track_data["track_location"] - (one_quart * 4.0)
 
         posLeft = self.__realToLocal(data["loc"]["left"], track_slot_base)[0]
         posBase = self.__realToLocal(data["loc"]["left"], track_slot_base)[1]

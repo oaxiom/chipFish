@@ -142,7 +142,7 @@ class app():
                             tail, head = os.path.split(name)
                             # The path will be relative to the path, not relative to chipFish. Which could be anywhere
                             #
-                            path = os.path.normpath(os.path.join(track_path, tail))
+                            path = os.path.expanduser(os.path.normpath(os.path.join(track_path, tail)))
                             name = head
                             #print path, name
 
