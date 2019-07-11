@@ -66,7 +66,7 @@ class graphics:
     gene_colour = (0,0,0) #Black
     lncrna_colour = (0.1, 0.8, 0.1)
     microRNA_colour = (0.6, 0.1, 0)
-    repeat_cols = {"LINE": (0, 0, 0.7), "SINE": (0,0.7,0), "LTR": (0.7,0,0), "DNA": (0.5, 0.5, 0.5)}
+    repeat_cols = {"LINE": (0, 0, 0.7), "SINE": (0,0.7,0), "LTR": (0.7,0,0), "DNA": (0.5, 0.5, 0.5), 'Retroposon': (0.5, 0.0, 0.5)}
 
     # Font related defaults
     font = "Helvetica"
