@@ -1184,18 +1184,64 @@ def fold_change(c1, c2, log=2, pad=1e-6):
 def rgba_to_hex(rgba_color):
     return ('#{r:02x}{g:02x}{b:02x}'.format(r=int(rgba_color[0]*255),g=int(rgba_color[1]*255),b=int(rgba_color[2]*255)))
 
+def hex_to_rgb(hex_str):
+    return tuple((int(hex_str.lstrip('#')[i:i+2], 16)/255) for i in (0, 2, 4))
+
 def qdeepcopy(anobject):
     # You should wrap me in a try: except:
     return(pickle.loads(pickle.dumps(anobject, -1)))
 
-if __name__ == "__main__":
-    # small tester for euclidean_distance()
-    X = numpy.array([[0, 1], [1, 1]])
-    print(euclidean_distances(X))
-    #array([[ 0.,  1.],
-    #       [ 1.,  0.]])
-    print(euclidean_distances(X, numpy.array([[0.0, 0.0]])))
-    #array([[ 1.        ],
-    #       [ 1.41421356]])
+def fastq(filename, gziped=False):
+    """
+    generator object to parse a fastQ file
 
-    print(fold_change(100, 50, log=2, pad=1e-6))
+    @HWI-M00955:51:000000000-A8WTD:1:1101:13770:1659 1:N:0:NNTNNNAGNNCNCTAT
+    NGGTAAATGCGGGAGCTCCGCGCGCANNTGCGGCNNNGCATTGCCCATAATNNNNNNNCTACCGACGCTGACTNNNNNCTGTCTCTTATACACATNNNNGAGCCCACGNNNNCNNNCTAGNNNNNNNNNNNNNNNTTCTGCTTGTAAACA
+    +
+    #,,5,</<-<+++5+568A+6+5+++##5+5++5###+5+55-55A-A--5#######55+5<)+4)43++14#####*1*1*2011*0*1*1*1####***111(/'####/###-(((###############/-(/((./(((((((
+
+    """
+    if gzip:
+        oh = gzip.open(filename, "rt")
+    else:
+        oh = open(filename, "rU")
+
+    name = "dummy"
+    while name != "":
+        name = oh.readline().strip()
+        seq = oh.readline().strip()
+        strand = oh.readline().strip()
+        qual = oh.readline().strip()
+
+        yield {"name": name, "strand": strand, "seq": seq, "qual": qual}
+    return
+
+def fastqPE(filename1, filename2):
+    """
+    generator object to parse fastQ PE files
+
+    @HWI-M00955:51:000000000-A8WTD:1:1101:13770:1659 1:N:0:NNTNNNAGNNCNCTAT
+    NGGTAAATGCGGGAGCTCCGCGCGCANNTGCGGCNNNGCATTGCCCATAATNNNNNNNCTACCGACGCTGACTNNNNNCTGTCTCTTATACACATNNNNGAGCCCACGNNNNCNNNCTAGNNNNNNNNNNNNNNNTTCTGCTTGTAAACA
+    +
+    #,,5,</<-<+++5+568A+6+5+++##5+5++5###+5+55-55A-A--5#######55+5<)+4)43++14#####*1*1*2011*0*1*1*1####***111(/'####/###-(((###############/-(/((./(((((((
+
+    """
+    oh1 = open(filename1, "rU")
+    oh2 = open(filename2, "rU")
+
+    name1 = "dummy"
+    while name1 != "":
+        name1 = oh1.readline().strip()
+        seq1 = oh1.readline().strip()
+        strand1 = oh1.readline().strip()
+        qual1 = oh1.readline().strip()
+
+        name2 = oh2.readline().strip()
+        seq2 = oh2.readline().strip()
+        strand2 = oh2.readline().strip()
+        qual2 = oh2.readline().strip()
+
+        res = ({"name": name1, "strand": strand1, "seq": seq1, "qual": qual1},
+            {"name": name2, "strand": strand2, "seq": seq2, "qual": qual2})
+        yield res
+    return

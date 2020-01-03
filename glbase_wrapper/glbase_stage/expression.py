@@ -16,7 +16,6 @@ from scipy.cluster.hierarchy import distance, linkage, dendrogram
 from scipy.cluster.vq import vq, kmeans, whiten, kmeans2
 from scipy.spatial.distance import pdist
 import matplotlib.pyplot as plot
-from pylab import bivariate_normal, griddata # comes from where?
 import matplotlib.cm as cm
 
 from . import config, utils
@@ -561,25 +560,22 @@ class expression(base_expression):
 
         newgl = self.deepcopy()
 
-        newtab = []
-        for name in conditions:
-            newtab.append(newgl.serialisedArrayDataDict[name])
+        newtab = [newgl.serialisedArrayDataDict[name] for name in conditions]
 
-        if "err" in self.linearData[0]:
-            # Make an err version of serialisedArrayDataDict
-            errs = numpy.copy([i["err"] for i in self.linearData])
+        # err is not stored as a serialisedArrayDataDict, so have to make one here:
+        if "err" in self.keys():
+            err_table = numpy.array([i["err"] for i in newgl.linearData])
 
-            err_tab = None
-            for name in conditions:
-                idx = newgl._conditions.index(name)
-                err_col = errs[:,idx]
-                if err_tab is None:
-                    err_tab = err_col
-                else:
-                    err_tab = numpy.vstack((err_tab, err_col))
+            err_serialisedArrayDataDict = {}
+            for index, name in enumerate(self._conditions):
+                if name in conditions: # only load those we are going to slice in
+                    err_serialisedArrayDataDict[name] = err_table[:,index]
 
-            for index, item in enumerate(newgl.linearData):
-                item["err"] = list(err_tab[:,index])
+            new_err_tab = numpy.array([err_serialisedArrayDataDict[name] for name in conditions]).T
+
+            # unpack it back into the err key:
+            for i, row in enumerate(new_err_tab):
+                newgl.linearData[i]["err"] = list(row)
 
         newgl._conditions = conditions
         newgl.numpy_array_all_data = numpy.array(newtab).T
@@ -607,8 +603,8 @@ class expression(base_expression):
     def getExpressionTable(self):
         """
         **Purpose**
-            Return the entire expression table. Note that rows and columns are not labelled.
-            Will return a numpy array
+            Return the entire expression table as a numpy array.
+            Note that rows and columns are not labelled.
 
         **Arguments**
             None
@@ -814,7 +810,8 @@ class expression(base_expression):
                 item["conditions"] = [new_type(i) for i in item["conditions"]]
         return(None)
 
-    def heatmap(self, filename=None, row_label_key="name", row_color_threshold=None, **kargs):
+    def heatmap(self, filename=None, row_label_key="name", row_color_threshold=None,
+        optimal_ordering=True, **kargs):
         """
         **Purpose**
 
@@ -972,6 +969,12 @@ class expression(base_expression):
 
                 Note that unclustered data goes from the bottom to the top!
 
+            optimal_ordering (Optional, default=False)
+                An improved ordering for the tree, at some computational and memory cost.
+                Can be trouble on very large heatmaps
+
+                See https://docs.scipy.org/doc/scipy/reference/generated/scipy.cluster.hierarchy.dendrogram.html
+
         **Result**
             saves an image to the 'filename' location and
 
@@ -1000,6 +1003,7 @@ class expression(base_expression):
             col_names=self.getConditionNames(),
             filename=filename,
             row_color_threshold=row_color_threshold,
+            optimal_ordering=optimal_ordering,
             **kargs)
 
         config.log.info("heatmap: Saved %s" % res["real_filename"])
@@ -2699,7 +2703,7 @@ class expression(base_expression):
                 expn_values = utils.kde(expn_values, range=range, covariance=covariance, bins=bins)
                 ax.plot(expn_values, label=k)
             else:
-                ax.hist(expn_values, color=color, bins=bins, range=range, normed=True, histtype='stepfilled', label=k)
+                ax.hist(expn_values, color=color, bins=bins, range=range, density=True, histtype='stepfilled', label=k)
             all_data[k] = expn_values
 
         if legend:
@@ -2713,7 +2717,7 @@ class expression(base_expression):
 
     def tree(self, mode="conditions", filename=None, row_name_key=None,
         cluster_mode="euclidean", color_threshold=None, label_size=7, cut=False,
-        radial=False,
+        radial=False, optimal_ordering=True,
         **kargs):
         """
         **Purpose**
@@ -2753,6 +2757,9 @@ class expression(base_expression):
             bracket (Optional, default=False)
                 The min and max to bracket the data. This is mainly here for compatibility with heatmap()
                 So that the row/col trees in heatmap and here exactly match
+
+            optimal_ordering (Optional, default=True)
+                See https://docs.scipy.org/doc/scipy/reference/generated/scipy.cluster.hierarchy.dendrogram.html
 
         **Returns**
             if cut is False:
@@ -2801,7 +2808,7 @@ class expression(base_expression):
             color_threshold = cut
             color_threshold = color_threshold*((dist.max()-dist.min())+dist.min()) # convert to local measure
 
-        link = linkage(dist, 'complete', metric=cluster_mode)
+        link = linkage(dist, 'complete', metric=cluster_mode, optimal_ordering=optimal_ordering)
         a = dendrogram(link, orientation='left', labels=row_names,
             ax=ax,
             color_threshold=color_threshold, get_leaves=True)
@@ -3053,7 +3060,8 @@ class expression(base_expression):
         actual_filename = self.draw.savefigure(fig, filename)
         config.log.info("gene_curve: Saved '%s'" % actual_filename)
 
-    def correlation_heatmap(self, axis="conditions", filename=None, label_key=None, mode="r2", aspect="square", bracket=(0,1), **kargs):
+    def correlation_heatmap(self, axis="conditions", filename=None, label_key=None, mode="r2", aspect="square", bracket=(0,1),
+        optimal_ordering=True, **kargs):
         """
         **Purpose**
             Plot a heatmap of the (R, R^2, Pearson or Spearman) correlation for all pairs of
@@ -3138,7 +3146,7 @@ class expression(base_expression):
 
         results = self.draw.heatmap(filename=filename, data=arr, square=square,
             bracket=bracket, aspect=aspect, row_names=labels, col_names=labels,
-            colbar_label="Correlation (%s)" % mode, **kargs)
+            colbar_label="Correlation (%s)" % mode, optimal_ordering=optimal_ordering, **kargs)
         config.log.info("correlation_heatmap: Saved '%s'" % results["real_filename"])
         return({"data": results["reordered_data"], "labels": results["reordered_cols"]})
 
@@ -3255,7 +3263,7 @@ class expression(base_expression):
         return(cc)
 
     def barh_single_item(self, key=None, value=None, filename=None, tree=None,
-        plot_mean=True, plot_stdev=True, fold_change=False, tight_layout=False,
+        plot_mean=True, plot_stdev=False, fold_change=False, tight_layout=False,
         bar_cols=None, vert_space=0.75, hori_space=0.5, **kargs):
         """
         **Purpose**
@@ -3282,7 +3290,7 @@ class expression(base_expression):
             plot_mean (Optional, default=True)
                 plot a grey line showing the mean of all of the expression values
 
-            plot_stdev (Optional, default=True)
+            plot_stdev (Optional, default=False)
                 plot a blue line at 1x stdev and a red line at 2x stdev
 
             bar_cols (Optional, default=None)
@@ -3507,7 +3515,7 @@ class expression(base_expression):
         return(actual_filename)
 
     def fc_scatter(self, cond1, cond2, filename=None, plot_diagonals=True, zoom_bracket=[-3,3],
-        label_key="name", **kargs):
+        label_key="name", text_threshold=1.0, alpha=0.2, **kargs):
         """
         **Purpose**
             Draw a scatter plot of the fold-changes between two conditions
@@ -3543,6 +3551,12 @@ class expression(base_expression):
                 the bracket to use for the zoomed in plot
 
             label_key (Optional, default="name")
+
+            text_threshold (Optional, default=1.0)
+                Only draw the gene label if > abs(text_threshold) in any direction
+
+            alpha (Optional, default=0.2)
+                Blening fraction for the alpha (opacity) channel for the dots.
 
         **Returns**
             None
@@ -3590,9 +3604,10 @@ class expression(base_expression):
         fig = self.draw.getfigure(**kargs)
 
         ax = fig.add_subplot(121)
-        ax.scatter(pt_x, pt_y, alpha=0.2, color=cols)
+        ax.scatter(pt_x, pt_y, alpha=alpha, edgecolor='none', color=cols)
         for i in range(len(labs)):
-            ax.text(pt_x[i], pt_y[i], labs[i], size=5, ha="center")
+            if abs(pt_x[i]) > text_threshold or abs(pt_y[i]) > text_threshold:
+                ax.text(pt_x[i], pt_y[i], labs[i], size=5, ha="center")
 
         # Diagonal slopes:
         ax.plot([5, -5], [5, -5], ":", color="grey")
@@ -3606,7 +3621,7 @@ class expression(base_expression):
         ax.set_ylabel(cond2)
 
         ax = fig.add_subplot(122)
-        ax.scatter(pt_x, pt_y, alpha=0.2, color=cols)
+        ax.scatter(pt_x, pt_y, alpha=alpha, edgecolor='none', color=cols)
         #for i in xrange(len(labs)):
         #    ax.text(pt_x[i], pt_y[i], labs[i], size=6, ha="center")
 
@@ -3617,8 +3632,8 @@ class expression(base_expression):
 
         minmax = max([abs(min(c1d)), max(c1d), abs(min(c2d)), max(c2d)])
 
-        ax.axvline(0, color="grey", ls="-.")
-        ax.axhline(0, color="grey", ls="-.")
+        ax.axvline(0, color="grey", ls=":")
+        ax.axhline(0, color="grey", ls=":")
         ax.set_xlim([-minmax,minmax])
         ax.set_ylim([-minmax,minmax])
         ax.set_xlabel(cond1)
