@@ -56,7 +56,7 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plot
 import matplotlib.cm as cm
-from matplotlib.colors import ColorConverter, rgb2hex
+from matplotlib.colors import ColorConverter, rgb2hex, ListedColormap
 import matplotlib.colors as matplotlib_colors
 import matplotlib.mlab as mlab
 from matplotlib.patches import Ellipse, Circle
@@ -85,7 +85,7 @@ class draw:
         """please deprecate me"""
         pass
 
-    def bracket_data(self, data, min, max):
+    def bracket_data(self, data, min:int, max:int):
         """
         brackets the data between min and max (ie. bounds the data with no scaling)
 
@@ -101,11 +101,31 @@ class draw:
                     newd[x][y] = max
         return(newd)
 
-    def heatmap(self, filename=None, cluster_mode="euclidean", row_cluster=True, col_cluster=True,
-        vmin=0, vmax=None, colour_map=cm.RdBu_r, col_norm=False, row_norm=False, heat_wid=0.25, heat_hei=0.85,
-        highlights=None, digitize=False, border=False, draw_numbers=False, draw_numbers_threshold=-9e14,
-        draw_numbers_fmt='%.1f', draw_numbers_font_size=6, grid=False, row_color_threshold=None,
-        col_names=None, row_colbar=None, col_colbar=None,
+    def heatmap(self,
+        filename:str = None,
+        cluster_mode: str = "euclidean",
+        row_cluster:bool = True,
+        col_cluster:bool = True,
+        vmin = 0,
+        vmax = None,
+        colour_map=cm.RdBu_r,
+        col_norm:bool = False,
+        row_norm:bool = False,
+        heat_wid = 0.25,
+        heat_hei = 0.85,
+        highlights = None,
+        digitize:bool = False,
+        border:bool = False,
+        draw_numbers:bool = False,
+        draw_numbers_threshold = -9e14,
+        draw_numbers_fmt = '%.1f',
+        draw_numbers_font_size = 6,
+        grid:bool = False,
+        row_color_threshold:bool = None,
+        col_names:bool = None,
+        row_colbar:bool = None,
+        col_colbar:bool = None,
+        optimal_ordering:bool = True,
         **kargs):
         """
         my own version of heatmap.
@@ -201,6 +221,9 @@ class draw:
                 Should be a list of colours in the same order as the row names.
 
                 Note that unclustered data goes from the bottom to the top!
+
+            optimal_ordering (Optional, default=True)
+                See https://docs.scipy.org/doc/scipy/reference/generated/scipy.cluster.hierarchy.dendrogram.html
 
         **Returns**
             The actual filename used to save the image.
@@ -381,7 +404,7 @@ class draw:
                 Z = kargs["row_tree"]["linkage"]
             else:
                 Y = pdist(data, metric=cluster_mode)
-                Z = linkage(Y, method='complete', metric=cluster_mode)
+                Z = linkage(Y, method='complete', metric=cluster_mode, optimal_ordering=optimal_ordering)
 
             if row_color_threshold:
                 row_color_threshold = row_color_threshold*((Y.max()-Y.min())+Y.min()) # Convert to local threshold.
@@ -436,7 +459,7 @@ class draw:
                 Z = kargs["col_tree"]["linkage"]
             else:
                 Y = pdist(transposed_data, metric=cluster_mode)
-                Z = linkage(Y, method='complete', metric=cluster_mode)
+                Z = linkage(Y, method='complete', metric=cluster_mode, optimal_ordering=optimal_ordering)
             a = dendrogram(Z, orientation='top', ax=ax2)
 
             ax2.tick_params(top=False, bottom=False, left=False, right=False)
@@ -464,51 +487,82 @@ class draw:
             ax3.set_position(heatmap_location) # must be done early for imshow
             hm = ax3.imshow(data, cmap=colour_map, vmin=vmin, vmax=vmax, aspect="auto",
                 origin='lower', extent=[0, data.shape[1], 0, data.shape[0]],
-                interpolation=config.get_interpolation_mode()) # Yes, it really is nearest. Otherwise it will go to something like bilinear
+                interpolation=config.get_interpolation_mode(filename)) # Yes, it really is nearest. Otherwise it will go to something like bilinear
 
         else:
             edgecolors = 'none'
             if grid:
                 edgecolors = 'black'
-            hm = ax3.pcolormesh(data, cmap=colour_map, vmin=vmin, vmax=vmax, antialiased=False, edgecolors=edgecolors, lw=0.5)
+            hm = ax3.pcolormesh(data, cmap=colour_map, vmin=vmin, vmax=vmax, antialiased=False, edgecolors=edgecolors, lw=0.4)
 
         if col_colbar:
-            # Must be reordered by the col_cluster if present
-            named_color_dict = {}
-            colors_ = dict(list(matplotlib_colors.cnames.items())) # unique list of colors
-            named_color_dict = {c:matplotlib_colors.hex2color(colors_[c]) for c in colors_} # gets the total list of all matplotlib named colors
+            # Must be reordered by the col_cluster if present, done above;
+            newd = {}
+            colors_ = dict(list(matplotlib_colors.cnames.items()))
+            for c in colors_:
+                newd[c] = matplotlib_colors.hex2color(colors_[c])
 
-            # convert non-# to RGB:
-            newc = []
+            new_colbar = []
             for c in col_colbar:
                 if '#' in c:
-                    newc.append(matplotlib_colors.hex2color(c))
-                else:
-                    newc.append(named_color_dict[c])
+                    new_colbar.append([utils.hex_to_rgb(c)]) # needs to be tupled?
+                else: # must be a named color:
+                    new_colbar.append([newd[c]])
 
-            col_colbar = numpy.array([newc,])#.transpose(1,0,2)
+            col_colbar = numpy.array(new_colbar)#.transpose(1,0,2)
 
             ax4 = fig.add_axes(loc_col_colbar)
-            ax4.imshow(col_colbar, aspect="auto",
-                origin='lower', extent=[0, len(col_colbar),  0, 1],
-                interpolation=config.get_interpolation_mode())
+            if 'imshow' in kargs and kargs['imshow']:
+                ax4.imshow(col_colbar, aspect="auto",
+                    origin='lower', extent=[0, len(col_colbar),  0, 1],
+                    interpolation=config.get_interpolation_mode(filename))
+            else:
+                # unpack the oddly contained data:
+                col_colbar = [tuple(i[0]) for i in col_colbar]
+                cols = list(set(col_colbar))
+                lcmap = ListedColormap(cols)
+                col_colbar_as_col_indeces = [cols.index(i) for i in col_colbar]
+
+                ax4.pcolormesh([col_colbar_as_col_indeces,], cmap=lcmap,
+                    vmin=min(col_colbar_as_col_indeces), vmax=max(col_colbar_as_col_indeces),
+                    antialiased=False, edgecolors=edgecolors, lw=0.4)
+
             ax4.set_frame_on(False)
             ax4.tick_params(top=False, bottom=False, left=False, right=False)
             ax4.set_xticklabels("")
             ax4.set_yticklabels("")
 
         if row_colbar:
-            # Must be reordered by the row_cluster if present
+            # Must be reordered by the row_cluster if present, done above;
             newd = {}
             colors_ = dict(list(matplotlib_colors.cnames.items()))
             for c in colors_:
                 newd[c] = matplotlib_colors.hex2color(colors_[c])
 
-            row_colbar = numpy.array([[newd[c]] for c in row_colbar])#.transpose(1,0,2)
+            new_colbar = []
+            for c in row_colbar:
+                if '#' in c:
+                    new_colbar.append([utils.hex_to_rgb(c)]) # needs to be tupled?
+                else: # must be a named color:
+                    new_colbar.append([newd[c]])
+
+            row_colbar = numpy.array(new_colbar)#.transpose(1,0,2)
+
             ax4 = fig.add_axes(loc_row_colbar)
-            ax4.imshow(row_colbar, aspect="auto",
-                origin='lower', extent=[0, len(row_colbar),  0, 1],
-                interpolation=config.get_interpolation_mode())
+            if 'imshow' in kargs and kargs['imshow']:
+                ax4.imshow(row_colbar, aspect="auto",
+                    origin='lower', extent=[0, len(row_colbar),  0, 1],
+                    interpolation=config.get_interpolation_mode(filename))
+            else:
+                # unpack the oddly contained data:
+                row_colbar = [tuple(i[0]) for i in row_colbar]
+                cols = list(set(row_colbar))
+                lcmap = ListedColormap(cols)
+                row_colbar_as_col_indeces = [cols.index(i) for i in row_colbar]
+                ax4.pcolormesh(numpy.array([row_colbar_as_col_indeces,]).T, cmap=lcmap,
+                    vmin=min(row_colbar_as_col_indeces), vmax=max(row_colbar_as_col_indeces),
+                    antialiased=False, edgecolors=edgecolors, lw=0.4)
+
             ax4.set_frame_on(False)
             ax4.tick_params(top=False, bottom=False, left=False, right=False)
             ax4.set_xticklabels("")
@@ -652,7 +706,7 @@ class draw:
             ax3.set_position(heatmap_location) # must be done early for imshow
             hm = ax3.imshow(data, cmap=colour_map, vmin=vmin, vmax=vmax, aspect="auto",
                 origin='lower', extent=[0, data.shape[1], 0, data.shape[0]],
-                interpolation=config.get_interpolation_mode())
+                interpolation=config.get_interpolation_mode(filename))
         else:
             hm = ax3.pcolormesh(data, cmap=colour_map, vmin=vmin, vmax=vmax, antialiased=False)
 
@@ -759,7 +813,7 @@ class draw:
         plot_data = arraydata.T
         if imshow:
             hm = ax1.imshow(plot_data, cmap=cmap, vmin=vmin, vmax=vmax,
-                interpolation=config.get_interpolation_mode())
+                interpolation=config.get_interpolation_mode(filename))
         else:
             hm = ax1.pcolormesh(plot_data, cmap=cmap, vmin=vmin, vmax=vmax, antialiased=False)
 
@@ -893,7 +947,7 @@ class draw:
             if imshow:
                 hm = ax.imshow(list_of_data[index], cmap=colour_map, vmin=vmin, vmax=vmax, aspect="auto",
                     origin='lower', extent=[0, list_of_data[index].shape[1], 0, list_of_data[index].shape[0]],
-                    interpolation=config.get_interpolation_mode())
+                    interpolation=config.get_interpolation_mode(filename))
             else:
                 hm = ax.pcolormesh(list_of_data[index], cmap=colour_map, vmin=vmin, vmax=vmax, antialiased=False)
 
@@ -927,7 +981,7 @@ class draw:
             if imshow:
                 hm = ax.imshow(dd, cmap=cm.Paired, vmin=min(groups), vmax=max(groups), aspect="auto",
                     origin='lower', extent=[0, dd.shape[1], 0, dd.shape[0]],
-                    interpolation=config.get_interpolation_mode())
+                    interpolation=config.get_interpolation_mode(filename))
             else:
                 ax.pcolormesh(dd, vmin=min(groups), vmax=max(groups), antialiased=False, cmap=cm.Paired)
 
@@ -979,7 +1033,7 @@ class draw:
         #ax.axhline(0, ls=":", color="grey") # add a grey line at zero for better orientation
         if grid:
             ax.grid(axis="y", ls=":", color="grey", zorder=1000000)
-        r = ax.boxplot(data, showfliers=showfliers, whis=whis)
+        r = ax.boxplot(data, showfliers=showfliers, whis=whis, widths=0.5)
 
         plot.setp(r['medians'], color='red') # set nicer colours
         plot.setp(r['whiskers'], color='black', lw=1)
@@ -1697,18 +1751,24 @@ class draw:
         **Returns**
             the actual filename used to save the image
         """
-        assert config.draw_mode in config.valid_draw_modes, "'%s' is not a supported drawing mode" % config.draw_mode
+        temp_draw_mode = config.draw_mode
+        if isinstance(config.draw_mode, str):
+            temp_draw_mode = [config.draw_mode] # for simple compat
 
-        # So that saving supports relative paths.
-        path, head = os.path.split(filename)
-        if "." in filename: # trust Ralf to send a filename without a . in it Now you get your own special exception!
-            save_name = "%s.%s" % (".".join(head.split(".")[:-1]), config.draw_mode) # this will delete .. in filename, e.g. file.meh.png
-        else:
-            save_name = "%s.%s" % (head, config.draw_mode)
+        for mode in temp_draw_mode:
+            assert mode in config.valid_draw_modes, "'%s' is not a supported drawing mode" % temp_draw_mode
 
-        dpi = {"small": 75, "medium": 150, "large": 200, "huge": 300}
-        fig.savefig(os.path.join(path, save_name), dpi=dpi[size], bbox_inches=bbox_inches)
-        plot.close(fig) # Saves a huge amount of memory.
+            if mode == 'svg':
+                matplotlib.rcParams["image.interpolation"] = 'nearest'
+            # So that saving supports relative paths.
+            path, head = os.path.split(filename)
+            if "." in filename: # trust Ralf to send a filename without a . in it Now you get your own special exception!
+                save_name = "%s.%s" % (".".join(head.split(".")[:-1]), mode) # this will delete .. in filename, e.g. file.meh.png
+            else:
+                save_name = "%s.%s" % (head, mode)
+
+            fig.savefig(os.path.join(path, save_name), bbox_inches=bbox_inches)
+            plot.close(fig) # Saves a huge amount of memory.
         return(save_name)
 
     def do_common_args(self, ax, **kargs):
@@ -2274,7 +2334,7 @@ class draw:
             x_data = np.linspace(min(data[d]), max(data[d]), bins+2)
             # get the violin: required, even if not drawn.
             # Check that there is some variation. If no variation then utils.kde will break
-            if numpy.std(data[d]) > 0:
+            if numpy.around(numpy.std(data[d]), 0) > 0:
                 y_violin = utils.kde(data[d], range=(min(data[d]), max(data[d])), bins=bins)
                 y_violin = ((y_violin / max(y_violin)) * 0.4) # normalise
                 y_violin = numpy.insert(y_violin, 0, 0)

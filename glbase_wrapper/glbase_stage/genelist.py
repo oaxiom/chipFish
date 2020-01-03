@@ -443,8 +443,8 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                     self.buckets[chr] = {}
                 # work out the bucket(s) for the location.
                 # which bucket is left and right in?
-                left_buck = int(item[loc_key]["left"]/config.bucket_size)*config.bucket_size
-                right_buck = int((item[loc_key]["right"]+config.bucket_size)/config.bucket_size)*config.bucket_size
+                left_buck = (item[loc_key]["left"]//config.bucket_size)*config.bucket_size
+                right_buck = ((item[loc_key]["right"]+config.bucket_size)//config.bucket_size)*config.bucket_size
                 buckets_reqd = list(range(left_buck, right_buck, config.bucket_size))
 
                 #print n, item[loc_key], buckets_reqd, left_buck, right_buck, len(buckets_reqd)
@@ -456,8 +456,8 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
 
         # Then to do a collision =
         """
-        left_buck = int(item[loc_key]["left"]/config.bucket_size)*config.bucket_size
-        right_buck = int(item[loc_key]["right"]/config.bucket_size)*config.bucket_size
+        left_buck = (item[loc_key]["left"]//config.bucket_size)*config.bucket_size
+        right_buck = (item[loc_key]["right"]//config.bucket_size)*config.bucket_size
         buckets_reqd = range(left_buck, right_buck, config.bucket_size)
 
         for buck in buckets_reqd:
@@ -519,9 +519,8 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         """
         if key in self.qkeyfind:
             if value in self.qkeyfind[key]:
-                item_indeces = self.qkeyfind[key][value]
-                return(self.linearData[min(item_indeces)])
-        return(None) # not found;
+                return self.linearData[min(self.qkeyfind[key][value])]
+        return None # not found;
 
     def _findDataByKeyGreedy(self, key, value): # override????? surely finditer?
         """
@@ -562,6 +561,8 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         **Returns**
             A new genelist or None
         """
+        assert key in self.keys(), '"{0}" key not found in this list'.format(key)
+
         if mode == "greedy":
             r = self._findDataByKeyGreedy(key, value)
         elif mode == "lazy":
@@ -847,7 +848,8 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         config.log.info("Saved FASTA file: %s" % filename)
         return(True)
 
-    def saveBED(self, filename=None, extra_keys=None, id=None, score=None, uniqueID=False, loc_only=False, **kargs):
+    def saveBED(self, filename=None, extra_keys=None, id=None, score=None, uniqueID=False, loc_only=False,
+        **kargs):
         """
         **Purpose**
             save the genelist in bed format
@@ -898,10 +900,16 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
 
                 Note that anything in extra_keys will still be respected.
 
+            gzip (Optional, default=False)
+                gzip the output file
+
         **Returns**
             A saved bed file and None
         """
-        oh = open(filename, "w")
+        if 'gzip' in kargs and kargs['gzip']:
+            oh = gzip.open(filename, "wt")
+        else:
+            oh = open(filename, "w")
 
         for index, item in enumerate(self.linearData):
             todo = ["chr%s" % str(item["loc"]["chr"]), str(item["loc"]["left"]), str(item["loc"]["right"])]
@@ -1474,7 +1482,6 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                 and only keeps it if it is NOT in the left list.
 
         **Result**
-
             returns a new genelist-like object containing the overlapping
             objects, inheriting methods from the
             right hand side of the function.
@@ -1720,8 +1727,8 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             loc = loc.expand(distance)
 
             # work out which of the buckets required:
-            left_buck = int((loc["left"]-1)/config.bucket_size)*config.bucket_size
-            right_buck = int((loc["right"])/config.bucket_size)*config.bucket_size
+            left_buck = ((loc["left"]-1)//config.bucket_size)*config.bucket_size
+            right_buck = ((loc["right"])//config.bucket_size)*config.bucket_size
             buckets_reqd = list(range(left_buck, right_buck+config.bucket_size, config.bucket_size)) # make sure to get the right spanning and left spanning sites
 
             # get the ids reqd.
@@ -1843,26 +1850,26 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         config.log.info("Pointified peaklist '%s'" % self.name)
         return(newl)
 
-    def addFakeKey(self, key=None, value=None):
+    def addEmptyKey(self, key=None, value=None):
         """
         **Purpose**
-            You need to add a fake key ot the list so that it becomes compatible with some downstream function.
+            You need to add a empty key ot the list so that it becomes compatible with some downstream function.
             But you don't care what is in the key, or just want to set the key to a specific value for the entire list
 
             This is the one to use::
 
                 gl = genelist("a_bed.bed", format=format.minimal_bed)
 
-                print gl
+                print(gl)
                 0: loc: chr1:1000-2000
 
                 # Argh! I need a strand key for the downstream, but I don't actually care what's in strand!
 
-                gl = gl.addFakeKey("strand", "+")
+                gl = gl.addEmptyKey("strand", "+")
 
                 # Phew! That's better!
 
-                print gl
+                print(gl)
                 0: loc: chr1:1000-2000, strand: +
 
         **Arguments**
@@ -2213,8 +2220,8 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                     locA = locA.expand(delta)
 
                 # work out which of the buckets required:
-                left_buck = int((locA["left"]-1-delta)/config.bucket_size)*config.bucket_size
-                right_buck = int((locA["right"]+delta)/config.bucket_size)*config.bucket_size
+                left_buck = ((locA["left"]-1-delta)//config.bucket_size)*config.bucket_size
+                right_buck = ((locA["right"]+delta)//config.bucket_size)*config.bucket_size
                 buckets_reqd = list(range(left_buck, right_buck+config.bucket_size, config.bucket_size)) # make sure to get the right spanning and left spanning sites
 
                 # get the ids reqd.
@@ -2340,7 +2347,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         newl._optimiseData()
         return(newl)
 
-    def removeDuplicatesByLoc(self, mode, key="loc", delta=200):
+    def removeDuplicatesByLoc(self, mode, key="loc", delta=200, use_strand=False):
         """
         **Purpose**
             Remove duplicates in the list based on a location tag.
@@ -2378,6 +2385,12 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
 
                 Note that delta is NOT used when the mode = 'overlap'
 
+            use_strand (Optional, default=False)
+                use the 'strand' key in determining uniqueness
+
+                Note: that it assumes the format of the two strand keys are the same in each
+                list (ie. one of '+/-', '-1/+1', etc.)
+
         **Returns**
             A new genelist containing only unique sites
         """
@@ -2386,6 +2399,12 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             assert 'tss_loc' not in all_keys, 'removeDuplicatesByLoc will give incorrect results if your genelist contains both a loc and tss_loc key. Please delete one or the other key'
 
         assert mode in ('pointify_expand', 'overlap'), "mode is not one of 'pointify_expand', or 'overlap'"
+
+        if use_strand and 'strand' not in self.keys():
+            raise AssertionError('use_strand=True, but no "strand" key in this list')
+
+        if not use_strand and 'strand' in self.keys():
+            config.log.warning('use_strand=False, but this list has a "strand" key')
 
         if mode == 'pointify_expand':
             mask = [0] * len(self.linearData) # keep track of masked entries
@@ -2396,9 +2415,9 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                     # Do a collision check
 
                     # work out which of the buckets required:
-                    left_buck = int((locA["left"]-1-delta)/config.bucket_size)*config.bucket_size # Add an extra delta for accurate bucket spanning overlaps
-                    right_buck = int((locA["right"]+1+delta)/config.bucket_size)*config.bucket_size
-                    buckets_reqd = list(range(left_buck, right_buck+config.bucket_size, config.bucket_size)) # make sure to get the right spanning and left spanning sites
+                    left_buck = ((locA["left"]-1-delta)//config.bucket_size)*config.bucket_size # Add an extra delta for accurate bucket spanning overlaps
+                    right_buck = ((locA["right"]+1+delta)//config.bucket_size)*config.bucket_size
+                    buckets_reqd = range(left_buck, right_buck+config.bucket_size, config.bucket_size) # make sure to get the right spanning and left spanning sites
 
                     # get the ids reqd.
                     loc_ids = set()
@@ -2411,10 +2430,16 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
 
                     for indexB in loc_ids:
                         if indexB != index:
-                            other = self.linearData[indexB]
+                            #other = self.linearData[indexB]
                             locB = self.linearData[indexB][key].pointify().expand(delta)
                             if locA.qcollide(locB):
-                                mask[indexB] = 1
+                                if use_strand:
+                                    strandA = self.linearData[index]['strand']
+                                    strandB = self.linearData[indexB]['strand']
+                                    if strandA == strandB: # Assumes both lists use the same strand format...
+                                        mask[indexB] = 1 # found an overlap
+                                else:
+                                    mask[indexB] = 1
 
                     mask[index] = 1
                     newl.append(item) # add in the item
@@ -2423,12 +2448,11 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             ov.load_list(newl)
         elif mode == 'overlap':
             # get the maximum peak size for a decent estimate of delta:
-            delta = 0 # This is a pad to make sure the correct buckets are selected. It should be the maximum peak width.
-            for i in self:
-                delta = max([delta, len(i['loc'])])
-            print('max delta = ', delta)
-            if delta > 1000:
-                config.log.warning("removeDuplicatesByLoc: The maximum peak size is >1000 bp, performance may be poor for removeDuplicatesByLoc()")
+            delta = max([len(i['loc']) for i in self.linearData])
+            config.log.info('removeDuplicatesByLoc: delta used for bucket searching {0}'.format(delta))
+
+            if delta > 2000:
+                config.log.warning("removeDuplicatesByLoc: The maximum location size is >2000 bp, performance may be poor for removeDuplicatesByLoc()")
 
             mask = [0] * len(self.linearData) # keep track of masked entries
             newl = []
@@ -2438,9 +2462,9 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                     # Do a collision check
 
                     # work out which of the buckets required:
-                    left_buck = int((locA["left"]-1-delta)/config.bucket_size)*config.bucket_size # Add an extra delta for accurate bucket spanning overlaps
-                    right_buck = int((locA["right"]+1+delta)/config.bucket_size)*config.bucket_size
-                    buckets_reqd = list(range(left_buck, right_buck+config.bucket_size, config.bucket_size)) # make sure to get the right spanning and left spanning sites
+                    left_buck = ((locA["left"]-1-delta)//config.bucket_size)*config.bucket_size # Add an extra delta for accurate bucket spanning overlaps
+                    right_buck = ((locA["right"]+1+delta)//config.bucket_size)*config.bucket_size
+                    buckets_reqd = range(left_buck, right_buck+config.bucket_size, config.bucket_size) # make sure to get the right spanning and left spanning sites
 
                     # get the ids reqd.
                     loc_ids = set()
@@ -2453,10 +2477,16 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
 
                     for indexB in loc_ids:
                         if indexB != index:
-                            other = self.linearData[indexB]
+                            #other = self.linearData[indexB]
                             locB = self.linearData[indexB][key]
                             if locA.qcollide(locB):
-                                mask[indexB] = 1
+                                if use_strand:
+                                    strandA = self.linearData[index]['strand']
+                                    strandB = self.linearData[indexB]['strand']
+                                    if strandA == strandB: # Assumes both lists use the same strand format...
+                                        mask[indexB] = 1 # found an overlap
+                                else:
+                                    mask[indexB] = 1
 
                     mask[index] = 1
                     newl.append(item) # add in the item
@@ -2464,8 +2494,8 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             ov = self.shallowcopy()
             ov.load_list(newl)
 
-        config.log.info("Removed %s duplicates, %s remain" % ((len(self) - len(ov)), len(ov)))
-        return(ov)
+        config.log.info("Removed {0} duplicates, {1} remain".format((len(self) - len(ov)), len(ov)))
+        return ov
 
     def removeDuplicates(self, key=None, **kargs):
         """
@@ -2534,6 +2564,8 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         newl.linearData = []
         count = 0
 
+        # TODO: Could be done with: list(map(dict, frozenset(frozenset(i.items()) for i in marked_for_deletion)))
+        # Lazy at the moment, this function is very rarely used. Better to speed up *ByKey()
         unq = set()
         kord = list(self.linearData[0].keys())# fix the key order
 
@@ -3282,8 +3314,8 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                 loc = loc.expand(delta)
 
         # work out which of the buckets is required:
-        left_buck = int((loc["left"]-1-delta)/config.bucket_size)*config.bucket_size
-        right_buck = int((loc["right"]+delta)/config.bucket_size)*config.bucket_size
+        left_buck = ((loc["left"]-1-delta)//config.bucket_size)*config.bucket_size
+        right_buck = ((loc["right"]+delta)//config.bucket_size)*config.bucket_size
         buckets_reqd = list(range(left_buck, right_buck+config.bucket_size, config.bucket_size)) # make sure to get the right spanning and left spanning sites
 
         # get the ids reqd.
@@ -3347,8 +3379,8 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                 loc = loc.expand(delta)
 
         # work out which of the buckets is required:
-        left_buck = int((loc["left"]-1-delta)/config.bucket_size)*config.bucket_size
-        right_buck = int((loc["right"]+delta)/config.bucket_size)*config.bucket_size
+        left_buck = ((loc["left"]-1-delta)//config.bucket_size)*config.bucket_size
+        right_buck = ((loc["right"]+delta)//config.bucket_size)*config.bucket_size
         buckets_reqd = list(range(left_buck, right_buck+config.bucket_size, config.bucket_size)) # make sure to get the right spanning and left spanning sites
 
         # get the ids reqd.
