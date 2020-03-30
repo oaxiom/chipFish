@@ -91,7 +91,7 @@ class app():
         self.draw = gDraw.gDraw()
 
         if tracklist: # Although it doesn't really make much sense not to supply a tracklist
-            oh = open(tracklist, "rU")
+            oh = open(tracklist, "rt")
             track_path = os.path.dirname(tracklist)
             mode = None
             for line in oh:
@@ -131,7 +131,7 @@ class app():
                         # process options
                         options = self.__do_options(line.split(":")[-1], mode)
                     elif mode:
-                        path = track_path
+                        path = os.path.expanduser(track_path)
                         tt = line.strip().split()
                         name = tt[0]
                         track_opts = {}
