@@ -365,6 +365,12 @@ class gDraw:
             returns the actual filename used to save.
             and a file saved in filename
         """
+        # check paths:
+        tail, head = os.path.split(filename)
+        if tail:
+            if not os.path.exists(tail):
+                raise FileNotFoundError('{0} path not found'.format(tail))
+
         self.get_draw_data()
         # track_heights are now dynamic; so calculate them here:
         self.__calculateTrackBoxes()

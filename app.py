@@ -133,7 +133,7 @@ class app():
                     elif mode:
                         path = os.path.expanduser(track_path)
                         tt = line.strip().split()
-                        name = tt[0]
+                        name = os.path.expanduser(tt[0])
                         track_opts = {}
                         if len(tt) > 1:
                             track_opts = self.__do_options(tt[1], mode)
