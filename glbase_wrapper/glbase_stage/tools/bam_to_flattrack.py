@@ -2,9 +2,8 @@
 """
 
 Part of glbase,
-converts a sequence file to a track (graph)-like display
 
-This module is incorrectly named.
+Not currently exposed as it makes pysam a requirement;
 
 """
 
@@ -100,23 +99,11 @@ def is_se_inner_loop(f, chr_sizes, infilename, gzip, read_extend):
         f.add_chromosome_array(ch.strip(), this_chrom)
         del this_chrom
 
-def bed_to_flat(infilename, outfilename, name, isPE, read_extend=None, strand=False, gzip=None, **kargs):
+def bam_to_flat(inbam, outfilename, name, isPE, read_extend=None, strand=False, gzip=None, split=False, **kargs):
     """
     **Purpose**
-        Convert a bed file containing reads into a flat
+        Convert a BAM file containing reads into a flat
         db)
-
-        A bed file should look like this:
-
-        chr1    3000881 3000986
-        chr1    3000986 3001081
-        chr1    3001081 3001157
-        chr1    3001157 3001186
-        chr1    3001186 3001357
-        chr1    3001535 3001735
-        chr1    3002009 3002209
-        chr1    3003894 3003917
-        chr1    3003917 3004094
 
         Note, that the flats DO NOT use strand.
 
@@ -124,8 +111,8 @@ def bed_to_flat(infilename, outfilename, name, isPE, read_extend=None, strand=Fa
         performed at runtime.
 
     **Arguments**
-        infilename
-            the name of the bed file(s) to read from.
+        inbam
+            the name of the BAM file(s) to read from.
 
             You can send a list of filenames
 
@@ -173,7 +160,7 @@ def bed_to_flat(infilename, outfilename, name, isPE, read_extend=None, strand=Fa
     config.log.info("Started %s -> %s" % (infilename, outfilename))
 
     s = time.time()
-    config.log.info('Preparse BED(s)')
+    config.log.info('Preparse BAM to collect chromosome names and read counts...')
     chr_sizes = {}
     cleft = 0
     for file in infilename:
@@ -198,7 +185,7 @@ def bed_to_flat(infilename, outfilename, name, isPE, read_extend=None, strand=Fa
             if r > chr_sizes[ch]:
                 chr_sizes[ch] = r
             if n % 1000000 == 0 and n>0:
-                config.log.info("%s,000,000 reads parsed" % ((n // 1000000),))
+                config.log.info('{:,} bp'.format(n))
             n += 1 # need to do this
         oh.close()
     total_read_count = int(n)
@@ -210,10 +197,8 @@ def bed_to_flat(infilename, outfilename, name, isPE, read_extend=None, strand=Fa
 
     if isPE:
         is_pe_inner_loop(f, chr_sizes, infilename, gzip)
-        f.meta_data['isPE'] = True
     else:
         is_se_inner_loop(f, chr_sizes, infilename, gzip, read_extend)
-        f.meta_data['isPE'] = False
 
     f.meta_data['total_read_count'] = total_read_count
 

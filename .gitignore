@@ -1,0 +1,13 @@
+*.pyc
+*~
+*.png
+*.svg
+*.trk
+*.glb
+*.csv
+*.tsv
+*.log
+*.pro
+*.bed
+*.sql
+.DS_Store
