@@ -1,6 +1,8 @@
 """
 
-tSNE analysis for glbase expression objects.
+UMAP analysis for glbase expression objects.
+
+Requires umap-learn
 
 """
 
@@ -8,37 +10,39 @@ from operator import itemgetter
 
 import numpy, random
 from sklearn.decomposition import PCA
-from sklearn.manifold import TSNE
 
 from . import config
 from .genelist import genelist
 from .base_manifold import base_manifold
 
-class tsne(base_manifold):
-    def __init__(self, parent=None, name='none'):
-        base_manifold.__init__(self, parent=parent, name=name, manifold_type='tSNE')
+if config.UMAP_LEARN_AVAIL:
+    from umap import UMAP
 
-    def train(self, num_pc, perplexity=30):
+class umap(base_manifold):
+    def __init__(self, parent=None, name='none'):
+        base_manifold.__init__(self, parent=parent, name=name, manifold_type='UMAP')
+
+    def train(self, num_pc, n_neighbors=None, min_dist=0.3):
         """
         **Purpose**
-            Train the tSNE on the first <num_pc> components of a PCA
+            Train the UMAP on the first <num_pc> components of a PCA
 
-            tSNE is generally too computationally heavy to do on a full dataset, so you
+            UMAP is generally too computationally heavy to do on a full dataset, so you
             should choose the first few PCs to train the tSNE. Check the pca module
             for a PCA interface you can use to select the best PCs
 
         **Arguments**
-            num_pc (Required)
-                The number of PCs of a PCA to use for tSNE
+            n_neighbors (Required)
+                Estimated number of neighbours
 
-                If it is an integer, tSNE will use [1:num_pc]
-
-                If it is a list tSNE will only use those specific PCs.
+            min_dist (Optional, default=0.3)
+                minimum distance between points
 
         **Returns**
             None
         """
-        assert self.configured, 'mds is not configured, run configure() first'
+        assert self.configured, 'umap is not configured, run configure() first'
+        assert n_neighbors, 'You must specify an estimate for n_neighbors'
 
         if isinstance(num_pc, int):
             self.__model = PCA(n_components=num_pc, whiten=self.whiten)
@@ -53,9 +57,10 @@ class tsne(base_manifold):
         else:
             raise AssertionError('num_pcs must be either an integer or a list')
 
-        self.__model = TSNE(n_components=2,
-            perplexity=perplexity,
-            init='pca',
+        self.__model = UMAP(
+            n_components=2,
+            n_neighbors=2,
+            metric='correlation',
             random_state=self.random_state,
             verbose=self.verbose)
 

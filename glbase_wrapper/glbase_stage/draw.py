@@ -56,6 +56,7 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plot
 import matplotlib.cm as cm
+from cycler import cycler # colours
 from matplotlib.colors import ColorConverter, rgb2hex, ListedColormap
 import matplotlib.colors as matplotlib_colors
 import matplotlib.mlab as mlab
@@ -85,7 +86,10 @@ class draw:
         """please deprecate me"""
         pass
 
-    def bracket_data(self, data, min:int, max:int):
+    def bracket_data(self,
+        data,
+        min:int,
+        max:int):
         """
         brackets the data between min and max (ie. bounds the data with no scaling)
 
@@ -308,7 +312,7 @@ class draw:
         else:
             if "row_names" in kargs and kargs["row_names"]:
                 if len(kargs["row_names"]) <= 100:
-                    row_font_size = 8
+                    row_font_size = 6
                 elif len(kargs["row_names"]) <= 150:
                     row_font_size = 4
                 elif len(kargs["row_names"]) <= 200:
@@ -348,7 +352,7 @@ class draw:
                 if not e:
                     config.log.warning("highlight: '%s' not found" % highlights[i])
 
-        col_font_size = 8
+        col_font_size = 6
         if "col_font_size" in kargs:
             col_font_size = kargs["col_font_size"]
         elif "xticklabel_fontsize" in kargs:
@@ -621,7 +625,7 @@ class draw:
             "reordered_data": data})
 
     def heatmap2(self, filename=None, cluster_mode="euclidean", row_cluster=True, col_cluster=True,
-        vmin=0, vmax=None, colour_map=cm.YlOrRd, col_norm=False, row_norm=False, heat_wid=0.25,
+        vmin=0, vmax=None, colour_map=cm.plasma, col_norm=False, row_norm=False, heat_wid=0.25,
         imshow=False,
         **kargs):
         """
@@ -695,8 +699,8 @@ class draw:
         if len(data) <= 1: row_cluster = False # clustering with a single point?
         if len(data[0]) <= 1: col_cluster = False # ditto.
 
-        if not "aspect" in kargs:
-            kargs["aspect"] = "long"
+        if "size" not in kargs:
+            kargs["size"] = (3,6)
         fig = self.getfigure(**kargs)
 
         # ---------------- (heatmap) -----------------------
@@ -797,8 +801,8 @@ class draw:
         freq_plot =    [0.42,   0.05,  0.4,   0.85]
 
         # Now do the plots:
-        plot.subplot(111)
-        plot.cla()
+        #plot.subplot(111)
+        #plot.cla()
 
         fig = self.getfigure(**kargs)
 
@@ -1824,7 +1828,7 @@ class draw:
             if "title_fontsize" in kargs:
                 ax.set_title(kargs["title"], fontdict={'fontsize': kargs['title_fontsize']})
             else:
-                ax.set_title(kargs["title"])
+                ax.set_title(kargs["title"], fontdict={'fontsize': 6})
         if "xlims" in kargs:
             ax.set_xlim(kargs["xlims"])
         if "ylims" in kargs:
@@ -2381,7 +2385,9 @@ class draw:
     def unified_scatter(self, labels, xdata, ydata, x, y, mode='PC', filename=None,
         spots=True, label=False, alpha=0.8, perc_weights=None, spot_cols='grey', overplot=None,
         spot_size=40, label_font_size=7, label_style=None, cut=None, squish_scales=False, only_plot_if_x_in_label=None,
-        adjust_labels=True, cmap=None, **kargs):
+        adjust_labels=False, cmap=None,
+        cluster_data=None, draw_clusters=None, cluster_labels=None, cluster_centroids=None,
+        **kargs):
         '''
         Unified for less bugs, more fun!
         '''
@@ -2423,8 +2429,28 @@ class draw:
                     newy.append(ydata[i])
                     newcols.append(spot_cols[i])
 
-        if spots:
+        if draw_clusters:
+            # unpack the cluster_data for convenience
+            ax.set_prop_cycle(cycler(color=plot.get_cmap('tab20c').colors))
+            n_clusters = cluster_data.n_clusters
+
+            for labelk in range(n_clusters):
+                cluster_center = cluster_centroids[labelk]
+                this_x = [xdata[i] for i, l in enumerate(cluster_labels) if l == labelk]
+                this_y = [ydata[i] for i, l in enumerate(cluster_labels) if l == labelk]
+                ax.scatter(this_x, this_y, s=spot_size+1, alpha=1.0, edgecolors="none", zorder=5)
+
+                #ax.plot(xdata[labelk], ydata[labelk], 'w', markerfacecolor=col, marker='.')
+
+                ax.plot(cluster_center[0], cluster_center[1], 'o', markerfacecolor='none', markeredgecolor='black', alpha=0.4, markersize=6, zorder=6)
+                ax.text(cluster_center[0], cluster_center[1], labelk, ha='center', zorder=7)
+
             ax.scatter(xdata, ydata, s=spot_size,
+                        alpha=alpha, edgecolors="none",
+                        c=spot_cols, cmap=cmap,
+                        zorder=2)
+        elif spots:
+            ax.scatter(xdata, ydata, s=8,
                 alpha=alpha, edgecolors="none",
                 c=spot_cols, cmap=cmap,
                 zorder=2)
@@ -2561,4 +2587,92 @@ class draw:
 
         real_filename = self.savefigure(fig, filename)
         config.log.info("dotbarplot: Saved dotbarplot to '%s'" % (real_filename))
+        return(real_filename)
+
+    def proportional_bar(self,
+        filename,
+        data_dict,
+        key_order=None,
+        title='',
+        cols=None,
+        **kargs):
+        '''
+        **Purpose**
+            Draw a bar plot, but with proporional bars.
+
+        **Arguments**
+            filename (Required)
+                filename to save the figure to.
+
+            ...
+
+        '''
+        if not cols:
+            cols = plot.rcParams['axes.prop_cycle'].by_key()['color']
+
+        # get all of the classes:
+        if not key_order:
+            all_keys = [] # preserve order
+            for k in data_dict:
+                for kk in data_dict[k]:
+                    if kk not in all_keys:
+                        all_keys.append(kk)
+            print('Found {0} keys'.format(all_keys))
+        else:
+            all_keys = key_order
+
+        vals = {k: [] for k in all_keys}
+
+        labs = []
+        for k in data_dict:
+            labs.append(k)
+            for kk in all_keys:
+                vals[kk].append(float(data_dict[k][kk]))
+        print(vals)
+
+        scaled = {k: [] for k in all_keys}
+        sums = None
+        for k in all_keys:
+            if sums is None:
+                sums = numpy.zeros(len(vals[k]))
+            sums += vals[k]
+
+        for k in all_keys:
+            vals[k] = numpy.array(vals[k])
+
+        #plot_hei = (0.8) - (0.04*len(labs))
+
+        if 'figsize' not in kargs: # TODO: Sensible sizes'
+            kargs['figsize'] = [4,3]
+
+        fig = self.getfigure(**kargs)
+        #fig.subplots_adjust(left=0.35, right=0.95, bottom=plot_hei,)
+        ax = fig.add_subplot(111)
+        ax.set_prop_cycle('color', cols)
+
+        ypos = numpy.arange(len(data_dict))
+
+        # data_dict = {'bar_row': {'class': 0, class2': 0}}
+
+        bots = numpy.zeros(len(labs))
+        for k in vals:
+            ax.barh(ypos, vals[k], 0.7, label=k, left=bots)
+            for y, v, s, b in zip(ypos, vals[k], vals[k], bots):
+                ax.text(b+(s//2), y, '{0:,.0f} ({1:.0f}%)'.format(v, s), ha='center', va='center', fontsize=6)
+            bots += vals[k]
+
+        ax.set_yticks(ypos)
+        ax.set_yticklabels(labs)
+
+        ax.set_title(title, size=6)
+        ax.legend()
+        plot.legend(loc='upper left', bbox_to_anchor=(0.0, -0.4), prop={'size': 6})
+        [t.set_fontsize(6) for t in ax.get_yticklabels()]
+        [t.set_fontsize(6) for t in ax.get_xticklabels()]
+
+        self.do_common_args(ax, **kargs)
+        fig.savefig(filename)
+
+        real_filename = self.savefigure(fig, filename)
+        config.log.info("proportional_bar: Saved '{0}'".format(real_filename))
         return(real_filename)
