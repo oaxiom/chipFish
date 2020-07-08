@@ -10,12 +10,12 @@ TODO:
 
 '''
 
-import pickle, numpy, math
+import pickle, numpy, math, gzip
 from operator import itemgetter
 from shutil import copyfile
 
 import matplotlib.cm as cm
-from scipy import ndimage
+from scipy import ndimage, interpolate
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 
@@ -158,20 +158,19 @@ class hic:
         self.hdf5_handle.visit(print)
 
     def __len__(self):
-        return(self.num_bins)
+        return self['num_bins']
 
     def __getitem__(self, index):
         """
         Confers:
 
-        a = expn["condition_name"]
+        a = hic["condition_name"]
 
-        and inherits normal genelist slicing behaviour
         """
-        return(self.hdf5_handle.attrs[index])
+        return self.hdf5_handle.attrs[index]
 
     def keys(self):
-        return(self.hdf5_handle.keys())
+        return self.hdf5_handle.keys()
 
     def _optimiseData(self):
         pass
@@ -237,7 +236,49 @@ class hic:
         #print (binLeft, binRight, newloc, mostLeft, mostRight)
         assert binRight-binLeft > 2, 'the genome view (loc) is too small, and contains < 2 bins'
 
-        return(binLeft, binRight, newloc, mostLeft, mostRight)
+        return (binLeft, binRight, newloc, mostLeft, mostRight)
+
+    def __quick_find_binID_spans(self, loc_chrom=None, loc_left=None, loc_rite=None):
+        """
+        (Internal)
+
+        Fing the binIDs for the span loc.
+
+        Returns a tuple containing the local binIDs for these coordinates,
+
+        """
+        # These are in global bins.
+        binLeft = 1e50
+        binRight = -1
+        mostLeft = 1e50
+        mostRight = -1
+
+        #print(self.bin_lookup_by_chrom[loc['chr']])
+        for bin in self.bin_lookup_by_chrom[loc_chrom]:
+            # bin = (binID, left, right)
+            #print(bin, loc)
+            if bin[2] > loc_left and bin[0] < binLeft:
+                binLeft = bin[0]
+            if loc_rite > bin[1] and bin[0] > binRight:
+                binRight = bin[0]
+
+            # To work out the local bin positions:
+            if bin[0] < mostLeft:
+                mostLeft = bin[0]
+            if bin[0] > mostRight:
+                mostRight = bin[0]
+
+        # in case locations are asked for off the edge of the chromsome:
+        if binLeft < 0:
+            binLeft = 0
+        if binRight > mostRight:
+            binRight = mostRight
+
+        binLeft = binLeft - mostLeft
+        binRight = binRight - mostLeft
+        assert binRight-binLeft > 2, 'the genome view (loc) is too small, and contains < 3 bins'
+
+        return (binLeft, binRight)
 
     def __find_binID_chromosome_span(self, chrom):
         """
@@ -264,7 +305,7 @@ class hic:
         mostRight = self.bin_lookup_by_binID[mostRight][3] # Convert to newBinID:
         mostLeft = self.bin_lookup_by_binID[mostLeft][3]
 
-        return(mostLeft, mostRight)
+        return (mostLeft, mostRight)
 
     def load_hicpro_matrix(self, matrix_filename, bed_file):
         """
@@ -281,6 +322,7 @@ class hic:
 
         # First go through the bed file and get all the bins, chroms and sizes.
         bins = []
+        bin_size = None
         self.all_chrom_names = []
         oh = open(bed_file, 'r')
         for lin in oh:
@@ -294,14 +336,17 @@ class hic:
                 pass # It's chrX chrVII etc.
 
             bins.append((chr, int(lin[1]), int(lin[2]), int(lin[3])))
+            if not bin_size:
+                bin_size = int(lin[2]) - int(lin[1])
             if chr not in self.all_chrom_names:
                 self.all_chrom_names.append(chr)
 
         oh.close()
         self.all_chrom_names = set(self.all_chrom_names)
         self.hdf5_handle.attrs['num_bins'] = len(bins)
+        self.hdf5_handle.attrs['bin_size'] = bin_size
 
-        config.log.info('Found %s bins' % self['num_bins'])
+        config.log.info('Found {0} bins, each bin = {1} bp'.format(self['num_bins'], self['bin_size']))
         # the bins are not sorted,
         bin_order = sorted(bins, key=lambda v: (isinstance(v[0], str), v[0], v[1])) # Sort chroms by str, then int
         bin_lookup = {} # python 3: no need OrderedDict
@@ -370,7 +415,7 @@ class hic:
                 if bin_lookup[oldbinID][0] == chrom:
                     flat_bin.append([oldbinID, bin_lookup[oldbinID][1], bin_lookup[oldbinID][2], bin_lookup[oldbinID][3]]) # i.e. oldId, left, right, newID
             flat_bin = numpy.array(flat_bin)
-            grp.create_dataset('bins', (flat_bin.shape), dtype=int, data=flat_bin)
+            grp.create_dataset('bins', (flat_bin.shape), dtype=int, data=flat_bin, chunks=True, compression='lzf')
 
             #self.hdf5_handle.create_dataset('bin_lookup', (len(to_store), 1), dtype='S10', data=to_store)
 
@@ -386,15 +431,187 @@ class hic:
         dat = [str(n).encode("ascii", "ignore") for n in self.all_chrom_names]
         self.hdf5_handle.create_dataset('all_chrom_names', (len(self.all_chrom_names), 1), 'S10', dat)
 
-        return(True)
+        return True
 
-    def save_np3_column_matrix(self, filename):
+    def load_cooler_pixels_dump(self, matrix_filename):
+        """
+        **Purpose**
+            Load a file output by cooler with the command:
+
+            cooler dump --header --join --balanced ${out}.cooler | gzip > ${out}
+
+            e.g:
+
+            chrom1	start1	end1	chrom2	start2	end2	count	balanced
+            chr1	0	150000	chr1	0	150000	22	0.00115439
+            chr1	0	150000	chr1	150000	300000	129
+            chr1	0	150000	chr1	300000	450000	6
+            chr1	0	150000	chr1	450000	600000	10
+            chr1	0	150000	chr1	600000	750000	37
+            chr1	0	150000	chr1	750000	900000	34	0.00165211
+            chr1	0	150000	chr1	900000	1050000	15
+            chr1	0	150000	chr1	1050000	1200000	9
+            chr1	0	150000	chr1	1200000	1350000	8
+
+            Only rows with a balanced score are kept. Otherwise set to 0.
+
+        **Arguments**
+            filename (Required)
+                the Filename to load.
+        """
+        assert not self.readonly, 'To load, this must be read-only, set new=True'
+
+        # First go through the file and get all the bins, chroms and sizes.
+        bins = []
+        bin_size = None
+
+        # Sample the files to get the chromosome sizes:
+        max_chrom_size = {}
+        config.log.info('Preparse {0}'.format(matrix_filename))
+        oh = gzip.open(matrix_filename, 'rt')
+        for lin in oh:
+            if 'chrom1' in lin:
+                continue
+
+            lin = lin.strip().split('\t')
+
+            chr1 = lin[0]
+            if not bin_size: # sample the bin size;
+                bin_size = int(lin[2]) - int(lin[1])
+            if chr1 not in self.all_chrom_names:
+                max_chrom_size[chr1] = 0
+            if int(lin[2]) > max_chrom_size[chr1]:
+                max_chrom_size[chr1] = int(lin[2])
+
+            # same for other read, as you could imagine a situation where a right bin is not seen in the left bin?
+            chr2 = lin[3]
+            if chr2 not in self.all_chrom_names:
+                max_chrom_size[chr2] = 0
+            if int(lin[5]) > max_chrom_size[chr2]:
+                max_chrom_size[chr2] = int(lin[5])
+
+        for chrom in sorted(max_chrom_size):
+            config.log.info('Observed chrom {0} sizes = {1:,} bp'.format(chrom, max_chrom_size[chrom]))
+
+        # Build the bin lookups based on the maximum chromsome sizes and the sampled
+        # binsizes;
+        bin_id = 0
+        bin_lookup_by_chr_left = {}
+        bin_lookup_by_id = {}
+        for chrom in max_chrom_size:
+            for left in range(0, max_chrom_size[chrom]+bin_size, bin_size):
+                bin_loc = (chrom, left)
+                if bin_loc not in bin_lookup_by_chr_left:
+                    bin_lookup_by_chr_left[bin_loc] = bin_id
+                    bin_lookup_by_id[bin_id] = bin_loc
+                    bin_id += 1
+
+        oh.close()
+
+        self.all_chrom_names = set(max_chrom_size)
+        self.hdf5_handle.attrs['num_bins'] = bin_id
+        self.hdf5_handle.attrs['bin_size'] = bin_size
+
+        config.log.info('Found {0:,} bins, each bin = {1:,} bp'.format(self['num_bins'], self['bin_size']))
+        # the bins are not sorted,
+        bin_order = sorted(bins, key=lambda v: (v[0], v[1]))
+
+        # Get the edges of the chroms, and so the matrix sizes
+        self.chrom_edges = {}
+        for chrom in self.all_chrom_names:
+            self.chrom_edges[chrom] = [1e20,-1]
+
+            for bin in bin_lookup_by_chr_left:
+                if bin[0] != chrom:
+                    continue
+
+                # get the edges:
+                bin_id = bin_lookup_by_chr_left[bin]
+                if bin_id < self.chrom_edges[chrom][0]:
+                    self.chrom_edges[chrom][0] = bin_id
+                if bin_id > self.chrom_edges[chrom][1]:
+                    self.chrom_edges[chrom][1] = bin_id
+
+        # Have to then convert them all to the new bins:
+        # Although not strictly necessary in the matrix-based, I preserve this fiddly step so that
+        # when I implement the inter-chrom interactions it is easier.
+        matrices = {}
+        bins = {} # The bin -> matrix convertor
+        for chrom in self.all_chrom_names:
+            # Now I know how big the arrays need to be, and all of the chromosomes:
+            size = self.chrom_edges[chrom][1]-self.chrom_edges[chrom][0]
+            matrices[chrom] = numpy.zeros((size+1, size+1), dtype='float32')
+            # TODO: Support inter-chromosomal contacts with a sparse array:
+
+        oh = gzip.open(matrix_filename, 'rt')
+        p = progressbar(self['num_bins'] * self['num_bins']) # expected maximum
+        for idx, lin in enumerate(oh):
+            if 'chrom1' in lin:
+                continue
+            lin = lin.strip().split('\t')
+
+            if len(lin) < 8: # balanced is blank;
+                continue
+
+            # First check the two bins are on the same chromosome:
+            if lin[0] == lin[3]:
+                chrom = lin[0]
+
+                bin1 = bin_lookup_by_chr_left[(chrom, int(lin[1]))]
+                bin2 = bin_lookup_by_chr_left[(chrom, int(lin[4]))]
+
+                x = bin1-self.chrom_edges[chrom][0]
+                y = bin2-self.chrom_edges[chrom][0]
+
+                matrices[chrom][x,y] = float(lin[7]) # i.e. weight
+                matrices[chrom][y,x] = float(lin[7])
+            else:
+                # TODO: Support for interchrom with a sparse array:
+                pass
+
+            p.update(idx)
+        p.update(self['num_bins'] * self['num_bins']) # the above is unlikely to make it to 100%, so fix the progressbar.
+        oh.close()
+
+        # save the bin data as an emulated dict:
+        grp = self.hdf5_handle.create_group('bin_lookup')
+        for chrom in self.all_chrom_names:
+            grp = self.hdf5_handle.create_group('bin_lookup/chrom_%s' % chrom)
+            flat_bin = []
+
+            for bin in bin_lookup_by_chr_left:
+                if bin[0] == chrom:
+                    bin_id = bin_lookup_by_chr_left[bin]
+                    flat_bin.append([bin_id-self.chrom_edges[chrom][0], bin[1], bin[1]+bin_size, bin_id]) # i.e. oldId, left, right, newID
+            flat_bin = numpy.array(flat_bin)
+
+            grp.create_dataset('bins', (flat_bin.shape), dtype=int, data=flat_bin, chunks=True, compression='lzf')
+
+            #self.hdf5_handle.create_dataset('bin_lookup', (len(to_store), 1), dtype='S10', data=to_store)
+
+        # A sparse array would be better. The matrix is only around ~40% full in 100k, and
+        # likely this gets much lower as the resolution drops...
+        config.log.info('Loaded matrix %s*%s' % (self['num_bins'], self['num_bins']))
+        for chrom in self.all_chrom_names:
+            config.log.info('Added chrom=%s to table' % chrom)
+            grp = self.hdf5_handle.create_group('matrix_%s' % chrom)
+            grp.create_dataset('mat', matrices[chrom].shape, dtype=numpy.float32, data=matrices[chrom])
+        config.log.info('Saved matrices to hdf5')
+
+        dat = [str(n).encode("ascii", "ignore") for n in self.all_chrom_names]
+        self.hdf5_handle.create_dataset('all_chrom_names', (len(self.all_chrom_names), 1), 'S10', dat)
+
+        return True
+
+    def save_np3_column_matrix(self, filename, nohead=False):
         """
         **Purpose**
             Some other tools ask for a n+3 chromosome matrix,
 
             In the form
             chrom   left    right   0   0   0   0   0   0    .... #bins
+
+            if nohead=True, then save just the matrix
 
             These tables are chromsome local only.
 
@@ -423,9 +640,12 @@ class hic:
             mat = self.mats[chrom].value
             bins = self.bin_lookup_by_chrom[chrom]
             for m, b in zip(mat, bins):
-                lin = [chrom_name, b[1], b[2]] + list(m)
-                lin = [str(i) for i in lin]
-                oh.write('%s\n' % '\t'.join(lin))
+                if nohead:
+                    lin = [str(i) for i in m]
+                else:
+                    lin = [chrom_name, b[1], b[2]] + list(m)
+                    lin = [str(i) for i in lin]
+                oh.write('{0}\n'.format('\t'.join(lin)))
             oh.close()
 
             config.log.info('Saved save_np3_column_matrix() "%s"' % actual_filename)
@@ -1165,3 +1385,119 @@ class hic:
 
         self.tsne_trained = chrom
         config.log.info("tsne: Trained tSNE")
+
+    def square_plot(self,
+        filename:str = None,
+        center_anchors = None,
+        distal_anchors = None,
+        window:int = None,
+        bracket = None,
+        log2 = None,
+        colour_map = cm.plasma,
+        **kargs
+        ):
+        """
+        **Purpose**
+            Draw a square plot for HiC intensity,
+            Take the center_anchor points, and then draw out to eith ther distal anchors, or to some <window>
+            Take the average of the matrix;
+        """
+        assert self.readonly, 'must be readonly to draw a square_plot. set new=False'
+        assert filename, 'You need a filename to save the image to'
+        assert not (distal_anchors and window), 'Only one of distal_anchors or window can be valid'
+        if not window: assert distal_anchors, 'distal_anchors not True'
+        if not distal_anchors: assert window, 'window not True'
+
+        if distal_anchors:
+            raise NotImplementedError('distal_anchors not implemented')
+
+        num_bins = (window * 2) // self['bin_size']
+
+        mat = numpy.zeros((num_bins, num_bins))
+        int_range = numpy.arange(num_bins)
+
+        if distal_anchors:
+            for anchor, distal in zip(center_anchors, distal_anchors):
+                pass # Not implemented yet.
+
+        elif window:
+            p = progressbar(len(center_anchors))
+            for aidx, anchor in enumerate(center_anchors):
+                chrom = anchor['loc']['chr']
+                if 'chr' not in chrom:
+                    chrom = 'chr{0}'.format(chrom)
+                localLeft, localRight = self.__quick_find_binID_spans(chrom, anchor['loc']['left']-window, anchor['loc']['right']+window)
+
+                data = self.mats[chrom][localLeft:localRight, localLeft:localRight]
+
+                if data.shape != mat.shape:
+                    interpolator_func = interpolate.interp2d(range(data.shape[0]), range(data.shape[1]), data, kind='linear')
+                    data = interpolator_func(int_range, int_range)
+
+                mat += data
+                p.update(aidx)
+
+            mat /= len(center_anchors)
+
+        fig = self.draw.getfigure(**kargs)
+
+        # positions of the items in the plot:
+        heatmap_location  = [0.05,   0.01,   0.90,   0.90]
+        scalebar_location = [0.05,   0.97,   0.90,   0.02]
+
+        if not "colbar_label" in kargs:
+            colbar_label = "Density"
+
+        if bracket: # done here so clustering is performed on bracketed data
+            #data = self.draw.bracket_data(numpy.log2(self.matrix+0.1), bracket[0], bracket[1])
+            if log2:
+                with numpy.errstate(divide='ignore'):
+                    mat = numpy.log2(mat)
+                colbar_label = "Log2(Density)"
+            data = numpy.clip(data, bracket[0], bracket[1])
+            vmin = bracket[0]
+            vmax = bracket[1]
+        else:
+            if log2:
+                with numpy.errstate(divide='ignore'):
+                    data = numpy.log2(data)
+                colbar_label = "Log2(Density)"
+            mat[mat == -numpy.inf] = 0
+            vmin = mat.min()
+            vmax = mat.max()
+
+        # ---------------- (heatmap) -----------------------
+        ax = fig.add_subplot(121)
+
+        ax.set_position(heatmap_location) # must be done early for imshow
+        hm = ax.imshow(mat, cmap=colour_map, vmin=vmin, vmax=vmax, aspect="auto",
+            origin='lower', extent=[0, data.shape[1], 0, data.shape[0]],
+            interpolation=config.get_interpolation_mode(filename))
+
+        #ax3.set_frame_on(True)
+        ax.set_position(heatmap_location)
+        ax.set_xlim([0,mat.shape[1]])
+        ax.set_ylim([0,mat.shape[0]])
+        ax.set_yticklabels("")
+        ax.set_xticklabels("")
+
+        ax.axvline(mat.shape[0] // 2, ls=":", color="grey")
+        ax.axhline(mat.shape[1] // 2, ls=":", color="grey")
+
+        ax.tick_params(top=False, bottom=False, left=False, right=False)
+        [t.set_fontsize(5) for t in ax.get_yticklabels()] # generally has to go last.
+        [t.set_fontsize(5) for t in ax.get_xticklabels()]
+
+        ax0 = fig.add_subplot(122)
+        ax0.set_position(scalebar_location)
+        ax0.set_frame_on(False)
+
+        cb = fig.colorbar(hm, orientation="horizontal", cax=ax0, cmap=colour_map)
+        cb.set_label(colbar_label, fontsize=6)
+        cb.ax.tick_params(labelsize=6)
+        #[label.set_fontsize(5) for label in ax0.get_xticklabels()]
+
+        actual_filename = self.draw.savefigure(fig, filename, dpi=300)
+        config.log.info("heatmap: Saved '%s'" % actual_filename)
+
+        return mat

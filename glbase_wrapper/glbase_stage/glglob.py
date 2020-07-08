@@ -11,6 +11,7 @@ import sys, os, csv, string, math, numpy, pickle
 from numpy import array, zeros, object_, arange
 from copy import deepcopy
 from operator import itemgetter
+from statistics import pstdev, mean
 
 from . import config, utils
 from .flags import *
@@ -1014,6 +1015,54 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         config.log.info("overlap_heatmap: Saved overlap heatmap to '%s'" % ret["real_filename"])
         return(tab)
 
+    def __peak_cluster(self, list_of_peaks, merge_peaks_distance):
+        # Merge overlapping peaks
+        chr_blocks = {}
+        total_rows = 0
+        #merged_peaks = {}
+        p = progressbar(len(list_of_peaks))
+        for idx, gl in enumerate(list_of_peaks):
+            for p1 in gl["loc"]:
+                #p1 = p1.pointify().expand(merge_peaks_distance) # about 10% of the time is in __getitem__ from the loc, so unpack it;
+                cpt = (p1.loc["left"] + p1.loc['right']) // 2
+                p1_chr = p1['chr']
+                p1_left = cpt - merge_peaks_distance
+                p1_right = cpt + merge_peaks_distance
+                if not p1_chr in chr_blocks:
+                    chr_blocks[p1_chr] = {}
+
+                binary = [0 for x in range(len(list_of_peaks))] # set-up here in case I need to modify it.
+
+                for p2 in chr_blocks[p1_chr]: # p2 is now a block_id tuple
+                    #if p1.qcollide(p2):
+                    if p1_right >= p2[0] and p1_left <= p2[1]: # unfolded for speed.
+                        binary = chr_blocks[p1_chr][p2]["binary"] # preserve the old membership
+
+                        # remove the original entry
+                        del chr_blocks[p1_chr][p2]
+                        total_rows -= 1
+
+                        # Add in a new merged peak:
+                        cpt = (((p1_left+p2[0])//2) + ((p1_right+p2[1])//2)) // 2 # pointify()
+
+                        p1_left=cpt-merge_peaks_distance
+                        p1_right=cpt+merge_peaks_distance
+                        # Don't get confused here, p1 is added onto the block heap below:
+                        break
+
+                # modify binary to signify membership for this peaklist
+                binary[idx] = 1
+
+                # Add p1 onto the blocklist
+                block_id = (p1_left, p1_right)
+                if block_id not in chr_blocks[p1_chr]:
+                    chr_blocks[p1_chr][block_id] = {"binary": binary,
+                        "pil": [0 for x in range(len(list_of_peaks))]} # one for each gl, load pil with dummy data.
+                    total_rows += 1 # because the result is a dict of dicts {"<chrname>": {"bid": {data}}, so hard to keep track of the total size.
+
+            p.update(idx)
+        return total_rows, chr_blocks
+
     def chip_seq_cluster(self, list_of_peaks, merge_peaks_distance=400, sort_clusters=True,
         _get_chr_blocks=False, **kargs):
         """
@@ -1086,65 +1135,16 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         chr_blocks = {} # stores a binary identifier
         pil_blocks = {}
         total_rows = 0
-        resolution = merge_peaks_distance # laziness hack!
 
-        # Make a super list of all the peaks. why? It's not actually used...
-        #mega_list_of_peaks = sum([gl["loc"] for gl in list_of_peaks], [])
-        #mega_list_of_peaks = [p.pointify().expand(merge_peaks_distance) for p in mega_list_of_peaks]
-        #config.log.info("chip_seq_cluster: Started with %s redundant peaks" % len(mega_list_of_peaks))
-        '''
-        newl = []
-        for l in list_of_peaks:
-            newl.append(l.deepcopy().pointify().expand('loc', merge_peaks_distance))
-        list_of_peaks = newl
-        '''
-
-        # Merge overlapping peaks
-        merged_peaks = {}
-        p = progressbar(len(list_of_peaks))
-        for idx, gl in enumerate(list_of_peaks):
-            for p1 in gl["loc"]:
-                p1 = p1.pointify().expand(merge_peaks_distance)
-                if not p1["chr"] in chr_blocks:
-                    chr_blocks[p1["chr"]] = {}
-
-                binary = [0 for x in range(len(list_of_peaks))] # set-up here in case I need to modify it.
-
-                for p2 in chr_blocks[p1["chr"]]: # p2 is now a block_id tuple
-                    #if p1.qcollide(p2):
-                    if p1["right"] >= p2[0] and p1["left"] <= p2[1]: # unfolded for speed.
-                        binary = chr_blocks[p1["chr"]][p2]["binary"] # preserve the old membership
-
-                        # remove the original entry
-                        del chr_blocks[p1["chr"]][p2]
-                        total_rows -= 1
-
-                        # Add in a new merged peak:
-                        p1 = location(chr=p1["chr"],
-                            left=int((p1["left"]+p2[0])/2.0),
-                            right=int((p1["right"]+p2[1])/2.0)).pointify().expand(merge_peaks_distance)
-                        # Don't get confused here, p1 is added onto the block heap below:
-                        break
-
-                # modify binary to signify membership for this peaklist
-                binary[idx] = 1
-
-                # Add p1 onto the blocklist
-                block_id = (p1["left"], p1["right"])
-                if block_id not in chr_blocks[p1["chr"]]:
-                    chr_blocks[p1["chr"]][block_id] = {"binary": binary,
-                        "pil": [0 for x in range(len(list_of_peaks))]} # one for each gl, load pil with dummy data.
-                        # pil is not needed here, but kept for compatability with _heatmap function
-                    total_rows += 1 # because the result is a dict of dicts {"<chrname>": {"bid": {data}}, so hard to keep track of the total size.
-
-            p.update(idx)
-
+        peak_lengths = sum([len(p) for p in list_of_peaks])
+        config.log.info("chip_seq_cluster_heatmap: Started with {0} redundant peaks".format(peak_lengths))
+        total_rows, chr_blocks = self.__peak_cluster(list_of_peaks, merge_peaks_distance)
         config.log.info("chip_seq_cluster: Found %s unique genomic regions" % total_rows)
 
         if _get_chr_blocks:
-            return(chr_blocks)
-        # Convert the chr_blocks into a expression object
+            return chr_blocks
 
+        # Convert the chr_blocks into a expression object
         tab = []
         for chrom in chr_blocks:
             for loc in chr_blocks[chrom]:
@@ -1153,26 +1153,11 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 #print cid
                 tab.append({'loc': l, 'conditions': chr_blocks[chrom][loc]['binary'], 'cid': cid})
 
-        '''
-        # I want to sort the groups from the most complex to the least complex.
-        if sort_clusters:
-            sorted_clusters = []
-            for c in cluster_ids:
-                sorted_clusters.append({"id": c, "score": sum(c)})
-            sorted_clusters = sorted(sorted_clusters, key=itemgetter("score"))
-            # This result is actually least to most, but as the heatmap is drawn bottom to top it makes sense to
-            # preserve this order.
-        else:
-            pass
-            #URK!
-        '''
-
-        #print tab
         e = expression(loadable_list=tab, cond_names=[p.name for p in list_of_peaks])
         if sort_clusters:
             e.sort('cid')
 
-        return(e)
+        return e
 
     def chip_seq_cluster_heatmap(self, list_of_peaks, list_of_trks, filename=None, normalise=False, bins=20,
         pileup_distance=1000, merge_peaks_distance=400, sort_clusters=True, cache_data=False, bracket=None,
@@ -1335,10 +1320,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             represents binding (True) or not (False) in each original list_of_peaks.
         """
         assert not (range_bracket and bracket), "You can't use both bracket and range_bracket"
-
-        # Currently untested:
-        #chr_blocks = self.chip_seq_cluster(list_of_peaks=list_of_peaks, merge_peaks_distance=merge_peaks_distance,
-        #   sort_clusters=sort_clusters, _get_chr_blocks=True)
+        assert len(list_of_peaks) == len(list_of_trks), 'len(list_of_peaks) != len(list_of_trks)'
 
         # get a non-redundant list of genomic regions based on resolution.
         chr_blocks = {} # stores a binary identifier
@@ -1349,56 +1331,10 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         # Confirm that all lists contain a 'loc' key
         assert False not in ['loc' in gl.keys() for gl in list_of_peaks], 'One of your peak data (list_of_peaks) does not contain a "loc" key'
 
-        # Make a super list of all the peaks.
-        mega_list_of_peaks = sum([gl["loc"] for gl in list_of_peaks], [])
-        mega_list_of_peaks = [p.pointify().expand(merge_peaks_distance) for p in mega_list_of_peaks]
-        config.log.info("chip_seq_cluster_heatmap: Started with %s redundant peaks" % len(mega_list_of_peaks))
-
-        # Merge overlapping peaks
-        merged_peaks = {}
-        p = progressbar(len(list_of_peaks))
-        for idx, gl in enumerate(list_of_peaks):
-            for p1 in gl["loc"]:
-                #p1 = p1.pointify().expand(merge_peaks_distance) # about 10% of the time is in __getitem__ from the loc, so unpack it;
-                cpt = (p1.loc["left"] + p1.loc['right']) // 2
-                p1_chr = p1['chr']
-                p1_left = cpt - merge_peaks_distance
-                p1_right = cpt + merge_peaks_distance
-                if not p1_chr in chr_blocks:
-                    chr_blocks[p1_chr] = {}
-
-                binary = [0 for x in range(len(list_of_peaks))] # set-up here in case I need to modify it.
-
-                for p2 in chr_blocks[p1_chr]: # p2 is now a block_id tuple
-                    #if p1.qcollide(p2):
-                    if p1_right >= p2[0] and p1_left <= p2[1]: # unfolded for speed.
-                        binary = chr_blocks[p1_chr][p2]["binary"] # preserve the old membership
-
-                        # remove the original entry
-                        del chr_blocks[p1_chr][p2]
-                        total_rows -= 1
-
-                        # Add in a new merged peak:
-                        cpt = (((p1_left+p2[0])//2) + ((p1_right+p2[1])//2)) // 2 # pointify()
-
-                        p1_left=cpt-merge_peaks_distance
-                        p1_right=cpt+merge_peaks_distance
-                        # Don't get confused here, p1 is added onto the block heap below:
-                        break
-
-                # modify binary to signify membership for this peaklist
-                binary[idx] = 1
-
-                # Add p1 onto the blocklist
-                block_id = (p1_left, p1_right)
-                if block_id not in chr_blocks[p1_chr]:
-                    chr_blocks[p1_chr][block_id] = {"binary": binary,
-                        "pil": [0 for x in range(len(list_of_peaks))]} # one for each gl, load pil with dummy data.
-                    total_rows += 1 # because the result is a dict of dicts {"<chrname>": {"bid": {data}}, so hard to keep track of the total size.
-
-            p.update(idx)
-
-        config.log.info("chip_seq_cluster_heatmap: Found {0:,} unique genomic regions".format(total_rows))
+        peak_lengths = sum([len(p) for p in list_of_peaks])
+        config.log.info("chip_seq_cluster_heatmap: Started with {0} redundant peaks".format(peak_lengths))
+        total_rows, chr_blocks = self.__peak_cluster(list_of_peaks, merge_peaks_distance)
+        config.log.info("chip_seq_cluster: Found %s unique genomic regions" % total_rows)
 
         # Get the size of each library if we need to normalize the data.
         if normalise:
@@ -1555,12 +1491,12 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         if normalise:
             colbar_label = "Normalised %s" % colbar_label
 
-        self.__pileup_y_label = colbar_label
+        self.__pileup_y_label = "Tag density" # Trust me, you don't want to log them...
 
         tab_max = max([tab.max() for tab in list_of_tables]) # need to get new tab_max for log'd values.
         tab_min = min([tab.min() for tab in list_of_tables])
         #tab_median = numpy.median([numpy.median(tab) for tab in list_of_tables])
-        tab_mean = utils.mean([numpy.average(tab) for tab in list_of_tables])
+        tab_mean = mean([numpy.average(tab) for tab in list_of_tables])
         tab_stdev = numpy.std(numpy.array([tab for tab in list_of_tables]))
 
         config.log.info("chip_seq_cluster_heatmap: min=%.2f, max=%.2f, mean=%.2f, stdev=%.2f" % (tab_min, tab_max, tab_mean, tab_stdev))
@@ -1581,7 +1517,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 list_of_data=list_of_tables, colour_map=cmap, colbar_label=colbar_label, bracket=bracket, frames=frames)
 
         config.log.info("chip_seq_cluster_heatmap: Saved overlap heatmap to '%s'" % real_filename)
-        return(ret_data)
+        return ret_data
 
     def chip_seq_cluster_pileup(self, filename=None, multi_plot=True, **kargs):
         """
@@ -1642,7 +1578,6 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
 
             for cfig, data in enumerate(self.__pileup_data[cid]):
                 ax = fig.add_subplot(1, len(self.__pileup_data[cid]), cfig+1)
-                #print data
                 x = numpy.arange(len(data))
                 ax.plot(x, data)
 
@@ -1916,7 +1851,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         assert isinstance(trks, list), 'measure_density: trks must be a list'
         assert 'loc' in list(peaks.keys()), 'measure_density: no loc key found in peaks'
         all_trk_names = [t["name"] for t in trks]
-        assert len(set(all_trk_names)) == len(all_trk_names), 'track names are not unique. Please change the track["name"] to unique names'
+        assert len(set(all_trk_names)) == len(all_trk_names), 'track names are not unique. Please change the track.meta_data["name"] to unique names'
 
         peaks = peaks.deepcopy()
         if pointify:
@@ -1958,6 +1893,101 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                     p["conditions"][it] = numpy.average(d) / all_sizes[it]
                 else:
                     p["conditions"][it] = numpy.average(d)
+
+        expn = expression(loadable_list=peaks.linearData, cond_names=[t["name"] for t in trks])
+        if log:
+            expn.log(2, .1)
+
+        return(expn)
+
+    def measure_enrichment(self, trks, peaks, log=False,
+        read_extend=0, peak_window=100,local_lambda=5000,
+        **kargs):
+        """
+        **Purpose**
+            get the seq tag enrichment from the trks,
+            and return as an expression object
+
+        **Arguments**
+            trks (Required)
+                a list of tracks/flats
+
+            peaks (Required)
+                a list of peaks, a genelist containing a 'loc' key
+
+            read_extend (Optional, default=200)
+                read extend the sequence tags in the tracks by xbp
+
+            log (Optional, default=False)
+                log transform the resulting matrix
+
+            peak_window (Optional, default=100)
+                window around the center of the peak to score the peak enrichment.
+
+            local_lambda (Optional, default=5000)
+                Number of base pairs around the peak to score the local lambda
+
+        **Returns**
+            an expression object, with the conditions as the tag density from the tracks
+
+        """
+        assert isinstance(trks, list), 'measure_enrichment: trks must be a list'
+        assert 'loc' in list(peaks.keys()), 'measure_enrichment: no loc key found in peaks'
+        all_trk_names = [t["name"] for t in trks]
+        assert len(set(all_trk_names)) == len(all_trk_names), 'track names are not unique. Please change the track.meta_data["name"] to unique names'
+
+        peaks = peaks.deepcopy()
+        peaks.sort('loc')
+
+        newl = []
+        curr_chrom = None
+        curr_data = None
+        curr_n = 0
+        for p in peaks:
+            p["conditions"] = [0.0 for t in trks]
+
+        all_chroms = len(set([i['chr'] for i in peaks['loc']])) * len(trks)
+        all_sizes = [t.get_total_num_reads() / 1e6 for t in trks]
+
+        for it, t in enumerate(trks):
+            pb = progressbar(all_chroms)
+            curr_chrom = None
+            for p in peaks:
+                p_loc = p['loc']
+                cpt = (p_loc['left'] + p_loc['right']) / 2
+                p_left = int(cpt - peak_window)
+                p_rite = int(cpt + peak_window)
+                p_lam_left = p_left - local_lambda
+                p_lam_rite = p_rite + local_lambda
+                #print(p_lam_left, p_left, cpt, p_rite, p_lam_rite)
+
+                if p_loc['chr'] != curr_chrom:
+                    del curr_data
+                    curr_data = t.get_array_chromosome(p_loc['chr'], read_extend=read_extend) # this is a numpy array
+                    curr_chrom = p_loc['chr']
+                    pb.update(curr_n)
+                    curr_n += 1
+
+                lam = curr_data[p_lam_left:p_left] + curr_data[p_rite:p_lam_rite]
+                if len(lam) == 0: # Probably a bad locus;
+                    continue
+                lam = mean(lam)
+                pea = curr_data[p_left:p_rite]
+                if len(pea) == 0:
+                    continue
+                pea = max(curr_data[p_left:p_rite])
+                #print(lam, pea, mean(curr_data[p_lam_left:p_left]) + mean(curr_data[p_rite:p_lam_rite]))
+
+                #if len(pea) == 0: # fell off edge of array
+                #    p["conditions"][it] = 0 # Need to put a value in here
+                #    continue
+
+                try:
+                    p["conditions"][it] = pea / lam
+                except ZeroDivisionError:
+                    pass
+                    #p["conditions"][it] = 100 # Don't append these, otherwise it distorts the results;
+                    # I reason that if lam == 0 then there is something wrong with this locus;
 
         expn = expression(loadable_list=peaks.linearData, cond_names=[t["name"] for t in trks])
         if log:
@@ -2049,71 +2079,66 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         rets = {f['name']: [] for f in list_of_flats}
 
         super_set_of_peaks = super_set_of_peaks.pointify().expand('loc', peak_window) # Make peaks symmetric
+        super_set_of_peaks = [p['loc'].loc for p in super_set_of_peaks]
 
         # First I estimate the local background
         for f in list_of_flats:
             sam_name  = f['name'].replace('.flat', '')
-            lam10 = [] # For the histograms
-            peaks = []
             config.log.info('Doing {0}'.format(sam_name))
 
             this_chrom = None
             this_data = None
             prog = progressbar(len(super_set_of_peaks))
+
             for i, p in enumerate(super_set_of_peaks):
-                p_loc = p['loc']
-                p_loc_chrom = p_loc['chr']
+                p_loc_chrom = p['chr']
+                p_loc_left = p['left']
+                p_loc_rite = p['right']
+
+                # Chrom cache version
                 if p_loc_chrom != this_chrom:
                     this_data = f.get_array_chromosome(p_loc_chrom)
                     this_chrom = p_loc_chrom
 
                 # I guess this is possible to be longer than the chrom:
-                lambd_left = p_loc['left']-lambda_window
+                lambd_left = p_loc_left-lambda_window
                 lambd_left = (lambd_left if lambd_left>0 else 0)
-                lambd_rite = p_loc['right']+lambda_window
+                lambd_rite = p_loc_rite+lambda_window
                 lambd_rite = (lambd_rite if lambd_rite<len(this_chrom) else len(this_chrom))
 
-                left_flank = this_data[lambd_left:p_loc['left']-peak_window]
-                rite_flank = this_data[p_loc['right']+peak_window:lambd_rite]
+                left_flank = this_data[lambd_left:p_loc_left-peak_window]
+                rite_flank = this_data[p_loc_rite+peak_window:lambd_rite]
+                peak_data = this_data[p_loc_left:p_loc_rite]
 
-                peak_data = this_data[p_loc['left']:p_loc['right']]
                 # The above can fail, as peaks can come from dense data, and then be tested against a sparse flat
                 if len(peak_data) == 0:
-                    p['%s_peak_score' % sam_name] = 0 # fill the entries in, with 0 due to missing data in the array.
-                    p['%s_lam10' % sam_name] = 0
-                    p['%s_lam10std' % sam_name] = 0
-                    peaks.append(0) # Still need to fill in to get a correct average.
+                    p['peak_score'] = 0 # fill the entries in, with 0 due to missing data in the array.
+                    p['lam10'] = 0
+                    p['lam10std'] = 0
                     continue
 
-                p['%s_lam10' % sam_name] = utils.mean(left_flank + rite_flank)
-                p['%s_lam10std' % sam_name] = utils.std(left_flank + rite_flank)
-                lam10.append(utils.mean(left_flank + rite_flank)) # For the global Z
-
-                p['%s_peak_score' % sam_name] = max(peak_data) # should this be the max?
-                #p['%s_enrichment' % sam_name] = p['%s_peak_score' % sam_name] / p['%s_lam10' % sam_name]
-                peaks.append(p['%s_peak_score' % sam_name])
-
-                #std = numpy.std(p['%s_lam10' % sam_name])
-                #if numpy.std(p['%s_lam10' % sam_name]) == 0:
-                #    print(numpy.std(p['%s_lam10' % sam_name]))
-                #Z = (p['%s_peak_score' % sam_name] - p['%s_lam10' % sam_name]) / numpy.std(p['%s_lam10' % sam_name])
-                #p['%s_localZ' % sam_name] = Z
+                all_lambda = left_flank + rite_flank
+                mean_lambda = sum(all_lambda) / len(all_lambda)
+                p['lam10'] = mean_lambda
+                p['lam10std'] = pstdev(all_lambda)
+                p['peak_score'] = max(peak_data) # should this be the max?
                 prog.update(i)
 
-            avg = numpy.average(lam10)
-            std = numpy.std(lam10)
+            lam10 = [p['lam10'] for p in super_set_of_peaks]
+            avg = mean(lam10)
+            std = pstdev(lam10)
             config.log.info('Average background: %.3f' % avg)
             config.log.info('Average STDev: %.3f' % std)
 
             thresh = avg + (std * Z_threshold)
-            config.log.info('Guessed threshold (For a Z of %s) actual threshold = %.2f' % (Z_threshold, thresh))
+            config.log.info('Guessed threshold value of {1:.2f} (For a Z of {0})'.format(Z_threshold, thresh))
 
             # Plot the histogram:
             if filename:
                 fig = self.draw.getfigure(**kargs)
                 ax = fig.add_subplot(111)
                 ax.hist(lam10, bins=50, range=[0,50], histtype='step', label='Background')
-                ax.hist(peaks, bins=50, range=[0,50], histtype='step', label='Peaks')
+                ax.hist([p['peak_score'] for p in super_set_of_peaks], bins=50, range=[0,50], histtype='step', label='Peaks')
                 ax.axvline(avg, ls=':', color='red')
                 ax.axvline(avg+std, ls=':', color='green')
                 ax.legend()
@@ -2122,19 +2147,17 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             # redefine peaks:
             prog = progressbar(len(super_set_of_peaks))
             for i, p in enumerate(super_set_of_peaks):
-                # Data is done' don't grab twice:
-
-                # A simple filter for >max value in the peak:
-                # This sort of thing is never a good idea:
-                #if p['%s_peak_score' % sam_name] < 10: # simple filter for weak peaks
-                #    continue
-                # There are a bunch of zero cases you should just delete
-
                 # First, filter on the global Z:
-                if p['%s_peak_score' % sam_name] > thresh:
+                if p['peak_score'] > thresh:
                     # Then filter on the localz:
-                    if p['%s_peak_score' % sam_name] > (p['%s_lam10' % sam_name] + (p['%s_lam10std' % sam_name]*Z_threshold)):
-                        rets[f['name']].append(p)
+                    if p['peak_score'] > (p['lam10'] + (p['lam10std']*Z_threshold)):
+                        p_add = {'loc': location(chr=p['chr'], left=p['left'], right=p['right'])}
+                        p_add['peak_height'] = p['peak_score']
+                        try:
+                            p_add['Z-score'] = ((p['peak_score'] - p['lam10']) / p['lam10std'])
+                        except ZeroDivisionError:
+                            p_add['Z-score'] = 100
+                        rets[f['name']].append(p_add)
 
                 prog.update(i)
 
@@ -2149,3 +2172,386 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             config.log.info('    %s: %s peaks' % (f, len(rets[f])))
 
         return(rets)
+
+    def chip_seq_heatmap(self,
+        list_of_peaks,
+        list_of_trks,
+        filename:str = None,
+        normalise = False,
+        bins:int = 100,
+        pileup_distance:int = 1000,
+        cache_data=False,
+        bracket=None,
+        range_bracket=None,
+        frames = True,
+        row_labels = None,
+        col_labels = None,
+        read_extend:int = 200,
+        imshow:bool = True,
+        cmap = cm.plasma,
+        log_pad = None,
+        log = 2,
+        per_column_bracket:bool = False,
+        sort_by_sum_intensity:bool = False,
+        sort_by_intensity:bool = False,
+        size = None,
+        **kargs):
+        """
+        **Purpose**
+            Draw heatmaps for the indicated list of peaks.
+
+            peaks will be piled up on top of each other in proportional blocks (separated by a line).
+
+            pileups will be plotted above, and each
+
+        **Arguments**
+            list_of_peaks (Required)
+                A list of genelists of peaks from your ChIP-seq data to interrogate.
+                The peaks will be stacked from bottom to top
+
+            list_of_trks (Required)
+                A list of trks to draw the sequence tag reads from to build the pileups.
+
+            filename (Optional, default=None)
+                If set to a string a heatmap & pileup will be saved to filename.
+
+            normalise (Optional, default=False)
+                Normalize the read pileup data within each library to the size of the
+                library to assist in cross-comparison of ChIP-seq libraries.
+
+            pileup_distance (Optional, default=1000)
+                distance around the particular bin to draw in the pileup.
+
+            read_extend (Optional, default=200)
+                The size in base pairs to extend the read. If a strand is present it will expand
+                from the 3' end of the read.
+
+            row_labels (Optional, default= from the peak.name)
+                row labels for the heatmaps;
+
+            col_labels (Optional, default=from the trk['name'])
+                column labels
+
+            bins (Optional, default=100)
+                number of bins to use for the pileup. Best to use conservative numbers (30-200) as
+                large numbers of bins can consume huge amounts of memory.
+
+            log (Optional, default=2)
+                Use logarithms for the heatmap. Possible options are 2 and 10.
+
+            cmap (Optional, default=matplotlib.cm.plasma)
+                A colour map for the heatmap.
+
+            sort_by_sum_intensity (Optional, default=False)
+                False: USe the order that the peaks arrived in
+                True: Sort by the sums of intensities across all columns. (Sorting is before bracket)
+
+                Note, exclusive with sort_by_intensity
+
+            sort_by_intensity (Optional, defualt=False)
+                False: No sorting
+                True: Sort by the sum of each row, but independently for each heatmap;
+
+                Note, exclusive with sort_by_sum_intensity
+
+            ######## Bracket system:
+
+            There area bunch of args here.
+
+            per_column_bracket sets a bracket for each column (track) in the heatmaps. If this is True,
+            you should use the range_bracket system.
+
+            If per_column_bracket is False, then you can use the range_bracket system (recommended),
+            but you cna also set your own bracket with the bracket option.
+
+            per_column_bracket (Optional, default=False)
+                Have a bracket for each column, or (when False) a single bracket for all of the data
+
+            range_bracket (Optional, default=[0.4, 0.9], exclusive with range_bracket)
+                chip_seq_heatmap can have column-wise (track-wise) specific brackets. So, only range_bracket is valid
+
+                Okay, hold your hats, this is complicated.
+
+                range_bracket will bracket the range of values as a fraction between [min(data), max(data)]
+                i.e. If range_bracket=0.5 (the default) then the data is bracketed as:
+                [max(data)*range_bracket[0], max(data)*range_bracket[1]]. The practical upshot of this is it allows you to shift
+                the colour bracketing on the heatmap around without having to spend a long time finding
+                a suitable bracket value.
+
+                Bracketing is performed AFTER log.
+
+                Typical bracketing would be something like [0.4, 0.9]
+
+                By default glbase attempts to guess the best range to draw based on the
+                median and the stdev. It may not always succeed.
+
+            cache_data (Optional, default=False)
+                cache the pileup data into the file specified in cache_data. This speeds up reanalysis.
+                Note that storage of data is AFTER normalisation, resolution, pileup_distance,
+                bins, but before heatmap drawing.
+
+                This allows you to store the slow part of chip_seq_heatmap()
+                and so iterate through different heatmap drawing options without having to
+                do the whole pileup again.
+
+                note that if cache_data file does not exist then it will be created and
+                pileup data generated. If the file does exist, data will be read from that
+                file and used for heatmap drawing.
+
+            frames (Optional, default=True)
+                Draw black frames around the heatmaps and category maps.
+
+            imshow (Optional, default=False)
+                Embed the heatmap as an image inside a vector file. (Uses matplotlib imshow
+                to draw the heatmap part of the figure. Allows very large matrices to
+                be saved as a reasonably sized svg/pdf, with the heatmap part as a raster image
+                and all other elements as vectors).
+
+        **Returns**
+            Returns None
+        """
+        assert not (range_bracket and bracket), "You can't use both bracket and range_bracket"
+        assert False not in ['loc' in gl.keys() for gl in list_of_peaks], 'At least one of your peak data (list_of_peaks) does not contain a "loc" key'
+        assert not (sort_by_sum_intensity and sort_by_intensity), 'sort_by_sum_intensity and sort_by_intensity cannot both be True'
+
+        total_rows = 0
+
+        # Get the size of each library if we need to normalize the data.
+        if normalise:
+            # get and store the read_counts for each library to reduce an sqlite hit.
+            read_totals = [trk.get_total_num_reads()/float(1e6) for trk in list_of_trks]
+
+        # I will need to go back through the chr_blocks data and add in the pileup data:
+        bin_size = int((pileup_distance+pileup_distance) / bins)
+        #block_len = pileup_distance+pileup_distance # get the block size
+        data = None
+
+        # Populate the datastores:
+        matrix = {}
+        pileup = {}
+        for tindex, _ in enumerate(list_of_trks):
+            matrix[tindex] = {} # Populate the final matrix
+            pileup[tindex] = {} # Populate the final matrix
+            for plidx, peaklist in enumerate(list_of_peaks):
+                matrix[tindex][plidx] = {} # Populate the final matrix
+                pileup[tindex][plidx] = {} # Populate the final matrix
+                for pindex, peak in enumerate(peaklist):
+                    matrix[tindex][plidx][pindex] = None
+                    pileup[tindex][plidx][pindex] = None
+
+        # Populate the order data so I can use the chromosome cache system;
+        porder = {}
+        for plidx, peaklist in enumerate(list_of_peaks):
+            porder[plidx] = {} # make an index hitter so that order is preserved:
+            for pindex, peak in enumerate(peaklist):
+                p_loc_chrom = peak['loc']['chr']
+                if p_loc_chrom not in porder[plidx]:
+                    porder[plidx][p_loc_chrom] = []
+                porder[plidx][p_loc_chrom].append(pindex)
+
+        # sort out cached_data
+        if cache_data and os.path.isfile(cache_data): # reload previously cached data.
+            oh = open(os.path.realpath(cache_data), "rb")
+            matrix = pickle.load(oh)
+            oh.close()
+            config.log.info("chip_seq_heatmap: Reloaded previously cached pileup data: '%s'" % cache_data)
+            # sanity check the matrix data
+            assert isinstance(matrix, dict), '{0} does not match the expected data, suggest you rebuild'.format(cache_data)
+            assert isinstance(matrix[0], dict), '{0} does not match the expected data, suggest you rebuild'.format(cache_data)
+            assert isinstance(matrix[0][0], (numpy.ndarray, numpy.generic)), '{0} does not match the expected data, suggest you rebuild'.format(cache_data)
+            assert len(matrix) == len(list_of_trks), '{0} does not match the expected data, suggest you rebuild'.format(cache_data)
+            assert len(matrix[0]) == len(list_of_peaks), '{0} does not match the expected data, suggest you rebuild'.format(cache_data)
+            for it, t in enumerate(list_of_trks):
+                for ip, p in enumerate(list_of_peaks):
+                    assert matrix[it][ip].shape == (len(p), bins), '{0} ({1} {2}) does not match the expected data, suggest you rebuild'.format(cache_data, t['name'], p.name)
+        else:
+            # No cached data, so we have to collect ourselves.
+            expected_len = pileup_distance * 2
+            config.log.info('chip_seq_heatmap: Collecting pileup data...')
+            p = progressbar(len(list_of_trks))
+            # New version that grabs all data and does the calcs in memory, uses more memory but ~2-3x faster
+            for tindex, trk in enumerate(list_of_trks):
+                for plidx, peaklist in enumerate(list_of_peaks):
+                    for chrom in porder[plidx]:
+                        # The chr_blocks iterates across all chromosomes, so this only hits the db once per chromosome:
+                        data = trk.get_array_chromosome(chrom, read_extend=read_extend) # This will use the fast cache version if available.
+
+                        for pidx, peak in enumerate(porder[plidx][chrom]): # peak is the index to look into
+                            left = peaklist.linearData[peak]['loc']['left']
+                            rite = peaklist.linearData[peak]['loc']['right']
+                            cpt = (left + rite) // 2
+                            left = cpt - pileup_distance
+                            rite = cpt + pileup_distance
+
+                            # It's possible to ask for data beyond the edge of the actual data. truncate...
+                            if rite > len(data):
+                                rite = len(data)
+                            if left > len(data):
+                                left = len(data)
+
+                            dd = data[left:rite]
+                            while len(dd) < expected_len: # pad out any missing 0
+                                dd.append(0)
+
+                            # Fill in the matrix table:
+                            #pileup[tindex][plidx][pidx] += pil_data
+                            matrix[tindex][plidx][peak] = [sum(dd[i:i+bin_size]) for i in range(0, len(dd), bin_size)]
+                p.update(tindex)
+
+            # convert to numpy arrays;
+            for tindex, _ in enumerate(list_of_trks):
+                for plidx, peaklist in enumerate(list_of_peaks):
+                    twoD_list = []
+                    for pindex, _ in enumerate(peaklist): # preserve original order;
+                        #print(len(matrix[tindex][plidx][pindex]))
+                        twoD_list.append(matrix[tindex][plidx][pindex])
+                        #print(matrix[tindex][plidx][pindex])
+
+                    #print(twoD_list)
+                    matrix[tindex][plidx] = numpy.array(twoD_list)
+                    #print(matrix[tindex][plidx])
+                    #print(matrix[tindex][plidx].shape)
+
+            if cache_data: # store the generated data for later.
+                oh = open(cache_data, "wb")
+                pickle.dump(matrix, oh, -1)
+                oh.close()
+                config.log.info("chip_seq_heatmap: Saved pileup data to cache file: '{0}'".format(cache_data))
+
+        colbar_label = "Tag density"
+
+        if log:
+            if not log_pad:
+                log_pad = 0.1
+
+            if not range_bracket: # suggest reasonable range;
+                range_bracket = [0.6, 0.9]
+
+            for tindex, _ in enumerate(list_of_trks):
+                for plidx, peaklist in enumerate(list_of_peaks):
+
+                    if log == 2:
+                        matrix[tindex][plidx] = numpy.log2(matrix[tindex][plidx]+log_pad)
+                        colbar_label = "Log2(Tag density)"
+                    elif log == 10:
+                        matrix[tindex][plidx] = numpy.log10(matrix[tindex][plidx]+log_pad)
+                        colbar_label = "Log10(Tag density)"
+                    else:
+                        raise AssertionError('log={0} not found'.format(log))
+        else:
+            if not range_bracket: # suggest reasonable range;
+                range_bracket = [0.0, 0.1]
+
+        if normalise:
+            colbar_label = "Normalised %s" % colbar_label
+
+            # Data is always saved unnormalised;
+            for plidx, peaklist in enumerate(list_of_peaks):
+                for tindex, _ in enumerate(list_of_trks):
+                    matrix[tindex][plidx] /= read_totals[tindex]
+
+        if sort_by_sum_intensity:# i.e. sort for all columns and preserve row order
+            for plidx, peaklist in enumerate(list_of_peaks):
+                new_order = []
+                heat_sums = None
+                for tindex, _ in enumerate(list_of_trks):
+                    s = numpy.sum(matrix[tindex][plidx], axis=1)
+                    if heat_sums is None:
+                        heat_sums = s
+                    else:
+                        heat_sums += s
+
+                d = [(i, v) for i, v in enumerate(heat_sums)]
+                d = sorted(d, key=itemgetter(1))
+                new_order = list([i[0] for i in d])
+                for tindex, _ in enumerate(list_of_trks):
+                    matrix[tindex][plidx] = matrix[tindex][plidx][new_order,:]
+
+        elif sort_by_intensity:# i.e. each heatmap is independent
+            for plidx, peaklist in enumerate(list_of_peaks):
+                new_order = []
+                heat_sums = None
+                for tindex, _ in enumerate(list_of_trks):
+                    heat_sums = numpy.sum(matrix[tindex][plidx], axis=1)
+                    d = [(i, v) for i, v in enumerate(heat_sums)]
+                    d = sorted(d, key=itemgetter(1))
+                    new_order = list([i[0] for i in d])
+                    matrix[tindex][plidx] = matrix[tindex][plidx][new_order,:]
+
+
+        if not row_labels:
+            row_labels = [p.name for p in list_of_peaks]
+
+        if not col_labels:
+            col_labels = [t['name'] for t in list_of_trks]
+
+
+        brackets = None
+
+        if per_column_bracket:
+            bracket = None
+            # Suggest brackets:
+
+            t_stats = []
+            brackets = []
+            for tindex, _ in enumerate(list_of_trks): # I can have track-wise brackets;
+                for plidx, peaklist in enumerate(list_of_peaks):
+                    tab_max = max([tab.max() for tab in matrix[tindex][plidx]]) # need to get new tab_max for log'd values.
+                    tab_min = min([tab.min() for tab in matrix[tindex][plidx]])
+                    #tab_median = numpy.median([numpy.median(tab) for tab in list_of_tables])
+                    tab_mean = mean([numpy.average(tab) for tab in matrix[tindex][plidx]])
+                    tab_std = numpy.std(numpy.array([tab for tab in matrix[tindex][plidx]]))
+                    t_stats.append((tab_max, tab_min, tab_mean, tab_std))
+
+                config.log.info('chip_seq_heatmap: trk={0} min={1:.2f}, max={2:.2f}, mean={3:.2f}, stdev={4:.2f}'.format(list_of_trks[tindex]['name'], tab_min, tab_max, tab_mean, tab_std))
+
+                tab_range = tab_max - tab_min
+                top = tab_min + tab_range*range_bracket[0]
+                bot = tab_min + tab_range*range_bracket[1]
+                brackets.append([top, bot])
+                config.log.info("chip_seq_heatmap: trk={0}, suggested bracket=({1:.2f}, {2:.2f})".format(list_of_trks[tindex]['name'], brackets[tindex][0], brackets[tindex][1]))
+        else:
+            # Suggest brackets:
+            if bracket:
+                pass # USe the arg
+            else: # Guess a bracket for all heatmaps;
+                t_stats = []
+                brackets = []
+                for tindex, _ in enumerate(list_of_trks): # I can have track-wise brackets;
+                    for plidx, peaklist in enumerate(list_of_peaks):
+                        tab_max = max([tab.max() for tab in matrix[tindex][plidx]]) # need to get new tab_max for log'd values.
+                        tab_min = min([tab.min() for tab in matrix[tindex][plidx]])
+                        #tab_median = numpy.median([numpy.median(tab) for tab in list_of_tables])
+                        tab_mean = mean([numpy.average(tab) for tab in matrix[tindex][plidx]])
+                        tab_std = numpy.std(numpy.array([tab for tab in matrix[tindex][plidx]]))
+                        t_stats.append((tab_max, tab_min, tab_mean, tab_std))
+
+                    config.log.info('chip_seq_heatmap: trk={0} min={1:.2f}, max={2:.2f}, mean={3:.2f}, stdev={4:.2f}'.format(list_of_trks[tindex]['name'], tab_min, tab_max, tab_mean, tab_std))
+
+                    tab_range = tab_max -tab_min
+                    top = tab_min + tab_range*range_bracket[0]
+                    bot = tab_min + tab_range*range_bracket[1]
+                    brackets.append([top, bot])
+
+                bracket = [max([b[0] for b in brackets]), max([b[1] for b in brackets])]
+                brackets = None
+                config.log.info("chip_seq_heatmap: suggested bracket=({0:.2f}, {1:.2f})".format(bracket[0], bracket[1]))
+
+        if filename:
+            real_filename = self.draw.grid_heatmap(
+                data_dict_grid=matrix,
+                filename=filename,
+                row_labels=row_labels,
+                col_labels=col_labels,
+                colbar_label=colbar_label,
+                imshow=imshow,
+                size=size,
+                colour_map=cmap,
+                bracket=bracket,
+                brackets=brackets,
+                frames=frames,
+                dpi=300,
+                )
+
+        config.log.info("chip_seq_heatmap: Saved overlap heatmap to '{0}'".format(real_filename))
+        return None
