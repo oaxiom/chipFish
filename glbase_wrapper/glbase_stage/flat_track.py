@@ -8,6 +8,7 @@ New reimplementation using hdf5.
 """
 
 import pickle, sys, os, struct, configparser, math, zlib
+from operator import itemgetter
 
 from .location import location
 from .data import positive_strand_labels, negative_strand_labels
@@ -15,7 +16,9 @@ from .data import positive_strand_labels, negative_strand_labels
 from array import array
 from .draw import draw
 from .progress import progressbar
+from .genelist import Genelist
 from . import config
+from . import utils
 
 import numpy
 import matplotlib.pyplot as plot
@@ -51,6 +54,7 @@ class flat_track():
 
         """
         self.readonly = True
+        self._draw = None
 
         if new:
             self.readonly = False
@@ -236,7 +240,6 @@ class flat_track():
         """
         assert not self.readonly, 'readonly!'
         # Write the chorm names to the hdf5
-        print(self.chrom_names)
         dat = [str(n).encode("ascii", "ignore") for n in self.chrom_names]
         self.hdf5_handle.create_dataset('all_chrom_names', (len(self.chrom_names), 1), 'S10', dat)
 
@@ -351,7 +354,7 @@ class flat_track():
                     if i["strand"] in negative_strand_labels:
                         a = a[::-1]
 
-                if a: # It's possible that get() will return nothing
+                if a.any(): # It's possible that get() will return nothing
                     # For example if you send bad chromosome names or the locations are nonsensical (things like:
                     # chr9_GL000201_RANDOM:-500-1500
                     hist += a
@@ -444,7 +447,7 @@ class flat_track():
 
         config.log.info("pileup(): Saved '%s'" % actual_filename)
 
-        return(all_hists, bkgd)
+        return (all_hists, bkgd)
 
     def heatmap(self, filename=None, genelist=None, distance=1000, read_extend=200, log=2,
         bins=200, sort_by_intensity=True, raw_heatmap_filename=None, bracket=None,
@@ -655,5 +658,5 @@ class flat_track():
             config.log.info("track.heatmap(): Saved raw_heatmap_filename to '%s'" % raw_heatmap_filename)
 
         config.log.info("track.heatmap(): Saved heatmap tag density to '%s'" % filename)
-        return({"data": data, 'sorted_original_genelist': sorted_locs})
+        return {"data": data, 'sorted_original_genelist': sorted_locs}
 

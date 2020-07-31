@@ -1137,9 +1137,9 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         total_rows = 0
 
         peak_lengths = sum([len(p) for p in list_of_peaks])
-        config.log.info("chip_seq_cluster_heatmap: Started with {0} redundant peaks".format(peak_lengths))
+        config.log.info("chip_seq_cluster_heatmap: Started with {0:,} redundant peaks".format(peak_lengths))
         total_rows, chr_blocks = self.__peak_cluster(list_of_peaks, merge_peaks_distance)
-        config.log.info("chip_seq_cluster: Found %s unique genomic regions" % total_rows)
+        config.log.info("chip_seq_cluster: Found {0:,} unique genomic regions".format(total_rows))
 
         if _get_chr_blocks:
             return chr_blocks
@@ -1159,7 +1159,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
 
         return e
 
-    def chip_seq_cluster_heatmap(self, list_of_peaks, list_of_trks, filename=None, normalise=False, bins=20,
+    def chip_seq_cluster_heatmap(self, list_of_peaks, list_of_trks, filename=None, norm_by_library_size=False, bins=20,
         pileup_distance=1000, merge_peaks_distance=400, sort_clusters=True, cache_data=False, bracket=None,
         range_bracket=None, frames=False, titles=None, read_extend=200, imshow=True, cmap=cm.plasma,
         log_pad=None, log=2,
@@ -1226,7 +1226,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             filename (Optional, default=None)
                 If set to a string a heatmap will be saved to filename.
 
-            normalise (Optional, default=False)
+            norm_by_library_size (Optional, default=False)
                 Normalize the read pileup data within each library to the size of the
                 library to assist in cross-comparison of ChIP-seq libraries.
 
@@ -1332,14 +1332,9 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         assert False not in ['loc' in gl.keys() for gl in list_of_peaks], 'One of your peak data (list_of_peaks) does not contain a "loc" key'
 
         peak_lengths = sum([len(p) for p in list_of_peaks])
-        config.log.info("chip_seq_cluster_heatmap: Started with {0} redundant peaks".format(peak_lengths))
+        config.log.info("chip_seq_cluster_heatmap: Started with {0:,} redundant peaks".format(peak_lengths))
         total_rows, chr_blocks = self.__peak_cluster(list_of_peaks, merge_peaks_distance)
-        config.log.info("chip_seq_cluster: Found %s unique genomic regions" % total_rows)
-
-        # Get the size of each library if we need to normalize the data.
-        if normalise:
-            # get and store the read_counts for each library to reduce an sqlite hit.
-            read_totals = [trk.get_total_num_reads()/float(1e6) for trk in list_of_trks]
+        config.log.info("chip_seq_cluster: Found {0:,} unique genomic regions".format(total_rows))
 
         # I will need to go back through the chr_blocks data and add in the pileup data:
         bin_size = int((resolution+resolution+pileup_distance) / bins)
@@ -1357,6 +1352,12 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         else:
             # No cached data, so we have to collect ourselves.
             config.log.info('chip_seq_cluster_heatmap: Collecting pileup data...')
+
+            # Get the size of each library if we need to normalize the data.
+            if norm_by_library_size:
+                # get and store the read_counts for each library to reduce an sqlite hit.
+                read_totals = [trk.get_total_num_reads()/float(1e6) for trk in list_of_trks]
+
             p = progressbar(len(list_of_trks))
             # New version that grabs all data and does the calcs in memory, uses more memory but ~2-3x faster
             for pindex, trk in enumerate(list_of_trks):
@@ -1366,8 +1367,10 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                     data = trk.get_array_chromosome(chrom, read_extend=read_extend) # This will use the fast cache version if available.
 
                     for block_id in chr_blocks[chrom]:
+
                         left = block_id[0] - pileup_distance
                         right = block_id[1] + pileup_distance
+
                         # It's possible to ask for data beyond the edge of the actual data. So trim the right vals
                         if right > len(data):
                             right = len(data)
@@ -1375,15 +1378,16 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                             left = len(data)
 
                         dd = data[left:right]
-                        #dd = trk.get(loc=None, c=chrom, left=left, rite=right) # single gets are faster than the above messy stuff;
+                        #dd = trk.get(loc=None, c=chrom, left=left, rite=right) # I'm not sure why, but this is slow here, but superfast in pileup()
 
                         if len(dd) < block_len: # This should be a very rare case...
+                            print('Block miss')
                             num_missing = block_len - len(dd)
                             ad = numpy.zeros(num_missing)
                             dd = numpy.append(dd, ad)
                             dd = list(dd)
 
-                        if normalise:
+                        if norm_by_library_size:
                             # normalise before bin?
                             pil_data = [av/read_totals[pindex] for av in dd]
 
@@ -1488,7 +1492,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 else:
                     list_of_tables[index] = numpy.array(list_of_tables[index])
 
-        if normalise:
+        if norm_by_library_size:
             colbar_label = "Normalised %s" % colbar_label
 
         self.__pileup_y_label = "Tag density" # Trust me, you don't want to log them...
@@ -1901,7 +1905,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         return(expn)
 
     def measure_enrichment(self, trks, peaks, log=False,
-        read_extend=0, peak_window=100,local_lambda=5000,
+        read_extend=0, peak_window=200,local_lambda=5000,
         **kargs):
         """
         **Purpose**
@@ -1949,45 +1953,49 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         all_chroms = len(set([i['chr'] for i in peaks['loc']])) * len(trks)
         all_sizes = [t.get_total_num_reads() / 1e6 for t in trks]
 
+        lambda_window = local_lambda
+        peak_window = peak_window
+        peak_window_half = peak_window //2
+        lambda_inner = lambda_window - peak_window_half
+
+        prog = progressbar(len(trks))
         for it, t in enumerate(trks):
-            pb = progressbar(all_chroms)
-            curr_chrom = None
             for p in peaks:
-                p_loc = p['loc']
-                cpt = (p_loc['left'] + p_loc['right']) / 2
-                p_left = int(cpt - peak_window)
-                p_rite = int(cpt + peak_window)
-                p_lam_left = p_left - local_lambda
-                p_lam_rite = p_rite + local_lambda
-                #print(p_lam_left, p_left, cpt, p_rite, p_lam_rite)
+                p_loc_chrom = 'chr{0}'.format(p['loc'].loc['chr'])
+                p_loc = (p['loc'].loc['left'] + p['loc'].loc['right']) // 2
+                p_loc_left = p_loc - peak_window_half
+                p_loc_rite = p_loc + peak_window_half
 
-                if p_loc['chr'] != curr_chrom:
-                    del curr_data
-                    curr_data = t.get_array_chromosome(p_loc['chr'], read_extend=read_extend) # this is a numpy array
-                    curr_chrom = p_loc['chr']
-                    pb.update(curr_n)
-                    curr_n += 1
+                #all_data = f.get(loc=None, c=p_loc_chrom, left=p_loc, rite=p_loc)
+                all_data = t.mats[p_loc_chrom][p_loc-lambda_window:p_loc+lambda_window] # You can just reach in;
 
-                lam = curr_data[p_lam_left:p_left] + curr_data[p_rite:p_lam_rite]
-                if len(lam) == 0: # Probably a bad locus;
+                peak_data = all_data[lambda_inner:lambda_inner+peak_window]
+
+                # The above can fail, as peaks can come from dense data, and then be tested against a sparse flat
+                if len(peak_data) == 0:
                     continue
-                lam = mean(lam)
-                pea = curr_data[p_left:p_rite]
-                if len(pea) == 0:
-                    continue
-                pea = max(curr_data[p_left:p_rite])
-                #print(lam, pea, mean(curr_data[p_lam_left:p_left]) + mean(curr_data[p_rite:p_lam_rite]))
 
-                #if len(pea) == 0: # fell off edge of array
-                #    p["conditions"][it] = 0 # Need to put a value in here
-                #    continue
+                left_flank = all_data[0:lambda_inner]
+                rite_flank = all_data[lambda_inner+peak_window:]
+
+                len_lambda = len(left_flank) + len(rite_flank)
+                sum_lambda = float(left_flank.sum()) + float(rite_flank.sum()) # bug if pstdev kept as numpy numbers
+
+                lam = sum_lambda / len_lambda # mean_lambda
+                lam_std = max([0.001, left_flank.std(), rite_flank.std()]) # Bracket at 0.001
+                pea = max(peak_data) # should this be the max?
 
                 try:
-                    p["conditions"][it] = pea / lam
+                    if pea != 0:
+                        #p["conditions"][it] = float(pea) / float(lam) # Otherwise numpy float64s
+                        #p["conditions"][it] = lam_std / pea # CV
+                        p["conditions"][it] =  (pea-lam) / lam_std # Z
                 except ZeroDivisionError:
                     pass
                     #p["conditions"][it] = 100 # Don't append these, otherwise it distorts the results;
                     # I reason that if lam == 0 then there is something wrong with this locus;
+
+            prog.update(it)
 
         expn = expression(loadable_list=peaks.linearData, cond_names=[t["name"] for t in trks])
         if log:
@@ -2073,8 +2081,9 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         assert len(set([i['name'] for i in list_of_flats])) == len(list_of_flats), 'the "name" slots of the flats are not unique'
         assert 'loc' in super_set_of_peaks.keys(), 'super_set_of_peaks does not contain a "loc" (genomic location) key'
 
-        peak_window = peak_window // 2
-        lambda_window = lambda_window - peak_window
+        peak_window = peak_window
+        peak_window_half = peak_window //2
+        lambda_inner = lambda_window - peak_window_half
 
         rets = {f['name']: [] for f in list_of_flats}
 
@@ -2091,24 +2100,15 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             prog = progressbar(len(super_set_of_peaks))
 
             for i, p in enumerate(super_set_of_peaks):
-                p_loc_chrom = p['chr']
-                p_loc_left = p['left']
-                p_loc_rite = p['right']
+                p_loc_chrom = 'chr{0}'.format(p['chr'])
+                p_loc = (p['left'] + p['right']) // 2
+                p_loc_left = p_loc - peak_window_half
+                p_loc_rite = p_loc + peak_window_half
 
-                # Chrom cache version
-                if p_loc_chrom != this_chrom:
-                    this_data = f.get_array_chromosome(p_loc_chrom)
-                    this_chrom = p_loc_chrom
+                #all_data = f.get(loc=None, c=p_loc_chrom, left=p_loc, rite=p_loc)
+                all_data = f.mats[p_loc_chrom][p_loc-lambda_window:p_loc+lambda_window] # You can just reach in;
 
-                # I guess this is possible to be longer than the chrom:
-                lambd_left = p_loc_left-lambda_window
-                lambd_left = (lambd_left if lambd_left>0 else 0)
-                lambd_rite = p_loc_rite+lambda_window
-                lambd_rite = (lambd_rite if lambd_rite<len(this_chrom) else len(this_chrom))
-
-                left_flank = this_data[lambd_left:p_loc_left-peak_window]
-                rite_flank = this_data[p_loc_rite+peak_window:lambd_rite]
-                peak_data = this_data[p_loc_left:p_loc_rite]
+                peak_data = all_data[lambda_inner:lambda_inner+peak_window]
 
                 # The above can fail, as peaks can come from dense data, and then be tested against a sparse flat
                 if len(peak_data) == 0:
@@ -2117,11 +2117,16 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                     p['lam10std'] = 0
                     continue
 
-                all_lambda = left_flank + rite_flank
-                mean_lambda = sum(all_lambda) / len(all_lambda)
-                p['lam10'] = mean_lambda
-                p['lam10std'] = pstdev(all_lambda)
+                left_flank = all_data[0:lambda_inner]
+                rite_flank = all_data[lambda_inner+peak_window:]
+
+                len_lambda = len(left_flank) + len(rite_flank)
+                sum_lambda = float(left_flank.sum()) + float(rite_flank.sum()) # bug if pstdev kept as numpy numbers
+
+                p['lam10'] = sum_lambda / len_lambda # mean_lambda
+                p['lam10std'] = max([0.001, left_flank.std(), rite_flank.std()]) # Bracket at 0.001
                 p['peak_score'] = max(peak_data) # should this be the max?
+
                 prog.update(i)
 
             lam10 = [p['lam10'] for p in super_set_of_peaks]
@@ -2131,7 +2136,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             config.log.info('Average STDev: %.3f' % std)
 
             thresh = avg + (std * Z_threshold)
-            config.log.info('Guessed threshold value of {1:.2f} (For a Z of {0})'.format(Z_threshold, thresh))
+            config.log.info('Guessed threshold value of {1:.2f} (For a Z of {0:.1f})'.format(Z_threshold, thresh))
 
             # Plot the histogram:
             if filename:
@@ -2140,7 +2145,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 ax.hist(lam10, bins=50, range=[0,50], histtype='step', label='Background')
                 ax.hist([p['peak_score'] for p in super_set_of_peaks], bins=50, range=[0,50], histtype='step', label='Peaks')
                 ax.axvline(avg, ls=':', color='red')
-                ax.axvline(avg+std, ls=':', color='green')
+                ax.axvline(avg+(std * Z_threshold), ls=':', color='green')
                 ax.legend()
                 self.draw.savefigure(fig, '{0}_{1}.png'.format(filename, sam_name))
 
@@ -2150,9 +2155,12 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 # First, filter on the global Z:
                 if p['peak_score'] > thresh:
                     # Then filter on the localz:
-                    if p['peak_score'] > (p['lam10'] + (p['lam10std']*Z_threshold)):
+                    z_score = (p['lam10'] + (p['lam10std']*Z_threshold))
+                    if p['peak_score'] > z_score:
                         p_add = {'loc': location(chr=p['chr'], left=p['left'], right=p['right'])}
-                        p_add['peak_height'] = p['peak_score']
+                        p_add['lambda_mean'] = p['lam10']
+                        p_add['lambda_std'] = p['lam10std']
+                        p_add['peak_score'] = p['peak_score']
                         try:
                             p_add['Z-score'] = ((p['peak_score'] - p['lam10']) / p['lam10std'])
                         except ZeroDivisionError:

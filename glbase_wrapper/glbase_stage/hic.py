@@ -31,6 +31,15 @@ if config.H5PY_AVAIL:
 else:
     raise AssertionError('Asked for a hic, but h5py is not avaialble')
 
+def reshap_mats(mat, dimX, dimY):
+    '''
+    Sometimes the matrices are slightly off, reshape them to the same sizes.
+    reshapes matB to the dimensions provided
+
+    '''
+    interpolator_func = interpolate.interp2d(range(mat.shape[0]), range(mat.shape[1]), mat, kind='linear')
+    return interpolator_func(dimX, dimY)
+
 def merge_hiccys(new_hic_filename, name, *hics):
     '''
     **Purpose**
@@ -62,28 +71,31 @@ def merge_hiccys(new_hic_filename, name, *hics):
     # For the first one to merge, do an OS copy for speed and setup
     copyfile(hics[0], new_hic_filename)
 
-    newhic = hic(filename=new_hic_filename, name=name, new=False)
-    newhic.readonly = False # Make it editable
+    newhic = hic(filename=new_hic_filename, name=name, new=False, _readplus=True)
+
+    print(newhic.mats['chr10'])
 
     # I bind all the hics:
     hics = [hic(filename=f, name=f) for f in hics[1:]]
 
     for chrom in newhic.all_chrom_names:
-        # config.log.info('Merging chrom "%s"' % chrom)
-
         data = numpy.array(newhic.mats[chrom])
         for h in hics:
-            data += h.mats[chrom]
+            newdata = h.mats[chrom]
 
-    data /= len(hics)
-    newhic.mats[chrom] = data
+            if newdata.shape != data.shape:
+                newdata = reshap_mats(newdata, data.shape[0], data.shape[1])
+            data += newdata
+
+        data /= (len(hics)+1)
+        newhic.mats[chrom][:] = data
 
     newhic.close()
-    config.log.info('Merged %s matrices' % (len(hics)+1,))
+    config.log.info('Merged {0} matrices'.format(len(hics)+1,))
 
 # I'm not using the base_genelist class, so, you need to add in defs as needed.
 class hic:
-    def __init__(self, filename=None, name='', new=False, inter_chrom_only=True):
+    def __init__(self, filename=None, name='', new=False, inter_chrom_only=True, _readplus=False):
         """
         **Purpose**
             store for HiC data.
@@ -125,11 +137,15 @@ class hic:
             self.all_chrom_names = [] # Made into a set later
             self.draw = draw()
         else: # old
-            self.hdf5_handle = h5py.File(filename, 'r')
+            if _readplus:
+                self.hdf5_handle = h5py.File(filename, 'r+')
+                self.readonly = False
+            else:
+                self.hdf5_handle = h5py.File(filename, 'r')
             # TODO: fetch it back out as a set:
             self.tad_lookup = None
 
-            dat = self.hdf5_handle['all_chrom_names'].value
+            dat = self.hdf5_handle['all_chrom_names'][()]
             dat = [i[0] for i in dat]# flatten
             self.all_chrom_names = [n.decode("ascii", "ignore") for n in dat]
 
@@ -138,7 +154,7 @@ class hic:
             self.bin_lookup_by_binID = {}
             self.bin_lookup_by_chrom = {}
             for chrom in self.all_chrom_names:
-                flat_bin = self.hdf5_handle['bin_lookup/chrom_%s/bins' % chrom].value
+                flat_bin = self.hdf5_handle['bin_lookup/chrom_%s/bins' % chrom][()]
                 self.bin_lookup_by_chrom[chrom] = [(row[0], row[1], row[2], row[3]) for row in flat_bin]
 
                 for row in flat_bin:
@@ -732,7 +748,7 @@ class hic:
             raise AssertionError('chr and loc both contain values. You can only use one')
 
         if chr:
-            data = self.mats[str(chr).replace('chr', '')]
+            data = self.mats[str(chr)]
         elif loc:
             if not isinstance(loc, location):
                 loc = location(loc)
@@ -742,12 +758,15 @@ class hic:
 
             data = self.mats[loc['chr']][localLeft:localRight, localLeft:localRight]
         else:
+            raise NotImplementedError('chr=None not implemented')
             data = self.matrix # use the whole lot
 
         if not "aspect" in kargs:
             kargs["aspect"] = "square"
-        if not "colbar_label" in kargs:
-            kargs["colbar_label"] = "log2(Density)"
+
+        colbar_label = "Density"
+        if "colbar_label" in kargs:
+            colbar_label = kargs['colbar_label']
 
         fig = self.draw.getfigure(**kargs)
 
@@ -760,6 +779,7 @@ class hic:
             if log2:
                 with numpy.errstate(divide='ignore'):
                     data = numpy.log2(data)
+                colbar_label = 'Log2(Density)'
             # Faster numpy"
             data = numpy.clip(data, bracket[0], bracket[1])
             vmin = bracket[0]
@@ -768,7 +788,9 @@ class hic:
             if log2:
                 with numpy.errstate(divide='ignore'):
                     data = numpy.log2(data)
-            data[data == -numpy.inf] = 0
+                colbar_label = 'Log2(Density)'
+            #data[data == -numpy.inf] = 0
+            data = numpy.array(data)
             vmin = data.min()
             vmax = data.max()
 
@@ -796,7 +818,7 @@ class hic:
         ax0.set_frame_on(False)
 
         cb = fig.colorbar(hm, orientation="horizontal", cax=ax0, cmap=colour_map)
-        cb.set_label(kargs["colbar_label"])
+        cb.set_label(colbar_label)
         [label.set_fontsize(5) for label in ax0.get_xticklabels()]
 
         actual_filename = self.draw.savefigure(fig, filename)
@@ -1431,8 +1453,7 @@ class hic:
                 data = self.mats[chrom][localLeft:localRight, localLeft:localRight]
 
                 if data.shape != mat.shape:
-                    interpolator_func = interpolate.interp2d(range(data.shape[0]), range(data.shape[1]), data, kind='linear')
-                    data = interpolator_func(int_range, int_range)
+                    data = reshap_mats(data, int_range, int_range)
 
                 mat += data
                 p.update(aidx)
