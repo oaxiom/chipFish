@@ -165,9 +165,7 @@ class track(base_track):
 
         c.close()
 
-        if result:
-            return(True)
-        return(False)
+        return bool(result)
 
     def __has_bucket(self, chromosome, bucket_id):
         """
@@ -178,9 +176,7 @@ class track(base_track):
         # Check if we have the master chrom table?
         c.execute("SELECT * FROM bucket_ids WHERE chromosome=? AND buck_id=?", (chromosome, bucket_id))
         result = c.fetchone()
-        if result:
-            return(True)
-        return(False)  
+        return bool(result)  
 
     def add_location(self, loc, pe_loc=None, strand="+", pe_strand=None):
         """
@@ -340,7 +336,7 @@ class track(base_track):
         extended_loc = loc.expand(read_extend)
 
         result = self.get_reads(extended_loc)
-        
+
         if kde_smooth:
             return(self.__kde_smooth(loc, reads, resolution, 0, view_wid, read_extend))
 
@@ -356,34 +352,32 @@ class track(base_track):
         loc_left = loc["left"]
         loc_right = loc["right"]
         len_a = len(a)
-        
+
         for r in result:
             id, chrom, read_left, read_right, strand = r
-            
+
             if strand == "+":
                 read_right += (read_extend + 1) # coords are open
             elif strand == "-" :
                 read_left -= read_extend
                 read_right += 1 # coords are open 
-            
+
             if resolution:
                 rel_array_left = (read_left - loc_left) // resolution
                 rel_array_right = (read_right - loc_left) // resolution  
             else:
                 rel_array_left = (read_left - loc_left)
                 rel_array_right = (read_right - loc_left)          
-            
-            if rel_array_left <= 0:
-                rel_array_left = 0
-            if rel_array_right > len_a:
-                rel_array_right = len_a
-            
+
+            rel_array_left = max(rel_array_left, 0)
+            rel_array_right = min(rel_array_right, len_a)
+
             #a[rel_array_left:rel_array_right] += 1 # Numpy only
             # The below is a very tiny amount faster
-            
+
             for array_relative_location in range(rel_array_left, rel_array_right, 1):
                 a[array_relative_location] += 1
-            
+
         return(numpy.array(a))
 
 
@@ -576,10 +570,9 @@ class track(base_track):
         """
         if not self._c:
             self._c = self._connection.cursor()
-        
+
         self._c.execute("SELECT chromosome FROM main")
-        r = [i[0] for i in self._c.fetchall()]
-        return(r)
+        return [i[0] for i in self._c.fetchall()]
 
     def finalise(self):
         """
@@ -888,51 +881,46 @@ class track(base_track):
         assert "loc" in list(genelist.keys()), "appears genelist has no 'loc' key"
         assert "left" in list(genelist.linearData[0]["loc"].keys()), "appears the loc key data is malformed"
         assert log in ("e", math.e, 2, 10), "this 'log' base not supported"
-        
+
         table = []
         bin_size = int((distance*2) / bins)
-        
+
         for item in genelist.linearData:
             l = item["loc"].pointify().expand(distance)
-            
+
             row = self.get(l, read_extend=read_extend)
-       
+
             # bin the data
             row = numpy.array(utils.bin_data(row, bin_size))
-            
+
             table.append(row)            
-        
+
         # sort the data by intensity
         # no convenient numpy. So have to do myself.
-        mag_tab = []
-        for index, row in enumerate(table):
-            mag_tab.append({"n": index, "sum": row.max()})
-        
+        mag_tab = [{"n": index, "sum": row.max()} for index, row in enumerate(table)]
         if sort_by_intensity:
             mag_tab = sorted(mag_tab, key=itemgetter("sum"))
-        
+
         data = numpy.array(table)+1
-        
-        newt = []
-        for item in mag_tab:
-            newt.append(data[item["n"],])
+
+        newt = [data[item["n"],] for item in mag_tab]
         data = numpy.array(newt)
-        
+
         if log:
-            if log == "e" or log == math.e:
+            if log in ["e", math.e]:
                 data = numpy.log(data)-1
             elif log == 2:
                 data = numpy.log2(data)-1
             elif log == 10:
                 data = numpy.log10(data)-1
-               
+
         # draw heatmap
-        
+
         if not self._draw:
             self._draw = draw()
-            
+
         filename = self._draw.heatmap2(data=data, filename=filename, bracket=[1, data.max()], **kargs)
-        
+
         config.log.info("Saved pileup tag density to '%s'" % filename)
         return({"data": data})
 
@@ -941,7 +929,7 @@ def build():
     temp func for profiling
     """
     t = track(filename="testnew.trk3", name="test", new=True)
-    for n in range(0, 10000): #test = 10000
+    for _ in range(10000): #test = 10000
         l = random.randint(0, 100000)
         t.add_location(location(chr="1", left=l, right=l+35), strand="+")
     t.finalise()
@@ -953,11 +941,11 @@ if __name__ == "__main__":
     track3.py:   2.9s and 9.0s !
     """
 
-    import cProfile, pstats    
+    import cProfile, pstats
     import random, time
     from .location import location
     from .genelist import genelist
-    
+
     s = time.time()
     print("Building...", end=' ')
     cProfile.run("build()", "profile.pro")
@@ -966,21 +954,21 @@ if __name__ == "__main__":
 
     e = time.time()
     print(e-s, "s")
-    
+
     s = time.time()
     print("Fake bed...")
     # fake a bed
     newb = []
-    for n in range(0, 1000):
+    for _ in range(1000):
         l = random.randint(1000, 100000) # 1000 is for the window size. -ve locs are real bad.
         newb.append({"loc": location(chr="1", left=l, right=l+200), "strand": "+"})
     bed = genelist()
     bed.load_list(newb)
     e = time.time()
     print(e-s, "s")
-    
+
     t = track(filename="testnew.trk3")
-    
+
     print("Pileup...")
     #cProfile.run("t.pileup(genelist=bed, filename='test.png', bin_size=10, window_size=1000)", "profile.pro")
     p = pstats.Stats("profile.pro")

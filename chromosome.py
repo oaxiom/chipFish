@@ -54,9 +54,7 @@ class chromosome:
         getSequence using Chr:left-right nomenclature
         """
         loc = utils.getLocation()
-        if loc["chr"] == self.number:
-            pass
-        else:
+        if loc["chr"] != self.number:
             return("")
 
     def getFeatures(self, left, right):

@@ -756,26 +756,10 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             ABC = AB.collide(genelist=BC, key=key, delta=delta)
 
             # check for none's:
-            if AB:
-                AB = len(AB)
-            else:
-                AB = 0
-
-            if AC:
-                AC = len(AC)
-            else:
-                AC = 0
-
-            if BC:
-                BC = len(BC)
-            else:
-                BC = 0
-
-            if ABC:
-                ABC = len(ABC)
-            else:
-                ABC = 0
-
+            AB = len(AB) if AB else 0
+            AC = len(AC) if AC else 0
+            BC = len(BC) if BC else 0
+            ABC = len(ABC) if ABC else 0
             # You only need to provide the lengths, the overlaps are calculated in venn3:
             realfilename = self.draw.venn3(len(A), len(B), len(C), AB, AC, BC, ABC,
                 self.linearData[0].name, self.linearData[1].name, self.linearData[2].name,
@@ -846,12 +830,12 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         # You will only notice this if the list is short and you can see the names
 
         if normalise: #this will normalise the y-axis
-            for k in res:
+            for k, v_ in res.items():
                 # normalise to 0-->100
                 min_val = min(res[k])
                 max_val = max(res[k]) - min_val
 
-                for i, v in enumerate(res[k]):
+                for i, v in enumerate(v_):
                     res[k][i] = ((v-min_val) / max_val) * 100.0
 
         if mode == "graph":

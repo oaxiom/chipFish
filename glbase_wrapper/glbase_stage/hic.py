@@ -650,20 +650,17 @@ class hic:
                 chrom_name = 'chr%s' % chrom_name
 
             actual_filename = '%s_chrom%s.matrix' % (filename, chrom)
-            oh = open(actual_filename, 'w')
-
-            mostLeft, mostRight = self.__find_binID_chromosome_span(chrom)
-            mat = self.mats[chrom].value
-            bins = self.bin_lookup_by_chrom[chrom]
-            for m, b in zip(mat, bins):
-                if nohead:
-                    lin = [str(i) for i in m]
-                else:
-                    lin = [chrom_name, b[1], b[2]] + list(m)
-                    lin = [str(i) for i in lin]
-                oh.write('{0}\n'.format('\t'.join(lin)))
-            oh.close()
-
+            with open(actual_filename, 'w') as oh:
+                mostLeft, mostRight = self.__find_binID_chromosome_span(chrom)
+                mat = self.mats[chrom].value
+                bins = self.bin_lookup_by_chrom[chrom]
+                for m, b in zip(mat, bins):
+                    if nohead:
+                        lin = [str(i) for i in m]
+                    else:
+                        lin = [chrom_name, b[1], b[2]] + list(m)
+                        lin = [str(i) for i in lin]
+                    oh.write('{0}\n'.format('\t'.join(lin)))
             config.log.info('Saved save_np3_column_matrix() "%s"' % actual_filename)
 
     def load_tad_calls(self, filename, format='bed'):
@@ -881,9 +878,9 @@ class hic:
             vmin = data.min()
             vmax = data.max()
 
-        if not "aspect" in kargs:
+        if "aspect" not in kargs:
             kargs["aspect"] = "square"
-        if not "colbar_label" in kargs:
+        if "colbar_label" not in kargs:
             kargs["colbar_label"] = "log2(Density)"
 
         heatmap_location =  [0.05,   0.01,   0.90,   0.80]
@@ -1065,12 +1062,9 @@ class hic:
             this_chrom = [0] * (localRight-localLeft+1)
             cindex = expn.getConditionNames().index(expn_cond_name)
             for i in expn.linearData:
-                if i['loc']['chr'] == loc['chr']:
-                    # Take the old BinID and convert it to the new binID:
-                    # If inside this part of the chromosome:
-                    if loc.qcollide(i['loc']):
-                        local_bin_num = (self.bin_lookup_by_binID[i['bin#']][3] - mostLeft) - localLeft
-                        this_chrom[local_bin_num] = i['conditions'][cindex]
+                if i['loc']['chr'] == loc['chr'] and loc.qcollide(i['loc']):
+                    local_bin_num = (self.bin_lookup_by_binID[i['bin#']][3] - mostLeft) - localLeft
+                    this_chrom[local_bin_num] = i['conditions'][cindex]
             plot_y = this_chrom
             plot_x = numpy.arange(0, len(plot_y))
 
@@ -1094,9 +1088,9 @@ class hic:
             vmin = data.min()
             vmax = data.max()
 
-        if not "aspect" in kargs:
+        if "aspect" not in kargs:
             kargs["aspect"] = "square"
-        if not "colbar_label" in kargs:
+        if "colbar_label" not in kargs:
             kargs["colbar_label"] = "log2(Density)"
 
         scalebar_location = [0.05,  0.97,   0.90,   0.02]
@@ -1353,13 +1347,25 @@ class hic:
             cmap=cm.inferno
             # I think this is also a system you could use to e.g. put the frequency of something straight on the plot?
 
-        return_data = self.draw.unified_scatter(labels, xdata, ydata, x=x, y=y, filename=filename,
-            spot_cols=spot_cols, spots=spots, alpha=alpha, cmap=cmap,
-            perc_weights=perc_weights, mode=mode,
-            spot_size=spot_size, label_font_size=label_font_size, cut=cut, squish_scales=squish_scales,
-            **kargs)
-
-        return(return_data)
+        return self.draw.unified_scatter(
+            labels,
+            xdata,
+            ydata,
+            x=x,
+            y=y,
+            filename=filename,
+            spot_cols=spot_cols,
+            spots=spots,
+            alpha=alpha,
+            cmap=cmap,
+            perc_weights=perc_weights,
+            mode=mode,
+            spot_size=spot_size,
+            label_font_size=label_font_size,
+            cut=cut,
+            squish_scales=squish_scales,
+            **kargs
+        )
 
     def tsne(self, num_pc, chrom):
         """
@@ -1466,7 +1472,7 @@ class hic:
         heatmap_location  = [0.05,   0.01,   0.90,   0.90]
         scalebar_location = [0.05,   0.97,   0.90,   0.02]
 
-        if not "colbar_label" in kargs:
+        if "colbar_label" not in kargs:
             colbar_label = "Density"
 
         if bracket: # done here so clustering is performed on bracketed data
