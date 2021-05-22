@@ -44,7 +44,11 @@ class bbox:
         x = loc_tuple[0]
         y = loc_tuple[1]
 
-        if (x > self.loc[0]+self.dim[0]) and (x < self.loc[0]+self.dim[2]):
-            if (y > self.loc[1] + self.dim[1]) and (y < self.loc[1] + self.dim[3]):
-                return( {"type": self.type, "object": self.ptr} )
+        if (
+            (x > self.loc[0] + self.dim[0])
+            and (x < self.loc[0] + self.dim[2])
+            and (y > self.loc[1] + self.dim[1])
+            and (y < self.loc[1] + self.dim[3])
+        ):
+            return( {"type": self.type, "object": self.ptr} )
         return(False)

@@ -144,10 +144,7 @@ class chipfishHTTPServerHandler(http.server.BaseHTTPRequestHandler):
         query = None
         if "?" in get:
             cmds = get.split("?")[1].split("&")
-            query = {}
-            for q in cmds:
-                query[q.split("=")[0]] = q.split("=")[1]
-
+            query = {q.split("=")[0]: q.split("=")[1] for q in cmds}
         path = path.split('#',1)[0]
         path = posixpath.normpath(urllib.parse.unquote(path))
         words = path.split('/')

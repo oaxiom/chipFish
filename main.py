@@ -7,19 +7,19 @@ Not for distribution.
 
 """
 
+
 import wx, profile
 
 import opt, sys
 from gui import cfApp
 
+app = cfApp()
 # genome and thread set-up's here;
 
 if not opt.debug.profile:
-    app = cfApp()
     app.MainLoop()
 else:
     import cProfile, pstats
-    app = cfApp()
     cProfile.run("app.MainLoop()", "profile.pro")
     sys.stdout = open("log.log", "w")
     p =  pstats.Stats("profile.pro")

@@ -40,9 +40,7 @@ def sliding_window(listIn, window):
     half_window_left = int(math.ceil(window / 2.0)) # correct for floating error division.
     half_window_right = int(math.floor(window / 2.0))
 
-    y = []
-
-    for n in range(half_window_left, len(listIn)-half_window_right):
-        y.append(sum(listIn[n-half_window_left:n+half_window_right]))
-
-    return(y)
+    return [
+        sum(listIn[n - half_window_left : n + half_window_right])
+        for n in range(half_window_left, len(listIn) - half_window_right)
+    ]

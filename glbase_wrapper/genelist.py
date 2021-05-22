@@ -46,8 +46,6 @@ class genelist(glbase_stage.genelist):
                 print(("%s\t:\t%s" % (k, self.meta_data[k])))
         elif key == "name":
             return(self.name)
-        else:
-            pass
             #assert key in self.meta_data, "'%s' not found in this track" % key
             #return(self.meta_data[key])
 
