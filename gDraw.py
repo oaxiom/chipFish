@@ -223,7 +223,7 @@ class gDraw:
         """
         currentLoc = 0
         for t in self.tracks:
-            if t['type'] == 'genome_sql' or t['type'] == 'genome': # Ask the track how much space it is going to need;
+            if t['type'] in ['genome_sql', 'genome']: # Ask the track how much space it is going to need;
                 hdelta = (opt.track.height_px[t['type']] * len(t['draw_data']))
                 t['track_top'] = currentLoc + hdelta
                 t['track_location'] = currentLoc
@@ -500,10 +500,7 @@ class gDraw:
 
         if clamp:
             for i, v in enumerate(data):
-                if v > clamp-1.0:
-                    data[i] = v-clamp
-                else:
-                    data[i] = 0
+                data[i] = v-clamp if v > clamp-1.0 else 0
         else:
             clamp = 0 # I need a clamp int later even if clamp=None
 
@@ -547,10 +544,7 @@ class gDraw:
                 self.ctx.line_to(item[0], item[1])
 
             if opt.track.filled:
-                if clamp:
-                    loc = self.__realToLocal(0, track_data["track_location"])
-                else:
-                    loc = self.__realToLocal(0, track_data["track_location"])
+                loc = self.__realToLocal(0, track_data["track_location"])
                 #if clamp:
                 self.ctx.line_to(item[0], loc[1]-opt.track.height_px['graph']) # move to the base line on the far right
                 self.ctx.line_to(0, loc[1]-opt.track.height_px['graph']) # the 0th far left
@@ -569,10 +563,7 @@ class gDraw:
                 self.ctx.line_to(item[0], item[1])
 
             if opt.track.filled:
-                if clamp:
-                    loc = self.__realToLocal(0, track_data["track_location"])
-                else:
-                    loc = self.__realToLocal(0, track_data["track_location"])
+                loc = self.__realToLocal(0, track_data["track_location"])
                 #if clamp:
                 self.ctx.line_to(item[0], loc[1]) # move to the base line on the far right
                 self.ctx.line_to(0, loc[1] ) # the 0th far left
@@ -649,6 +640,7 @@ class gDraw:
 
         colbox = self.__drawTrackBackground(track_data["track_location"], "graph")
 
+        lastpx = -1
         for i, s in enumerate([new_f_array, new_r_array]):
             if i == 0:# + strand:
                 self.__setPenColour( (0, 0, 0.8) )
@@ -665,7 +657,6 @@ class gDraw:
             #    coords.append( (index, loc[1] - value)) # +30 locks it to the base of the track
 
             coords = []
-            lastpx = -1
             for index, value in enumerate(s):
                 loc = self.__realToLocal(self.lbp + index, track_data["track_location"])
                 # get the middle:
@@ -732,9 +723,6 @@ class gDraw:
                 centre_point = (spot["left"] + spot["right"]) / 2
                 sc = self.__realToLocal(centre_point, track_data["track_location"])
                 self.ctx.arc(sc[0], sc[1]-(opt.track.spot_pixel_radius*2)+2, opt.track.spot_pixel_radius, 0, 2 * math.pi)
-
-            elif opt.track.spot_shape == "triangle":
-                pass
 
             if opt.track.spot_filled:
                 self.ctx.fill()
@@ -839,8 +827,7 @@ class gDraw:
 
         """
         track_max = max(track_data["draw_data"]) # bartrack must be normalised
-        if track_max < min_scale:
-            track_max = min_scale
+        track_max = max(track_max, min_scale)
         new_array = track_data["draw_data"]
 
         posLeft = self.__realToLocal(self.lbp, track_data["track_location"])

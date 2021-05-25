@@ -296,7 +296,7 @@ class cfApp(wx.App):
     def OnMenuAddBookmark(self, event):
         nearby_features = self.g.getAllDrawableFeaturesInRange(self.draw.getLocation())
         if len(nearby_features) < 8: # truncate the list if it gets too long.
-            notes = ", ".join([x["name"] for x in nearby_features])
+            notes = ", ".join(x["name"] for x in nearby_features)
         else:
             notes = ", ".join([x["name"] for x in nearby_features[0:7]]+["..."])
         self.__bookmarks.add_bookmark(self.draw.getLocation(), notes)

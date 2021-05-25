@@ -85,12 +85,7 @@ def fold2UpOrDown(data, names, normed = None, **kargs):
             if c != normed:
                 normed_data = (data[c] / data[normed])
                 # this is greedy - only 1 condition needs to fulfill the criteria.
-                if normed_data > 2:
-                    return(True)
-                elif normed_data < 0.5:
-                    return(True)
-                else:
-                    return(False)
+                return normed_data > 2 or normed_data < 0.5
         return(False)
 
 def fold2Down(data, names, normed = None, **kargs):
@@ -103,10 +98,7 @@ def fold2Down(data, names, normed = None, **kargs):
             if c != normed:
                 normed_data = (data[c] / data[normed])
                 # this is greedy - only 1 condition needs to fulfill the criteria.
-                if normed_data < 0.5:
-                    return(True)
-                else:
-                    return(False)
+                return normed_data < 0.5
         return(False)
 
 def fold2Up(data, names, normed = None, **kargs):
@@ -119,10 +111,7 @@ def fold2Up(data, names, normed = None, **kargs):
             if c != normed:
                 normed_data = (data[c] / data[normed])
                 # this is greedy - only 1 condition needs to fulfill the criteria.
-                if normed_data > 2:
-                    return(True)
-                else:
-                    return(False)
+                return normed_data > 2
         return(False)
 
 def XDown(data, names, normed = None, **kargs):
@@ -136,10 +125,7 @@ def XDown(data, names, normed = None, **kargs):
             if c != normed:
                 normed_data = (data[c] / data[normed])
                 # this is greedy - only 1 condition needs to fulfill the criteria.
-                if normed_data < X:
-                    return(True)
-                else:
-                    return(False)
+                return normed_data < X
         return(False)
 
 def XUp(data, names, normed = None, **kargs):
@@ -153,10 +139,7 @@ def XUp(data, names, normed = None, **kargs):
             if c != normed:
                 normed_data = (data[c] / data[normed])
                 # this is greedy - only 1 condition needs to fulfill the criteria.
-                if normed_data > X:
-                    return(True)
-                else:
-                    return(False)
+                return normed_data > X
         return(False)
 
 # For formatting the CSV loading.

@@ -57,7 +57,7 @@ class app():
         options should be a string containing option=value. Several options can be passed.
         mode will set default options for the track type
         """
-        if not "=" in options:
+        if "=" not in options:
             return({}) # No valid parseable options
 
         # Standardise input string:

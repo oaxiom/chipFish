@@ -118,12 +118,12 @@ class bookmarks:
             [{"location": <location>, "notes": <string>} .. n]
         """
         self.__cursor.execute("SELECT * FROM marks")
-        res = []
-        for i in self.__cursor.fetchall():
-            res.append( {"loc": location(loc=i[1]), "notes": i[5]} )
         # sensibly format:
 
-        return(res)
+        return [
+            {"loc": location(loc=i[1]), "notes": i[5]}
+            for i in self.__cursor.fetchall()
+        ]
 
     def del_bookmark(self, location, notes):
         pass

@@ -444,10 +444,8 @@ class gDraw:
 
         # save image
         actual_filename = filename
-        filehandle = open(actual_filename, "wb")
-        surface.write_to_png(filehandle)
-        filehandle.close()
-
+        with open(actual_filename, "wb") as filehandle:
+            surface.write_to_png(filehandle)
         # put back the gDraw view values.
         self.w = oldw
         self.h = oldh
@@ -602,6 +600,7 @@ class gDraw:
 
         colbox = self.__drawTrackBackground(track_data["track_location"], "graph")
 
+        lastpx = -1
         for i, s in enumerate([new_f_array, new_r_array]):
             # + strand:
             if i == 0:
@@ -610,7 +609,6 @@ class gDraw:
                 self.__setPenColour( (0,0,0.8) )
             self.ctx.set_line_width(0.5)
             coords = []
-            lastpx = -1
             for index, value in enumerate(s):
                 loc = self.__realToLocal(self.lbp + index, track_data["track_location"])
                 # get the middle:
@@ -657,9 +655,6 @@ class gDraw:
                 centre_point = (item["left"] + item["right"]) / 2
                 sc = self.__realToLocal(centre_point, track_data["track_location"])
                 self.ctx.arc(sc[0], sc[1]-(opt.track.spot_pixel_radius * 2), opt.track.spot_pixel_radius, 0, 2 * math.pi)
-            elif opt.track.spot_shape == "triangle":
-                pass
-
         if opt.track.spot_filled:
             self.ctx.fill()
         else:
@@ -802,8 +797,7 @@ class gDraw:
 
         """
         track_max = max(track_data["array"]) # bartrack must be normalised
-        if track_max < min_scale:
-            track_max = min_scale
+        track_max = max(track_max, min_scale)
         new_array = track_data["array"]
 
         posLeft = self.__realToLocal(self.lbp, track_data["track_location"])

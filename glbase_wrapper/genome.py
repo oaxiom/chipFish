@@ -69,11 +69,7 @@ class genome(glbase_stage.genome):
         for index, item in enumerate(self.linearData):
             for key in item:
                 # can only search strings:
-                if case_sensitive:
-                    tstr = str(item[key])
-                else:
-                    tstr = str(item[key]).lower()
-
+                tstr = str(item[key]) if case_sensitive else str(item[key]).lower()
                 if text in tstr:
                     ret.append(item)
                     break # only append once
