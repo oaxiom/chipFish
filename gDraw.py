@@ -82,19 +82,24 @@ class gDraw:
         for track in self.tracks:
             # Big If statement coming:
             if track["type"] == "graph":
-                track["draw_data"] = track["data"].get_data("graph", location(loc=self.curr_loc),
+                track["draw_data"] = track["data"].get_data("graph",
+                    location(loc=self.curr_loc),
                     resolution=self.bps_per_pixel, **track["options"])
 
             elif track["type"] == "kde_graph":
-                track["draw_data"] = track["data"].get_data("graph", location(loc=self.curr_loc),
+                track["draw_data"] = track["data"].get_data("graph",
+                    location(loc=self.curr_loc),
                     resolution=self.bps_per_pixel, kde_smooth=True, view_wid=self.w, **track["options"])
 
             elif track["type"] in ("bar", 'splice'):
-                track["draw_data"] = track["data"].get_data(track["type"], location(loc=self.curr_loc),
+                track["draw_data"] = track["data"].get_data(track["type"],
+                    location(loc=self.curr_loc),
                     resolution=self.bps_per_pixel, **track["options"])
 
             elif track["type"] == "spot":
-                track["draw_data"] = track["data"].get_data("spot", location(loc=self.curr_loc), **track["options"])
+                track["draw_data"] = track["data"].get_data("spot",
+                location(loc=self.curr_loc),
+                **track["options"])
 
             elif track["type"] == "graph_split_strand":
                 track["draw_data"] = track["data"].get_data("graph", location(loc=self.curr_loc),
@@ -166,7 +171,7 @@ class gDraw:
 
         # any further (internal) drawing goes here.
         if opt.debug.draw_collision_boxes: self.__debug_draw_col_boxes()
-        return(True)
+        return True
 
     def __debug_draw_col_boxes(self):
         """
@@ -181,7 +186,7 @@ class gDraw:
             self.ctx.fill()
         self.ctx.stroke()
 
-    def bindTrack(self, track, options=None, track_type=None):
+    def bindTrack(self, track, options=None, track_type=None, label=None):
         """
         bind a drawing track extra to genome.
 
@@ -201,7 +206,12 @@ class gDraw:
         if not options:
             options = {} # solves a lot of problems if it is an empty dict
 
-        self.tracks.append({"data": track, "type": track_type,
+        if not label:
+            label = track['name']
+
+        self.tracks.append({"data": track,
+            'label': label,
+            "type": track_type,
             "options": options})
 
     def __calculateTrackBoxes(self):
@@ -572,7 +582,7 @@ class gDraw:
 
         if opt.track.draw_names:
             if not name:
-                name = track_data['data']["name"]
+                name = track_data['label']
             self.__drawText(opt.track.label_fontsize, loc[1] - opt.track.height_px["graph"] + (opt.track.label_fontsize*2),
                 opt.graphics.font, name, size=opt.track.label_fontsize)
 

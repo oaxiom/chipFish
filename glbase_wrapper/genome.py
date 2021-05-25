@@ -26,12 +26,12 @@ class genome(glbase_stage.genome):
     __tooltype__ = "Genome"
     _default_draw_type = "genome"
     _available_draw_types = ("genome", "genome_stack") # genome_stack not implemented.
-    
-    
+
+
     # extra methods:
     def get_data(self, type, location):
         if type == "genome":
-            return(self.getFeatures(location))
+            return self.getFeatures(location)
 
     def getAllDrawableFeaturesInRange(self, location):
         """
@@ -49,8 +49,8 @@ class genome(glbase_stage.genome):
                 the text string to search for
 
             guage_object
-                a progress bar of some description with the 
-                method SetRange(). 
+                a progress bar of some description with the
+                method SetRange().
                 If None, the progressbar is ignored
 
             case_sensitive (Optional, default=False)
