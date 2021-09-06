@@ -4,7 +4,7 @@ behaves like a normal list, but each element contains a heterogenous set of data
 
 """
 
-import sys, os, csv, copy, random, pickle, re, numpy, scipy, gzip
+import sys, os, csv, copy, random, pickle, re, numpy, scipy, gzip, functools
 
 from operator import itemgetter
 
@@ -266,10 +266,10 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         """
         assert os.path.exists(os.path.realpath(filename)), "File %s not found" % filename
 
+        self.name = '.'.join(os.path.split(filename)[1].split(".")[:-1]) # Put here otherwise realpath will force name from the symbolic link, not from the actual link!
         self.path = os.path.split(os.path.realpath(filename))[0]
         self.filename = os.path.split(os.path.realpath(filename))[1]
         self.fullfilename = filename
-        self.name = '.'.join(self.filename.split(".")[:-1])
 
         # decide whether to respect the force_tsv arg.
         if not format:
@@ -590,10 +590,10 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                 the value to find
 
         **Returns**
-            The index of the list the item is contsained at.
+            The index of the list where the item is contained.
         """
-        assert key, "must send key"
-        assert value, "must send value"
+        assert key, "index: must send key"
+        assert value, "index: must send value"
 
         return min(self.qkeyfind[key][value])
 
@@ -604,7 +604,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         Most useful for things like geneList["Symbol"]
         geneList["entrez"]
         """
-        return([x[key] for x in self.linearData])
+        return [x[key] for x in self.linearData]
 
     def _findByLabel(self, key, value):
         """
@@ -649,9 +649,10 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
 
             saveTSV is *generally* 'consistent' if you can succesfully save
             as a tsv then you can reload the same list as that particular
-            type. Be careful though. Behaviour like this will work fine::
+            type. Be careful though. Behaviour like this will work, but give
+            unexpected results::
 
-                microarray.saveTSV(filename="file.csv")
+                rnaseq.saveTSV(filename="file.csv")
                 anewlist = genelist(filename="file.csv")
                 anewlist # this list is now a genelist and not an expression.
                          # You must load as an expression:
@@ -680,6 +681,9 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                 Don't write the first line header for this file. Usually it's the list
                 of keys, then the second line will be the data. If no_header is set to False
                 then the first line of the file will begin with the data.
+
+            gzip (Optional, default=False)
+                save the TSV as a gzipped file. (Don't forget to add the .gz suffix!)
 
         **Result**
             returns None.
@@ -741,45 +745,50 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         """
         assert filename, "No filename specified"
 
-        valig_args = ["filename", "key_order", "tsv", "no_header"]
+        valig_args = ["filename", "key_order", "tsv", "no_header", 'gzip']
         for k in kargs:
             if k not in valig_args:
                 raise ArgumentError(self.saveCSV, k)
 
-        with open(filename, "w") as oh:
-            if not self.linearData: # data is empty, fail graciously.
-                config.log.error("csv file '%s' is empty, no file written" % filename)
-                oh.close()
-                return None
+        if 'gzip' in kargs and kargs['gzip']:
+            oh = gzip.open(filename, "wt")
+        else:
+            oh = open(filename, "w")
 
-            if "tsv" in kargs and kargs["tsv"]:
-                writer = csv.writer(oh, dialect=csv.excel_tab)
-            else:
-                writer = csv.writer(oh)
+        if not self.linearData: # data is empty, fail graciously.
+            config.log.error("csv file '%s' is empty, no file written" % filename)
+            oh.close()
+            return None
 
-            # work out key order and the like:
-            write_keys = []
-            if "key_order" in kargs:
-                write_keys = kargs["key_order"]
-                # now add in any missing keys to the right side of the list:
-                for item in list(self.keys()):
-                    if item not in write_keys:
-                        write_keys.append(item)
-            else:
-                # just selece them all:
-                write_keys = list(self.keys())
+        if "tsv" in kargs and kargs["tsv"]:
+            writer = csv.writer(oh, dialect=csv.excel_tab)
+        else:
+            writer = csv.writer(oh)
 
-            if not no_header:
-                writer.writerow(write_keys) # write the header row.
+        # work out key order and the like:
+        write_keys = []
+        if "key_order" in kargs:
+            write_keys = kargs["key_order"]
+            # now add in any missing keys to the right side of the list:
+            for item in list(self.keys()):
+                if item not in write_keys:
+                    write_keys.append(item)
+        else:
+            # just selece them all:
+            write_keys = list(self.keys())
 
-            for data in self.linearData:
-                line = []
-                for key in write_keys: # this preserves the order of the dict.
-                    if key in data:
-                        line.append(data[key])
-                    else:
-                        line.append("") # a blank key, fail gracefully.
-                writer.writerow(line)
+        if not no_header:
+            writer.writerow(write_keys) # write the header row.
+
+        for data in self.linearData:
+            line = []
+            for key in write_keys: # this preserves the order of the dict.
+                if key in data:
+                    line.append(data[key])
+                else:
+                    line.append("") # a blank key, fail gracefully.
+            writer.writerow(line)
+        oh.close()
         config.log.info("Saved '%s'" % filename)
         return None
 
@@ -833,7 +842,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                 if name == "null_":
                     save_name = "null_%s" % index
                 else:
-                    save_name = "_".join(str(item[n]) for n in name)
+                    save_name = "_".join(str(item[n]).replace(' ', '_') for n in name)
 
                 oh.write(">%s\n" % save_name)
                 oh.write("%s\n" % item[seq_key])
@@ -910,7 +919,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                     if id:
                         todo += ["%s-%s" % (str(item[id]), index)]
                     else:
-                        todo += ["%s-%s" % (self.name, index)]
+                        todo += ["%s-%s" % (self.name.replace(' ', '_'), index)]
                 else:
                     todo += [str(item[id])] if id else ["0"]
                 todo += [str(item[score])] if score else ["0"]
@@ -1072,6 +1081,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         self._optimiseData()
         return True
 
+    '''
     def multi_sort(self, keys):
         """
         **Purpose**
@@ -1096,9 +1106,11 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                     return mult * result
             else:
                 return 0
-        self.linearData = sorted(self.linearData, cmp=comparer)
+
+        self.linearData = sorted(self.linearData, key=functools.cmp_to_key(comparer)) # Hack!
         self._optimiseData()
         return True
+    '''
 
     def reverse(self):
         """
@@ -1723,13 +1735,13 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                 if loc.qcollide(annotation[genome_loc_key]):
                     new_entry = {key: annotation[key] for key in annotation}
                     # dist_to_tss must be corrected for strand:
-                    if (
-                        annotation["strand"] in positive_strand_labels
-                        or "strand" not in annotation
-                    ):
+                    if 'strand' in annotation:
+                        if annotation["strand"] in positive_strand_labels:
+                            new_entry["dist_to_tss"] = loc.qdistance(annotation[genome_loc_key])
+                        elif annotation["strand"] in negative_strand_labels:
+                            new_entry["dist_to_tss"] = -loc.qdistance(annotation[genome_loc_key])
+                    else:
                         new_entry["dist_to_tss"] = loc.qdistance(annotation[genome_loc_key])
-                    elif annotation["strand"] in negative_strand_labels:
-                        new_entry["dist_to_tss"] = -loc.qdistance(annotation[genome_loc_key])
                     anns.append(new_entry)
 
             if anns:
@@ -2052,8 +2064,16 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
 
         return(newl)
 
-    def overlap(self, compare_mode="Overlap", loc_key="loc", delta=200, title=None, bins=20, add_tags=False, image_filename=None,
-        keep_rank=False, **kargs):
+    def overlap(self,
+        compare_mode="Overlap",
+        loc_key="loc",
+        delta=200,
+        title=None,
+        bins=20,
+        add_tags=False,
+        image_filename=None,
+        keep_rank=False,
+        **kargs):
         """
         **Purpose**
 
@@ -2481,7 +2501,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         config.log.info("Removed {0} duplicates, {1} remain".format((len(self) - len(ov)), len(ov)))
         return ov
 
-    def removeDuplicates(self, key=None, **kargs):
+    def removeDuplicates(self, key=None):
         """
         **Purpose**
             remove the duplicates in the list and returns a new list;
@@ -2514,26 +2534,55 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             key
                 The key in which to make search for duplicates.
 
+                Note that key can also be a list if you want to use 2 or more keys
+
         **Returns**
             The new list with the duplicates removed.
         """
-        assert key, "No key specified"
-        assert key in list(self.keys()), "the key '%s' was not found in this genelist" % key
+        assert key, "No key(s) specified"
 
-        newl = self.shallowcopy()
-        newl.linearData = []
-        count = 0
-        p = progressbar(len(self))
+        if isinstance(key, list):
+            for k in key:
+                assert k in list(self.keys()), "the key '{}' was not found in this genelist".format(key)
 
-        for item in self.qkeyfind[key]:
-            newl.linearData.append(self.linearData[min(self.qkeyfind[key][item])]) # grab first
-            # Will only apply a single item (the earliest) even if there
-            # IS only one of these items.
+            # Multiple keys path:
+            # make a key, index dict:
+            newl = self.deepcopy()
+            new_data_to_load = []
 
-        newl._optimiseData()
+            sorter = {}
+            for idx, item in enumerate(newl.linearData):
+                thisK = '-'.join([str(item[k]) for k in key])
+                if thisK not in sorter:
+                    sorter[thisK] = []
+                sorter[thisK].append(idx) # always in order, lowest to highest.
 
-        config.log.info("removeDuplicates: %s duplicates, list now %s items long" % (len(self) - len(newl), len(newl)))
-        return(newl)
+            # Now just go through and pick the 0th entry;
+            for k in sorter:
+                new_data_to_load.append(newl.linearData[sorter[k][0]])
+
+            newl.linearData = new_data_to_load
+            newl._optimiseData()
+
+            config.log.info("removeDuplicates: {} duplicates, list now {} items long".format(len(self)-len(newl), len(newl)))
+            return newl
+
+        else:
+            assert key in list(self.keys()), "the key '{}' was not found in this genelist".format(key)
+
+            newl = self.shallowcopy()
+            newl.linearData = []
+            count = 0
+
+            for item in self.qkeyfind[key]:
+                newl.linearData.append(self.linearData[min(self.qkeyfind[key][item])]) # grab first
+                # Will only apply a single item (the earliest) even if there
+                # IS only one of these items.
+
+            newl._optimiseData()
+
+            config.log.info("removeDuplicates: {} duplicates, list now {} items long".format(len(self) - len(newl), len(newl)))
+            return newl
 
     def removeExactDuplicates(self):
         """
@@ -2751,7 +2800,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             it returns a list of dictionaries, but in the future this may
             change.
         """
-        return(self.linearData)
+        return self.linearData
 
     def unfold(self, key=None):
         """
@@ -2791,7 +2840,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                 newl.linearData.append(newitem)
 
         newl._optimiseData()
-        return(newl)
+        return newl
 
     def sample(self, number_to_get=None, seed=None):
         """
@@ -2826,7 +2875,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         newgl.linearData = samples
         newgl._optimiseData()
 
-        return(newgl)
+        return newgl
 
     def find(self, value):
         """
@@ -2905,7 +2954,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         newgl.linearData = newl
         newgl._optimiseData()
         config.log.info("Renamed key '%s' to '%s'" % (old_key_name, new_key_name))
-        return(newgl)
+        return newgl
 
     def repairKey(self, key_to_repair, fill_in_key, **kargs):
         '''
@@ -2930,7 +2979,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         newl._optimiseData()
 
         config.log.info('repairKey: Repaired %s keys' % replaced)
-        return(newl)
+        return newl
 
 
     def splitKeyValue(self, key, key_sep=" ", val_sep=":"):
@@ -2994,7 +3043,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
 
         newl._optimiseData()
         config.log.info("splitKeyValue: split '%s' into ~'%s'%s'%s' key value pairs" % (key, len(k), val_sep, len(v)))
-        return(newl)
+        return newl
 
     def splitKey(self, key, key_names, keep_original=False):
         """
@@ -3039,7 +3088,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                 del item[key]
 
         newl._optimiseData()
-        return(newl)
+        return newl
 
     def joinKey(self, new_key_name, formatter, keyA, keyB, keep_originals=False):
         """
@@ -3072,7 +3121,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         newl = self.deepcopy()
 
         for item in newl:
-            item[new_key_name] = formatter % (item[keyA], item[keyB])
+            item[new_key_name] = formatter.format(item[keyA], item[keyB])
 
             if not keep_originals:
                 if new_key_name != keyA: # Don't delete if it is also the new key.
@@ -3081,7 +3130,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                     del item[keyB]
 
         newl._optimiseData()
-        return(newl)
+        return newl
 
     def pie(self, key=None, filename=None, font_size=12, **kargs):
         """
@@ -3125,11 +3174,16 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         newfilename = self.draw.pie(fracs, labels, filename, font_size=font_size, **kargs)
 
         config.log.info("Saved pie to '%s'" % newfilename)
-        return(data)
+        return data
 
-    def frequencyAgainstArray(self, filename=None, match_key=None, expression=None,
+    def frequencyAgainstArray(self,
+        filename=None,
+        match_key=None,
+        expression=None,
         spline_interpolate=False,
-        step_style=False, window=None, **kargs):
+        imshow=False,
+        step_style=False,
+        window=None, **kargs):
         """
         Draw a peaklist and compare against an array.
         Draws a three panel figure showing an array heatmap, the binding events
@@ -3174,6 +3228,9 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             draw_frames (Optional, default=False)
                 draw a frame around each of the elements in the figure.
 
+            imshow (Optional, default=False)
+                Save the heatmap as blocks (imshow=False) or save as an image (imshow=True)
+
         **Result**
             returns a new peaklist containing the overlapping sites only. The microarray condition value
             will be added to the data and you can get a new microarray out using something like:
@@ -3188,8 +3245,8 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         assert filename, "must specify a filename to save as"
         assert expression, "must provide some expression data"
         assert match_key, "'match_key' is required"
-        assert match_key in list(self.linearData[0].keys()), "match_key '%' not found in this list"
-        assert match_key in list(expression.linearData[0].keys()), "match_key '%' not found in expression object"
+        assert match_key in list(self.linearData[0].keys()), "match_key '{}' not found in this list".format(match_key)
+        assert match_key in list(expression.linearData[0].keys()), "match_key '{}' not found in expression object".format(match_key)
         if spline_interpolate:
             assert spline_interpolate in ('slinear', 'quadratic', 'cubic' ), "'%s' spline_interpolate method not found" % spline_interpolate
 
@@ -3225,7 +3282,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                 newl += newf
 
         if not newl:
-            raise AssertionError("frequencyAgainstArray: no matches were found, it's possible this is correct, but it is highly unlikely. I suspect you have not specified match_key correctly")
+            raise AssertionError("frequencyAgainstArray: no matches were found, it's possible this is correct, but it is unlikely. I suspect you have not specified match_key correctly")
 
         newgl.load_list(newl)
 
@@ -3251,10 +3308,14 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         # Now I can't be arsed to clean it up.
         # Actually, I just spent quite a while getting it into
         # A more sensible shape. Now my enthusiasm has evaporated...
-        actual_filename = self.draw._heatmap_and_plot(peakdata=peak_data, bin=bin, row_label_key=match_key, **kargs)
+        actual_filename = self.draw._heatmap_and_plot(peakdata=peak_data,
+            bin=bin,
+            row_label_key=match_key,
+            imshow=imshow,
+            **kargs)
 
         config.log.info("frequencyAgainstArray: Saved '%s'" % actual_filename)
-        return(newgl)
+        return newgl
 
     def islocinlist(self, loc, key="loc", mode="collide", delta=200):
         """
@@ -3371,8 +3432,9 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         # loc_ids is a set, and has no order.
         for index in loc_ids:
             if loc.qcollide(self.linearData[index]["loc"]):
-                return({"found": True, "distance": loc.qdistance(self.linearData[index]["loc"])})
-        return({"found": False, "distance": None})
+                return {"found": True, "distance": loc.qdistance(self.linearData[index]["loc"])}
+
+        return {"found": False, "distance": None}
 
     def distribution(self, genelist=None, random_lists=None, filename=None, **kargs):
         """
@@ -3497,7 +3559,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         [t.set_fontsize(16) for t in ax.get_yticklabels()]
 
         actual_filename = self.draw.savefigure(fig, filename)
-        return(data, rand, err, labels)
+        return (data, rand, err, labels)
 
     def genome_distribution(self, genome, random_lists, filename=None, **kargs):
         """
@@ -3641,7 +3703,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         self.draw.do_common_args(ax, **kargs)
         if filename:
             actual_filename = self.draw.savefigure(fig, filename)
-        return(data, rand, err, labels)
+        return (data, rand, err, labels)
 
     def hist(self, key=None, filename=None, range=None, suppress_zeros=False, log=None,
         kde=False, covariance=0.2, **kargs):
@@ -3712,7 +3774,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         real_filename = self.draw.savefigure(fig, filename)
 
         config.log.info("Saved '%s'" % real_filename)
-        return(values)
+        return values
 
     def bar_chart(self, filename=None, labels=None, data=None, percents=False,
         **kargs):
@@ -3971,7 +4033,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             loadlist.append(item)
         gl.load_list(loadlist)
 
-        return(gl)
+        return gl
 
     def remove(self, key=None, value=None):
         """
@@ -4002,7 +4064,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
 
         newl._optimiseData()
         config.log.info("remove: removed %s items" % removed)
-        return(newl)
+        return newl
 
     def cumulative_annotation_plot(self, filename, peaklists, randoms=None, annotation_range=(100, 50000, 500), **kargs):
         """

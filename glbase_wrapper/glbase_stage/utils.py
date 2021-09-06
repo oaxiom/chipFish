@@ -91,28 +91,28 @@ def iti(_fm, _fmcpos, _cl, _list):    # my iterator
             _list.append(_copy)
     return True
 
-def movingAverage(listIn, window=20, normalise=False, bAbsiscaCorrect=True):
+def movingAverage(_list, window=20, normalise=False, bAbsiscaCorrect=True):
     """
     actually a sliding window
     """
-    assert window < len(listIn), "the window size for the moving average is too large"
+    assert window < len(_list), "the window size for the moving average is too large"
     assert window >= 1, "the window size is too small (%s < 1)" % window
 
     if window == 1: # just return the original array
-        return(numpy.arange(0, len(listIn)), listIn)
+        return numpy.arange(0, len(_list)), _list
 
     if bAbsiscaCorrect:
         half_window_left = int(math.ceil(window / 2.0)) # correct for floating error division.
         half_window_right = int(math.floor(window / 2.0))
-        x = numpy.arange(half_window_left, len(listIn)-half_window_right)
+        x = numpy.arange(half_window_left, len(_list)-half_window_right)
     else:
-        x = numpy.arange(0, len(listIn)-window)
+        x = numpy.arange(0, len(_list)-window)
 
     y = []
 
-    for n in range(half_window_left, len(listIn)-half_window_right):
+    for n in range(half_window_left, len(_list)-half_window_right):
         score = sum(
-            listIn[i]
+            _list[i]
             for i in range(n - half_window_left, n + half_window_right, 1)
         )
 
@@ -751,7 +751,7 @@ def qdeepcopy(anobject):
     # You should wrap me in a try: except:
     return pickle.loads(pickle.dumps(anobject, -1))
 
-def fastq(filename, gziped=False):
+def fastq(filename, gzip=False):
     """
     generator object to parse a fastQ file
 
@@ -772,7 +772,7 @@ def fastq(filename, gziped=False):
         yield {"name": name, "strand": strand, "seq": seq, "qual": qual}
     return
 
-def fastqPE(filename1, filename2, gzip=True):
+def fastqPE(filename1, filename2, gziped=True):
     """
     generator object to parse fastQ PE files
     @HWI-M00955:51:000000000-A8WTD:1:1101:13770:1659 1:N:0:NNTNNNAGNNCNCTAT
@@ -780,9 +780,9 @@ def fastqPE(filename1, filename2, gzip=True):
     +
     #,,5,</<-<+++5+568A+6+5+++##5+5++5###+5+55-55A-A--5#######55+5<)+4)43++14#####*1*1*2011*0*1*1*1####***111(/'####/###-(((###############/-(/((./(((((((
     """
-    if gzip:
-        oh1 = gzipfile.open(filename1, "rt")
-        oh2 = gzipfile.open(filename2, "rt")
+    if gziped:
+        oh1 = gzip.open(filename1, "rt")
+        oh2 = gzip.open(filename2, "rt")
     else:
         oh1 = open(filename1, "rt")
         oh2 = open(filename2, "rt")

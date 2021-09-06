@@ -12,7 +12,7 @@ from .. import flat_track
 from .. import config
 from .. import location
 
-def wig_to_flat(infilenames, outfilename, name, gzip=False, **kargs):
+def wig_to_flat(infilenames, outfilename, name, gzip=False, skip_non_standard_chroms=False, **kargs):
     """
     **Purpose**
         Convert a variableStep wig file containing reads into a flat db)
@@ -69,11 +69,7 @@ def wig_to_flat(infilenames, outfilename, name, gzip=False, **kargs):
 
     cleft = 0
     open_mode = None
-    if not gzip:
-        open_mode = open
-    else:
-        open_mode = opengzip.open
-
+    open_mode = open if not gzip else opengzip.open
     chrom_name = None
     list_of_chroms = {}
     for f in infilenames:
@@ -156,5 +152,5 @@ def wig_to_flat(infilenames, outfilename, name, gzip=False, **kargs):
 
     e = time.time()
     config.log.info("Took: %.1f seconds" % (e-s))
-    return(True)
+    return True
 

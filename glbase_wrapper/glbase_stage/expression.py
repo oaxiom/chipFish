@@ -27,7 +27,6 @@ from .progress import progressbar
 from .errors import AssertionError, ArgumentError
 from .genelist import genelist
 from .location import location
-from .svd import svd
 from .stats import stats
 
 if config.NETWORKX_AVAIL and config.PYGRAPHVIZ_AVAIL:
@@ -38,15 +37,10 @@ if config.NETWORKX_AVAIL and config.PYGRAPHVIZ_AVAIL:
 
 if config.SKLEARN_AVAIL:
     #from .learning import learning
-    from .pca import pca
-    from .mds import mds
-    from .tsne import tsne
-    from .som import SOM
-    from .somde import somde
-    from .umap import umap
+    from .manifold_pca import manifold_pca
 
 if config.NETWORKX_AVAIL and config.PYGRAPHVIZ_AVAIL and config.SKLEARN_AVAIL:
-    from .mdsquish import mdsquish
+    from .manifold_mdsquish import manifold_mdsquish
 
 class expression(base_expression):
     def __init__(self, loadable_list=None, filename=None, format=None, expn=None, gzip=False, **kargs):
@@ -116,10 +110,10 @@ class expression(base_expression):
         if loadable_list:
             base_expression.__init__(self, loadable_list=loadable_list, expn=expn, **kargs)
         else:
-            base_expression.__init__(self, filename=filename, expn=expn, format=format, **kargs)
+            base_expression.__init__(self, filename=filename, expn=expn, format=format, gzip=gzip, **kargs)
 
     def __repr__(self):
-        return("glbase.expression")
+        return "glbase.expression"
 
     def __getitem__(self, index):
         """
@@ -130,8 +124,8 @@ class expression(base_expression):
         and inherits normal genelist slicing behaviour
         """
         if index in self._conditions:
-            return(self.getDataForCondition(index))
-        return(base_expression.__getitem__(self, index)) # otherwise inherit
+            return self.getDataForCondition(index)
+        return base_expression.__getitem__(self, index) # otherwise inherit
 
     def __getattr__(self, name):
         """
@@ -175,26 +169,31 @@ class expression(base_expression):
 
         elif name == "som":
             assert config.SKLEARN_AVAIL, "Asking for som but sklearn not available"
-            sq = math.ceil(math.sqrt(len(self)))
-            self.som = SOM(parent=self, name=self.name)
+            from .manifold_som import manifold_SOM
+            self.som = manifold_SOM(parent=self, name=self.name)
             return self.som
 
         elif name == 'somde':
-            sq = math.ceil(math.sqrt(len(self)))
-            self.somde = somde(parent=self, name=self.name)
+            from .manifold_somde import manifold_somde
+            self.somde = manifold_somde(parent=self, name=self.name)
             return self.somde
 
         elif name == 'mds':
-            self.mds = mds(parent=self, name=self.name)
+            assert config.SKLEARN_AVAIL, "Asking for som but sklearn not available"
+            from .manifold_mds import manifold_mds
+            self.mds = manifold_mds(parent=self, name=self.name)
             return self.mds
 
         elif name == 'tsne':
-            self.tsne = tsne(parent=self, name=self.name)
+            assert config.SKLEARN_AVAIL, "Asking for som but sklearn not available"
+            from .manifold_tsne import manifold_tsne
+            self.tsne = manifold_tsne(parent=self, name=self.name)
             return self.tsne
 
         elif name == 'umap':
-            assert config.NETWORKX_AVAIL, "Asking for a UMAP object but umap-learn is not available"
-            self.umap = umap(parent=self, name=self.name)
+            assert config.UMAP_LEARN_AVAIL, "Asking for a UMAP object but umap-learn is not available"
+            from .manifold_umap import manifold_umap
+            self.umap = manifold_umap(parent=self, name=self.name)
             return self.umap
 
         elif name == "bayes":
@@ -248,8 +247,8 @@ class expression(base_expression):
             You can get the pca object again in expn.pca
         """
         # This is currently hidden:
-        self.__pca = pca(self, rowwise=rowwise, label_key=label_key, **kargs)
-        return(self.__pca)
+        self.__pca = manifold_pca(self, rowwise=rowwise, label_key=label_key, **kargs)
+        return self.__pca
 
     def get_svd(self, rowwise=False, label_key=None, **kargs):
         """
@@ -287,8 +286,8 @@ class expression(base_expression):
 
             You can get the svd object again in expn.svd
         """
-        self.svd = svd(self, rowwise=rowwise, label_key=label_key, **kargs)
-        return(self.svd)
+        self.svd = manifold_svd(self, rowwise=rowwise, label_key=label_key, **kargs)
+        return self.svd
 
     def sort_sum_expression(self, selected_conditions=None):
         """
@@ -311,7 +310,7 @@ class expression(base_expression):
         else:
             self.linearData = sorted(self.linearData, key=lambda x: sum(x["conditions"]))
         self._optimiseData()
-        return(True)
+        return True
 
     def sort_column_sum_expression(self):
         """
@@ -350,7 +349,7 @@ class expression(base_expression):
         self.numpy_array_all_data = numpy.array(newtab).T
         self._load_numpy_back_into_linearData() # _conditions must be up to date
         self._optimiseData()
-        return(True)
+        return True
 
     def multi_sort(self, keys):
         """
@@ -388,7 +387,7 @@ class expression(base_expression):
 
         self.linearData = sorted(self.linearData, key=functools.cmp_to_key(comparer))
         self._optimiseData()
-        return(True)
+        return True
 
     def sort_conditions(self, reverse=False):
         """
@@ -420,7 +419,7 @@ class expression(base_expression):
 
         self._conditions = neworder
         self._optimiseData()
-        return(None)
+        return None
 
     def findGene(self, **kargs):
         """
@@ -432,8 +431,8 @@ class expression(base_expression):
 
     def getGenomeName(self):
         if not self.genome:
-            return("Genome not bound")
-        return(self.genome.getName())
+            return "Genome not bound"
+        return self.genome.getName()
 
     def getColumns(self, return_keys=None, strip_expn=False):
         """
@@ -482,7 +481,7 @@ class expression(base_expression):
         newl._optimiseData()
 
         config.log.info("getColumns: got only the columns: %s" % (", ".join(return_keys),))
-        return(newl)
+        return newl
 
     def strip_errs(self):
         """
@@ -501,12 +500,12 @@ class expression(base_expression):
         """
         if "err" not in self.linearData[0]: # No errors to strip, silently fail
             config.log.warning("strip_errs: Tried to remove error data, but no error data found")
-            return(None)
+            return None
 
         for item in self.linearData:
             del item["err"]
         self._optimiseData() # I think this does nothing at the moment, but just in case I ever fix err key handling
-        return(None)
+        return None
 
     def merge(self, key=None, *tables):
         """
@@ -545,9 +544,11 @@ class expression(base_expression):
                 item["err"] = sum(others, item["err"])
 
         newgl._optimiseData()
-        return(newgl)
+        return newgl
 
-    def sliceConditions(self, conditions=None, **kargs):
+    def sliceConditions(self,
+        conditions:Iterable=None,
+        **kargs):
         """
         **Purpose**
 
@@ -578,6 +579,8 @@ class expression(base_expression):
         assert conditions, "sliceConditions: You must specify a list of conditions to keep"
         assert not isinstance(conditions, str), "sliceConditions: You must specify an iterable of conditions to keep"
         assert isinstance(conditions, (tuple, list, set, Iterable)), "sliceConditions: You must specify an iterable of conditions to keep"
+
+        conditions = list(conditions) # Some weird bugs if not a list;
         for item in conditions:
             assert item in self._conditions, "sliceConditions: '%s' condition not found in this expression data" % item
 
@@ -607,7 +610,7 @@ class expression(base_expression):
         newgl._optimiseData()
 
         config.log.info("sliceConditions: sliced for %s conditions" % (len(newgl[0]["conditions"]),))
-        return(newgl)
+        return newgl
 
     def getDataForCondition(self, condition_name):
         """
@@ -621,7 +624,7 @@ class expression(base_expression):
         #print self.serialisedArrayDataDict.keys()
         assert condition_name in self.getConditionNames(), "getDataForCondition: No condition named '%s' in this expression object" % condition_name
 
-        return(self.serialisedArrayDataDict[condition_name])
+        return self.serialisedArrayDataDict[condition_name]
 
     def getExpressionTable(self):
         """
@@ -632,7 +635,7 @@ class expression(base_expression):
         **Arguments**
             None
         """
-        return(numpy.copy(self.numpy_array_all_data))
+        return numpy.copy(self.numpy_array_all_data)
 
     def subtract_mean(self):
         """
@@ -770,7 +773,7 @@ class expression(base_expression):
         #self.numpy_array_all_data = (self.numpy_array_all_data-mi) / (ma-mi)
 
         self._load_numpy_back_into_linearData()
-        return(None)
+        return None
 
     def digitize(self, number_of_steps, min=None, max=None):
         """
@@ -817,10 +820,10 @@ class expression(base_expression):
         else:
             for item in self.linearData:
                 item["conditions"] = [new_type(i) for i in item["conditions"]]
-        return(None)
+        return None
 
     def heatmap(self, filename=None, row_label_key="name", row_color_threshold=None,
-        optimal_ordering=True, **kargs):
+        optimal_ordering=True, dpi=300, **kargs):
         """
         **Purpose**
 
@@ -1012,11 +1015,11 @@ class expression(base_expression):
             col_names=self.getConditionNames(),
             filename=filename,
             row_color_threshold=row_color_threshold,
-            optimal_ordering=optimal_ordering,
+            optimal_ordering=optimal_ordering, dpi=dpi,
             **kargs)
 
         config.log.info("heatmap: Saved %s" % res["real_filename"])
-        return(res)
+        return res
 
     def __fold_change(self, c1v, c2v, log=2):
         """
@@ -1026,14 +1029,14 @@ class expression(base_expression):
         try:
             if c2v > c1v:
                 if log:
-                    return(math.log((c2v/c1v), log))
+                    return math.log((c2v/c1v), log)
                 else:
-                    return((c2v/c1v))
+                    return (c2v/c1v)
             else:
                 if log:
-                    return(-math.log(c1v/c2v, log))
+                    return -math.log(c1v/c2v, log)
                 else:
-                    return(-(c1v/c2v))
+                    return -(c1v/c2v)
 
         except (OverflowError, ZeroDivisionError, ValueError):
             if c2v > c1v:
@@ -1124,7 +1127,7 @@ class expression(base_expression):
                     newl._conditions.append(name)
         newl._optimiseData()
         config.log.info("normaliseToCondition: '%s'" % condition_name)
-        return(newl)
+        return newl
 
     def norm_multi_fc(self, conds=None, pad=1e-6, log=2, **kargs):
         """
@@ -1212,7 +1215,7 @@ class expression(base_expression):
         newgl = self.deepcopy()
         newgl.linearData = newl
         newgl._optimiseData()
-        return(newgl)
+        return newgl
 
     def mean_replicates(self, *reps, **kargs):
         """
@@ -1248,11 +1251,31 @@ class expression(base_expression):
         """
         newe = []
         all_conds = self._conditions
-        all_reps = set([x for sublist in reps for x in sublist]) # Flatten the 2D list. I still don't know how this works.
-        done = []
+        done = set([])
         pearson_vals = []
-        # Test that all condition names are available:
-        #print [c in self._conditions for c in all_reps], self._conditions
+
+        if '_ignore_missing_samples' in kargs and kargs['_ignore_missing_samples']:
+            config.log.warning('_ignore_missing_samples == True')
+            config.log.warning('Missing samples:')
+            all_reps = set([x for sublist in reps for x in sublist]) # Flatten the 2D list.
+            missing_conds = [c for c in all_reps if c not in self._conditions]
+            for c in sorted(missing_conds):
+                config.log.warning('  missing {}'.format(c))
+
+            # filter out the missing conditions;
+            missing_conds = set(missing_conds)
+            new_reps = []
+            for r in reps:
+                newr = [c for c in r if c not in missing_conds]
+                if newr:
+                    new_reps.append(newr) # trim empty replicates;
+
+            reps = new_reps
+        else:
+            pass
+
+        all_reps = set([x for sublist in reps for x in sublist]) # Flatten the 2D list. I still don't know how this works.
+
         if False in [c in self._conditions for c in all_reps]:
             missing_conds = [c for c in all_reps if c not in self._conditions]
             raise AssertionError("mean_replicates: '%s' condition names not found" % (", ".join(sorted(missing_conds)),))
@@ -1287,7 +1310,7 @@ class expression(base_expression):
                     new_condition_name_list.append(p[0])
 
                     # add all reps to the done list:
-                    [done.append(i) for i in p]
+                    [done.add(i) for i in p]
             else: # not to be merged or modified, so just add it to conditions.
                 new_serialisedArrayDataDict[cond] = self.serialisedArrayDataDict[cond] # merge into the 0th replicate key
                 errors[cond] = numpy.zeros(len(self.serialisedArrayDataDict[cond]))
@@ -1333,6 +1356,8 @@ class expression(base_expression):
                         p1ind = self._conditions.index(p1)
                         pear_out[p1ind, p1ind] = 1.0
 
+        self.check_condition_names_are_unique()
+
         if output_pears:
             oh = open(output_pears, "w")
             oh.write("\t%s\n" % "\t".join(self._conditions))
@@ -1356,7 +1381,7 @@ class expression(base_expression):
             config.log.info("mean_replicates: Saved Pearson histogram '%s'" % self.draw.savefigure(fig, pearson_hist_filename))
 
         config.log.info("mean_replicates: Started with %s conditions, ended with %s" % (len(self._conditions), len(newgl[0]["conditions"])))
-        return(newgl)
+        return newgl
 
     def add_fc_key(self, key="fc", cond1=None, cond2=None, log=2, pad=1.0E-06, and_err=False, **kargs):
         """
@@ -1436,7 +1461,7 @@ class expression(base_expression):
 
         newl._optimiseData()
         config.log.info("add_fc_key: Added fold-change key '%s'" % key)
-        return(newl)
+        return newl
 
     def filter_by_fc(self, fckey=None, direction="any", value=2.0, **kargs):
         """
@@ -1483,7 +1508,7 @@ class expression(base_expression):
         rep_d = {"up": "+", "dn": "-", "down": "-", "any": "+\-"}
 
         config.log.info("filter_by_fc: Filtered expression by fold-change '%s' %s%s, found: %s" % (fckey, rep_d[direction], value, len(ret)))
-        return(ret)
+        return ret
 
     def filter_low_expressed(self, min_expression, number_of_conditions):
         """
@@ -1518,7 +1543,7 @@ class expression(base_expression):
         assert len(newl) > 0, "filter_low_expressed: The number of genes passing the filter was zero!"
         newl._optimiseData()
         config.log.info("filter_low_expression: removed %s items, list now %s items long" % (len(self) - len(newl), len(newl)))
-        return(newl)
+        return newl
 
     def filter_by_mean_expression(self, min_mean_expression, max_mean_expression):
         """
@@ -1587,7 +1612,7 @@ class expression(base_expression):
         assert len(newl) > 0, "filter_high_expressed: The number of genes passing the filter was zero!"
         newl._optimiseData()
         config.log.info("filter_high_expressed: removed %s items, list now %s items long" % (len(self) - len(newl), len(newl)))
-        return(newl)
+        return newl
 
     def filter_by_expression(self, condition_name, minimum_expression, **kargs):
         """
@@ -1665,7 +1690,7 @@ class expression(base_expression):
     def filter_by_value(self, value, absolute=False, **kargs):
         """
         **Purpose**
-            Keep only items in <condition_name> with >= minimum_expression
+            Keep only items in <condition_name> with >= value
 
         **Arguments**
             value (Required)
@@ -1949,7 +1974,12 @@ class expression(base_expression):
         config.log.info("scatter: Saved '%s'" % real_filename)
         return(True)
 
-    def boxplot(self, filename=None, showfliers=True, whis=1.5, **kargs):
+    def boxplot(self,
+        filename=None,
+        showfliers=True,
+        whis=1.5,
+        showmeans=False,
+        **kargs):
         """
         **Purpose**
 
@@ -1997,11 +2027,16 @@ class expression(base_expression):
             data = self.__log_transform_data(data, log=kargs["log"])
 
         # do plot
-        actual_filename = self.draw.boxplot(data=data, filename=filename,
-            labels=self.getConditionNames(), showfliers=showfliers, **kargs)
+        actual_filename = self.draw.boxplot(
+            data=data,
+            filename=filename,
+            showmeans=showmeans,
+            labels=self.getConditionNames(),
+            showfliers=showfliers,
+            **kargs)
 
         config.log.info("boxplot: Saved %s" % actual_filename)
-        return(actual_filename)
+        return actual_filename
 
     def violinplot(self, filename=None, beans=False, **kargs):
         """
@@ -2029,11 +2064,11 @@ class expression(base_expression):
         data = self.serialisedArrayDataDict
 
         # do plot
-        actual_filename = self.draw.beanplot(data=data, filename=filename,
+        actual_filename = self.draw.violinplot(data=data, filename=filename,
             order=self.getConditionNames(), beans=beans, **kargs)
 
         config.log.info("beanplot: Saved %s" % actual_filename)
-        return(actual_filename)
+        return actual_filename
 
     def multi_line(self, filename=None, alpha=None, **kargs):
         """
@@ -2809,9 +2844,12 @@ class expression(base_expression):
             color_threshold = color_threshold*((dist.max()-dist.min())+dist.min()) # convert to local measure
 
         link = linkage(dist, 'complete', metric=cluster_mode, optimal_ordering=optimal_ordering)
-        a = dendrogram(link, orientation='left', labels=row_names,
+        a = dendrogram(link,
+            orientation='left',
+            labels=row_names,
             ax=ax,
-            color_threshold=color_threshold, get_leaves=True)
+            color_threshold=color_threshold,
+            get_leaves=True)
 
         ax.set_frame_on(False)
         ax.set_xticklabels("")
@@ -3051,7 +3089,7 @@ class expression(base_expression):
         actual_filename = self.draw.savefigure(fig, filename)
         config.log.info("gene_curve: Saved '%s'" % actual_filename)
 
-    def correlation_heatmap(self, axis="conditions", filename=None, label_key=None, mode="r2", aspect="square", bracket=(0,1),
+    def correlation_heatmap(self, axis="conditions", filename=None, label_key=None, mode="r", aspect="square", bracket=(0,1),
         optimal_ordering=True, **kargs):
         """
         **Purpose**
@@ -3074,7 +3112,8 @@ class expression(base_expression):
             label_key (Optional, but required if axis=genes or rows)
                 You must specify a label key if the axis is rows or genes
 
-            mode (Optional, default="r2")
+            mode (Optional, default="r")
+
                 by default the R (Coefficient of determination) is squared. Set to 'r' for
                 Coefficient of determination value.
                 use 'pearson' for a Pearson correlation score and 'spearman' for a
@@ -3424,7 +3463,211 @@ class expression(base_expression):
             fig.tight_layout()
         actual_filename = self.draw.savefigure(fig, filename)
         config.log.info("barh_single_item: Saved '%s'" % actual_filename)
-        return(item)
+        return item
+
+    def violinplot_by_conditions(self,
+        filename:str,
+        key:str,
+        value:str,
+        condition_classes,
+        class_order,
+        log=False,
+        log_pad=0.1,
+        title=None,
+        ylims=None,
+        colors=None,
+        **kargs):
+        """
+        **Purpose**
+            draw a bean plot by merging the conditions together for each item in condition_classes
+
+        **Arguments**
+            filename (Required)
+                filename to save image to
+
+            key (Reqired)
+                key to search for the matching object
+
+            value (Required)
+                value (e.g. gene name, ENST, etc) to search for.
+
+            condition_classes (Required)
+                a class name to group the conditions under. Must be the same length as the condition
+                names. Will draw oone violin/beanplot per condition_class.
+
+            class_order (Optional, default=None)
+                order to draw the classes in
+
+            log (Optional, default=True)
+                log2 the values.
+
+            log_pad (Optional, default=0.1)
+                value to pad the log with to stop log2(0)
+
+            Typical arguments for plots are supported:
+                xlabel - x-axis label
+                ylabel - y-axis label
+                title  - title
+                xlims - x axis limits (Note that barh_single_item will clamp on [0, max(data)+10%] by default.
+                ylims - y-axis limits
+                xticklabel_fontsize - x tick labels fontsizes
+                yticklabel_fontsize - y tick labels fontsizes
+
+                hori_space (default=0.5)
+                vert_space (default=0.75) - a special arg to help pad the barchart up when using very long plots with a ot of samples
+
+            colors (Optional, default=None)
+                either a single color for the violins, or a list of colors (one for each violin).
+
+            tight_layout (Optional, default=False)
+                wether to use matplotlib tight_layout() on the plot
+
+        """
+        assert filename, "barh_single_item: you must specify a filename"
+        assert len(condition_classes) == len(self.getConditionNames()), 'the length of condition_classes is not the same as this expression obejct'
+        assert key in self.keys(), '"{}" key not found in this genelist'.format(key)
+        if colors:
+            if not (isinstance(colors, str) or isinstance(colors, Iterable)):
+                raise AssertionError('colors is not a string or iterable')
+
+        # get the expn row;
+        expn_data = self._findDataByKeyLazy(key, value)
+        if not expn_data:
+            config.log.warning('"{}" not found in this genelist'.format(value))
+            return
+
+        if not class_order:
+            class_order = sorted(list(set(condition_classes)))
+
+        data = {c: [] for c in class_order}
+        cts = expn_data["conditions"]
+
+        for i in zip(condition_classes, cts):
+            data[i[0]].append(i[1])
+
+        if log:
+            for k in class_order:
+                data[k] = numpy.log2(numpy.array(data[k])+log_pad)
+
+        if "yticklabel_fontsize" not in kargs:
+            kargs["yticklabel_fontsize"] = 6
+
+        if "xticklabel_fontsize" not in kargs:
+            kargs["xticklabel_fontsize"] = 6
+
+        real_filename = self.draw.violinplot(
+            data,
+            filename=filename,
+            title=title,
+            mean=True, median=False, stdev=False,
+            ylims=ylims,
+            order=class_order,
+            colors=colors,
+            **kargs)
+
+        config.log.info("violinplot_by_conditions: Saved '{}'".format(real_filename))
+
+        return data
+
+    def barplot_by_conditions(self,
+        filename:str,
+        key:str,
+        value:str,
+        condition_classes,
+        class_order,
+        log=False,
+        log_pad=0.1,
+        title=None,
+        ylims=None,
+        **kargs):
+        """
+        **Purpose**
+            draw a nature-press style bar plot
+            (i.e. sort of like a beanplot and a boxplot, but with each spot showed and
+            the mean and err.)
+
+        **Arguments**
+            filename (Required)
+                filename to save image to
+
+            key (Reqired)
+                key to search for the matching object
+
+            value (Required)
+                value (e.g. gene name, ENST, etc) to search for.
+
+            condition_classes (Required)
+                a class name to group the conditions under. Must be the same length as the condition
+                names. Will draw oone violin/beanplot per condition_class.
+
+            class_order (Optional, default=None)
+                order to draw the classes in
+
+            log (Optional, default=True)
+                log2 the values.
+
+            log_pad (Optional, default=0.1)
+                value to pad the log with to stop log2(0)
+
+            Typical arguments for plots are supported:
+                xlabel - x-axis label
+                ylabel - y-axis label
+                title  - title
+                xlims - x axis limits (Note that barh_single_item will clamp on [0, max(data)+10%] by default.
+                ylims - y-axis limits
+                xticklabel_fontsize - x tick labels fontsizes
+                yticklabel_fontsize - y tick labels fontsizes
+
+                hori_space (default=0.5)
+                vert_space (default=0.75) - a special arg to help pad the barchart up when using very long plots with a ot of samples
+
+            tight_layout (Optional, default=False)
+                wether to use matplotlib tight_layout() on the plot
+
+        """
+        assert filename, "barh_single_item: you must specify a filename"
+        assert len(condition_classes) == len(self.getConditionNames()), 'the length of condition_classes is not the same as this expression obejct'
+        assert key in self.keys(), '"{}" key not found in this genelist'.format(key)
+
+        # get the expn row;
+        expn_data = self._findDataByKeyLazy(key, value)
+        if not expn_data:
+            config.log.warning('"{}" not found in this genelist'.format(value))
+            return
+
+        if not class_order:
+            class_order = sorted(list(set(condition_classes)))
+
+        data = {c: [] for c in class_order}
+        cts = expn_data["conditions"]
+
+        for i in zip(condition_classes, cts):
+            data[i[0]].append(i[1])
+
+        if log:
+            for k in class_order:
+                data[k] = numpy.log2(numpy.array(data[k])+log_pad)
+
+        if "yticklabel_fontsize" not in kargs:
+            kargs["yticklabel_fontsize"] = 6
+
+        if "xticklabel_fontsize" not in kargs:
+            kargs["xticklabel_fontsize"] = 6
+
+        self.draw.dotbarplot(
+            data,
+            filename=filename,
+            title=title,
+            mean=True,
+            median=False,
+            stdev=False,
+            ylims=ylims,
+            order=class_order,
+            **kargs)
+
+        config.log.info("bean_plot_by_conditions: Saved '{}'".format(filename))
+
+        return data
 
     def time_course_plot(self, key=None, value=None, filename=None, timepoints=None, plotmean=True, **kargs):
         """
@@ -3650,7 +3893,7 @@ class expression(base_expression):
 
         actual_filename = self.draw.savefigure(fig, filename)
         config.log.info("fc_scatter: Saved '%s'" % actual_filename)
-        return(None)
+        return None
 
     def kmeans(self, filename=None, key=None, seeds=None, dowhiten=True, plotseeds=True, **kargs):
         """
@@ -3721,13 +3964,13 @@ class expression(base_expression):
 
         clusters = {}
         for feature, cluster in enumerate(code):
-            if cluster not in clusters:
+            if not cluster in clusters:
                 clusters[cluster] = []
             clusters[cluster].append(data[feature])
 
         # Guess a suitable arrangement
         sq = math.ceil(math.sqrt(len(clusters)))
-        if "size" not in kargs:
+        if not "size" in kargs:
             kargs["size"] = (sq*2, sq*2)
 
         fig = self.draw.getfigure(**kargs)
@@ -3753,6 +3996,7 @@ class expression(base_expression):
 
         actual_filename = self.draw.savefigure(fig, filename)
         config.log.info("kmeans: Saved '%s'" % actual_filename)
+        return actual_filename
 
     def bundle(self, filename=None, key=None, seeds=None, plotseeds=True, Z=0.9, mode="pearsonr",
         negative_correlations=False, **kargs):
@@ -3806,8 +4050,8 @@ class expression(base_expression):
 
         centroids = []
         for seed_bundle in seeds:
+            expns = []
             if isinstance(seed_bundle, tuple): # bundle of bundles.
-                expns = []
                 # get all the expression for this bundle:
                 for i in seed_bundle:
                     col = self.index(key, i) # I need to know the column numbers for each item in seeds:
@@ -3848,7 +4092,7 @@ class expression(base_expression):
 
         # Guess a suitable arrangement for the figure
         sq = math.ceil(math.sqrt(len(centroids)))
-        if "size" not in kargs:
+        if not "size" in kargs:
             kargs["size"] = (sq*2, sq*2)
 
         fig = self.draw.getfigure(**kargs)
@@ -3882,7 +4126,7 @@ class expression(base_expression):
 
         actual_filename = self.draw.savefigure(fig, filename)
         config.log.info("bundle: Saved '%s'" % actual_filename)
-        return(res)
+        return res
 
     def volcano(self, condition_name, p_value_key, label_key=None, filename=None,
         label_fontsize=6, label_significant=0.01, **kargs):
@@ -3959,6 +4203,96 @@ class expression(base_expression):
         #    real_filename = self.draw.nice_scatter(x_data, y_data, filename, xlims=[-xlim, xlim],
         #        plot_diag_slope=False, **kargs)
 
-
         config.log.info("scatter: Saved '%s'" % real_filename)
-        return(True)
+        return real_filename
+
+    def scatter_expression_two_genes(self, filename, gene_name_x, gene_name_y, cols, search_key='name'):
+        '''
+        **Purpose**
+            Plot a 2D scatter plot for 2 genes, with KDE density plots on the x and y axis.
+            Best if you have several hundered samples
+
+            NOTE: requires seaborn
+
+        **Arguments**
+            gene_name_x, gene_name_y, (Required)
+                the gene names in the expn table, corresponds to the value in get()
+
+            search_key (Optional, default='name')
+                the key to search for the gene names
+
+            filename (Required)
+                filename to save the image to.
+
+            cols (Required)
+                the colors (and also classes) for each cell.
+
+        **Returns**
+            The actual filename
+
+        '''
+        assert len(cols) == len(self.getConditionNames()), 'the length of the colors does not equal the number of conditions'
+
+        from seaborn import kdeplot
+
+        x_genes = self.get(search_key, gene_name_x, mode='lazy')
+        if not x_genes: raise AssertionError('{} not found with {}'.format(gene_name_x, search_key))
+        y_genes = self.get(search_key, gene_name_y, mode='lazy')
+        if not y_genes: raise AssertionError('{} not found with {}'.format(gene_name_y, search_key))
+
+        # Unpack from genelist
+        x_genes = x_genes.linearData[0]['conditions']
+        y_genes = y_genes.linearData[0]['conditions']
+
+        cell_x = []
+        cell_y = []
+
+        fig = plot.figure(figsize=(5,4))
+        gs = fig.add_gridspec(2, 2,
+            width_ratios=(7, 2), height_ratios=(2, 7),
+            left=0.1, right=0.9, bottom=0.1, top=0.9,
+            wspace=0.03, hspace=0.03)
+
+        ax = fig.add_subplot(gs[1, 0])
+
+        ax_histx = fig.add_subplot(gs[0, 0], sharex=ax)
+        ax_histy = fig.add_subplot(gs[1, 1], sharey=ax)
+
+        ax.scatter(x_genes, y_genes, c=cols, alpha=1.0, s=8, ec='none')
+
+        dx = (max(cell_x) - min(cell_x)) / 20
+        dy = (max(cell_y) - min(cell_y)) / 20
+        range_x = [min(cell_x)-dx, max(cell_x)+dx]
+        range_y = [min(cell_y)-dy, max(cell_y)+dy]
+        ax.set_xlim(range_x)
+        ax.set_ylim(range_y)
+
+        # split the x, y by cols;
+        for col in set(cols):
+            cx = []
+            cy = []
+            for x, y, c in zip(x_genes, y_genes, cols):
+                print(x,y,c)
+                if c == col:
+                    cx.append(x)
+                    cy.append(y)
+
+            kdeplot(cx, ax=ax_histx, color=col, )
+            kdeplot(cy, ax=ax_histy, color=col, vertical=True)
+
+        ax_histx.set_xticklabels('')
+        ax_histx.set_yticklabels('')
+        ax_histy.set_xticklabels('')
+        ax_histy.set_yticklabels('')
+        ax_histx.tick_params(bottom=False, left=False)
+        ax_histy.tick_params(bottom=False, left=False)
+
+        ax.axhline([0], c='grey', ls=':')
+        ax.axvline([0], c='grey', ls=':')
+
+        ax.set_xlabel(gene_name_x)
+        ax.set_ylabel(gene_name_y)
+
+        actual_filename = self.draw.savefigure(fig, filename)
+        config.log.info("kmeans: Saved '%s'" % actual_filename)
+        return actual_filename

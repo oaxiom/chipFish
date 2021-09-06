@@ -17,7 +17,7 @@ class _base_genelist:
         self.linearData = None
 
     def __repr__(self):
-        return("<base genelist class>")
+        return "<base genelist class>"
 
     def __in__(self, key):
         """
@@ -26,7 +26,7 @@ class _base_genelist:
         Confer:
         if "key" in genelist:
         """
-        return(key in list(self.keys()))
+        return key in list(self.keys())
 
     def __bool__(self):
         """
@@ -41,7 +41,7 @@ class _base_genelist:
             False
 
         """
-        return(len(self) > 0)
+        return len(self) > 0
 
     #def __copy__(self):
     #    raise Exception, "__copy__() is NOT supported for genelists, use gl.deepcopy() or gl.shallowcopy()"
@@ -58,7 +58,7 @@ class _base_genelist:
 
         This is required as genelists are compound lists.
         """
-        return(pickle.loads(pickle.dumps(self, -1))) # This is 2-3x faster and presumably uses less memory
+        return pickle.loads(pickle.dumps(self, -1)) # This is 2-3x faster and presumably uses less memory
 
     def shallowcopy(self):
         """
@@ -67,14 +67,14 @@ class _base_genelist:
         Some weird behaviour here, I know, this is so I can still get access to
         the shallow copy mechanism even though 90% of the operations are copies.
         """
-        return(copy.copy(self)) # But doesnt this just call __copy__() anyway?
+        return copy.copy(self) # But doesnt this just call __copy__() anyway?
 
     def __len__(self):
         """
         (Override)
         get the length of the list
         """
-        return(len(self.linearData))
+        return len(self.linearData)
 
     def __int__(self):
         """
@@ -84,14 +84,14 @@ class _base_genelist:
         I don't remove it at the moment as I'm not sure if it is used anywhere.
 
         """
-        return(len(self.linearData))
+        return len(self.linearData)
 
     def __iter__(self):
         """
         (Override)
-        make the geneList behave like a normal iterator (list)
+        make the genelist behave like a normal iterator (list)
         """
-        yield from self.linearData
+        return self.linearData.__iter__()
 
     def __getitem__(self, index):
         """
@@ -119,7 +119,7 @@ class _base_genelist:
             newl = self.shallowcopy()
             newl.linearData = utils.qdeepcopy(self.linearData[index]) # separate the data so it can be modified.
             newl._optimiseData()
-        return(newl) # deep copy the slice.
+        return newl # deep copy the slice.
 
     def __setitem__(self, index, *args):
         """
@@ -138,9 +138,9 @@ class _base_genelist:
             return(hash(self.name + str(self[0]) + str(self[-1]) + str(len(self)))) # hash data for comparison.
         except Exception:
             try:
-                return(hash(self.name + str(self[0]) + str(self[-1]))) # len() probably not available (delayedlist?).
+                return hash(self.name + str(self[0]) + str(self[-1])) # len() probably not available (delayedlist?).
             except Exception: # I bet the list is empty.
-                return(hash(self.name))
+                return hash(self.name)
 
     def __and__(self, gene_list):
         """
@@ -186,14 +186,17 @@ class _base_genelist:
         confer append like behaviour: c = a + b
         keeps duplicates (just concatenate's lists)
         """
+        # check they are the same type:
+        assert type(self) == type(gene_list), '"+" only works with identical types'
+
         mkeys = self._collectIdenticalKeys(gene_list)
         if not mkeys: # unable to match.
             config.log.warning("No matching keys, the resulting list would be meaningless")
-            return(False)
+            return False
         newl = self.deepcopy()
         newl.linearData.extend(copy.deepcopy(gene_list.linearData))
         newl._optimiseData()
-        return(newl)
+        return newl
 
     def __sub__(self, gene_list):
         """
@@ -204,7 +207,7 @@ class _base_genelist:
         mkeys = self._collectIdenticalKeys(gene_list)
         if not mkeys: # unable to match.
             config.warning("Warning: No matching keys, unable to perform subtraction")
-            return(False)
+            return False
 
         newl = self.shallowcopy()
         newl.linearData = []
@@ -221,7 +224,7 @@ class _base_genelist:
                 newl.linearData.append(copy.deepcopy(item))
             dontAdd = False
         newl._optimiseData()
-        return(newl)
+        return newl
 
     def __eq__(self, gene_list):
         """
@@ -239,8 +242,8 @@ class _base_genelist:
 
         for key in self.linearData[0]:
             if key in gene_list.linearData[0]:
-                return(True) # just one key in common required.
-        return(False)
+                return True # just one key in common required.
+        return False
 
     def __ne__(self, gene_list):
         """
@@ -248,14 +251,14 @@ class _base_genelist:
         Are the lists equivalent?
         ie do they have the same keys?
         """
-        return(not self.__eq__(gene_list))
-
+        return not self.__eq__(gene_list)
 
     def keys(self):
         """
         return a list of all the valid keys for this geneList
         """
-        return([key for key in self.linearData[0]]) # Not exhaustive
+        if not self.linearData: return [] # Match python dict default
+        return [key for key in self.linearData[0]] # Not exhaustive
 
     def _guessDataType(self, value):
         """
@@ -296,7 +299,7 @@ class _base_genelist:
                         return location(loc=value)
                     except (TypeError, IndexError, AttributeError, AssertionError, ValueError): # this is not working, just store it as a string
                         return str(value).strip()
-        return("") # return an empty datatype.
+        return "" # return an empty datatype.
         # I think it is possible to get here. If the exception at int() or float() returns something other than a
         # ValueError (Unlikely, Impossible?)
 
@@ -338,7 +341,7 @@ class _base_genelist:
                         key = ss[0]
                         value = ss[1].strip('"')
                         d[key] = self._guessDataType(value)
-        return(d)
+        return d
 
     def save(self, filename=None, compressed=False):
         """
@@ -379,7 +382,7 @@ class _base_genelist:
             if compressed:
                 config.log.warning("compression not currently implemented, saving anyway")
             pickle.dump(self, oh, -1)
-        config.log.info("Saved binary version of list: '%s'" % filename)
+        config.log.info("Saved binary version of list: '{}'".format(filename))
 
     def from_pandas(self, pandas_data_frame):
         """

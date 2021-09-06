@@ -15,6 +15,7 @@ from operator import itemgetter
 from shutil import copyfile
 
 import matplotlib.cm as cm
+import scipy
 from scipy import ndimage, interpolate
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
@@ -26,19 +27,55 @@ from .progress import progressbar
 from .location import location
 from .format import minimal_bed
 
+if config.STATSMODELS_AVAIL:
+    from statsmodels.nonparametric.smoothers_lowess import lowess
+else:
+    raise AssertionError('Asked for a hic, but statsmodels is not available')
+
+import matplotlib.pyplot as plot
+
 if config.H5PY_AVAIL:
     import h5py
 else:
-    raise AssertionError('Asked for a hic, but h5py is not avaialble')
+    raise AssertionError('Asked for a hic, but h5py is not available')
+
+
+def reshap_mats2(mat, dimX, dimY):
+    '''
+    Sometimes the matrices are slightly off, reshape them to the same sizes.
+    reshapes matB to the dimensions provided
+
+    This deos not work!
+
+    '''
+    interpolator_func = interpolate.interp2d(range(mat.shape[0]), range(mat.shape[1]), mat, kind='linear')
+    return interpolator_func(dimX, dimY)
+
 
 def reshap_mats(mat, dimX, dimY):
     '''
     Sometimes the matrices are slightly off, reshape them to the same sizes.
     reshapes matB to the dimensions provided
 
+    NOTE: All matrices MUST be square len(x) == len(y)
+
     '''
-    interpolator_func = interpolate.interp2d(range(mat.shape[0]), range(mat.shape[1]), mat, kind='linear')
-    return interpolator_func(dimX, dimY)
+    X = numpy.linspace(0, mat.shape[0], mat.shape[0])
+    f = interpolate.RectBivariateSpline(X, X, mat)
+    Xnew = numpy.linspace(0, mat.shape[0], dimX)
+    return f(Xnew, Xnew)
+
+def reshap_mats_irregular(mat, dimX, dimY, t):
+    '''
+    Non-square matrix version
+    '''
+    X = numpy.linspace(0, mat.shape[0], mat.shape[0])
+    Y = numpy.linspace(0, mat.shape[0], mat.shape[1])
+    f = interpolate.RectBivariateSpline(X, Y, mat)
+    Xnew = numpy.linspace(0, mat.shape[0], dimX)
+    Ynew = numpy.linspace(0, mat.shape[1], dimY)
+
+    return f(Xnew, Ynew)
 
 def merge_hiccys(new_hic_filename, name, *hics):
     '''
@@ -62,34 +99,60 @@ def merge_hiccys(new_hic_filename, name, *hics):
     **Returns**
         None
     '''
+    # TODO: Merge OE and AB matrices (regenerate, surely?)
     assert new_hic_filename, 'You must specify a filename in new_hic_filename'
     assert name, 'You must specify a name'
     assert hics, 'a list of hics was not specified'
-    assert isinstance(hics, tuple), 'hics must be a list of >=2'
+    assert isinstance(hics, tuple), 'hics must be a tuple of >=2'
     assert (len(hics) > 1), 'hics must be >=2 length'
 
     # For the first one to merge, do an OS copy for speed and setup
-    copyfile(hics[0], new_hic_filename)
-
-    newhic = hic(filename=new_hic_filename, name=name, new=False, _readplus=True)
-
-    print(newhic.mats['chr10'])
+    #copyfile(hics[0], new_hic_filename)
 
     # I bind all the hics:
+    h0 = hic(filename=hics[0], name=hics[0])
     hics = [hic(filename=f, name=f) for f in hics[1:]]
 
+    # Do a setup;
+    newhic = hic(filename=new_hic_filename, name=name, new=True, _readplus=False)
+
+    newhic.hdf5_handle.attrs['name'] = name
+    newhic.hdf5_handle.attrs['inter_chrom_only'] = h0.hdf5_handle.attrs['inter_chrom_only']
+    newhic.hdf5_handle.attrs['OE'] = False
+    newhic.hdf5_handle.attrs['AB'] = False
+    newhic.hdf5_handle.attrs['version'] = h0.hdf5_handle.attrs['version']
+    newhic.hdf5_handle.attrs['num_bins'] = h0.hdf5_handle.attrs['num_bins']
+    newhic.hdf5_handle.attrs['bin_size'] = h0.hdf5_handle.attrs['bin_size']
+    newhic.all_chrom_names = hics[0].all_chrom_names # Made into a set later
+    newhic.draw = draw()
+
     for chrom in newhic.all_chrom_names:
-        data = numpy.array(newhic.mats[chrom])
+        data = numpy.array(h0.mats[chrom])
         for h in hics:
             newdata = h.mats[chrom]
 
-            if newdata.shape != data.shape:
-                newdata = reshap_mats(newdata, data.shape[0], data.shape[1])
+            #if newdata.shape != data.shape:
+            #    newdata = reshap_mats(newdata, data.shape[0], data.shape[1])
             data += newdata
 
         data /= (len(hics)+1)
-        newhic.mats[chrom][:] = data
 
+        grp = newhic.hdf5_handle.create_group('matrix_{}'.format(chrom))
+        grp.create_dataset('mat', data.shape, dtype=numpy.float32, data=data)
+        config.log.info('Added chrom=%s to table' % chrom)
+
+    # save the bin data as an emulated dict: Just copy from h0
+    grp = newhic.hdf5_handle.create_group('bin_lookup')
+    for chrom in newhic.all_chrom_names:
+        grp = newhic.hdf5_handle.create_group('bin_lookup/chrom_%s' % chrom)
+        flat_bin = numpy.array(h0.hdf5_handle['bin_lookup/chrom_%s/bins' % chrom][()])
+        grp.create_dataset('bins', (flat_bin.shape), dtype=int, data=flat_bin, chunks=True, compression='lzf')
+
+    dat = [str(n).encode("ascii", "ignore") for n in newhic.all_chrom_names]
+    newhic.hdf5_handle.create_dataset('all_chrom_names', (len(newhic.all_chrom_names), 1), 'S10', dat)
+
+    newhic._OEmatrix()
+    newhic._ABcompart()
     newhic.close()
     config.log.info('Merged {0} matrices'.format(len(hics)+1,))
 
@@ -117,10 +180,14 @@ class hic:
                 At the moment only inter-chromsomal contacts are recorded.
 
         """
+        __OE_missing_warning = False
+
         assert inter_chrom_only, 'inter_chrom_only != True, only inter-chromosomal links are supported'
+        self.version = '1.1'
         self.readonly = True
         self.pca_valid = False
         self.tsne_trained = False
+        self.filename = filename
         # These need to also be packaged into the hiccy
         if new:
             self.readonly = False
@@ -134,6 +201,8 @@ class hic:
             # chrom_edges slice locations for all the chromsome names
             self.hdf5_handle.attrs['name'] = name
             self.hdf5_handle.attrs['inter_chrom_only'] = inter_chrom_only
+            self.hdf5_handle.attrs['OE'] = False
+            self.hdf5_handle.attrs['version'] = self.version
             self.all_chrom_names = [] # Made into a set later
             self.draw = draw()
         else: # old
@@ -163,12 +232,21 @@ class hic:
             #print(self.bin_data)
 
             self.mats = {}
+            self.OE = {}
+            self.AB = {}
             for chrom in self.all_chrom_names:
                 self.mats[chrom] = self.hdf5_handle['matrix_%s/mat' % chrom]
+                try:
+                    self.OE[chrom] = self.hdf5_handle['OE_{}/OE'.format(chrom)]
+                    self.AB[chrom] = self.hdf5_handle['AB_{}/AB'.format(chrom)]
+                except KeyError:
+                    if not __OE_missing_warning:
+                        config.log.warning('{} is an old-style hic, OE and AB is not available'.format(self.filename))
+                    __OE_missing_warning = True
 
             self.draw = draw()
             config.log.info('Bound "%s" Hic file' % filename)
-        return(None)
+        return None
 
     def visit(self):
         self.hdf5_handle.visit(print)
@@ -215,8 +293,12 @@ class hic:
         mostLeft = 1e50
         mostRight = -1
 
+        chrom = loc.loc['chr']
+        if 'chr' not in chrom:
+            chrom = 'chr{0}'.format(chrom)
+
         #print(self.bin_lookup_by_chrom[loc['chr']])
-        for bin in self.bin_lookup_by_chrom[loc['chr']]:
+        for bin in self.bin_lookup_by_chrom[chrom]:
             # bin = (binID, left, right)
             #print(bin, loc)
             if bin[2] > loc['left'] and bin[0] < binLeft:
@@ -243,18 +325,18 @@ class hic:
             binRight = mostRight
             locLeft = mostRightLoc
 
-        newloc = location(chr=loc['chr'], left=locLeft+1, right=locRight-1) # the +1/-1 stops the bins from overlapping by 1bp, and solves a lot of problems
+        newloc = location(chr=chrom, left=locLeft+1, right=locRight-1) # the +1/-1 stops the bins from overlapping by 1bp, and solves a lot of problems
 
         binLeft = binLeft - mostLeft
         binRight = binRight - mostLeft
         mostRight = self.bin_lookup_by_binID[mostRight][3] # Convert to newBinID:
         mostLeft = self.bin_lookup_by_binID[mostLeft][3]
         #print (binLeft, binRight, newloc, mostLeft, mostRight)
-        assert binRight-binLeft > 2, 'the genome view (loc) is too small, and contains < 2 bins'
+        assert binRight-binLeft > 10, 'the genome view (loc) is too small, and contains < 10 bins'
 
         return (binLeft, binRight, newloc, mostLeft, mostRight)
 
-    def __quick_find_binID_spans(self, loc_chrom=None, loc_left=None, loc_rite=None):
+    def __quick_find_binID_spans(self, loc_chrom=None, loc_left=None, loc_rite=None, do_assert_check=True):
         """
         (Internal)
 
@@ -292,7 +374,7 @@ class hic:
 
         binLeft = binLeft - mostLeft
         binRight = binRight - mostLeft
-        assert binRight-binLeft > 2, 'the genome view (loc) is too small, and contains < 3 bins'
+        if do_assert_check: assert binRight-binLeft > 2, 'the genome view (loc) is too small, and contains < 3 bins'
 
         return (binLeft, binRight)
 
@@ -322,6 +404,133 @@ class hic:
         mostLeft = self.bin_lookup_by_binID[mostLeft][3]
 
         return (mostLeft, mostRight)
+
+    def _OEmatrix(self):
+        '''
+
+        Call after loading mat to build the OE matrices;
+
+        '''
+        fig = plot.figure()
+
+        for axidx, chrom in enumerate(self.all_chrom_names):
+            ax = fig.add_subplot(5, 5, axidx+1)
+            ax.set_title(chrom, fontsize=6)
+            ax.tick_params(axis='both', labelsize=6)
+
+            # Simple enough, take the diagonal mean (E), then for each point (O) O/E
+
+            mats = self.hdf5_handle['matrix_{}/mat'.format(chrom)]
+            grp = self.hdf5_handle.create_group('OE_{}'.format(chrom))
+            #with numpyp.errstate(divide='ignore', invalid='ignore'):
+
+            # get diagonal means;
+            means = []
+            flipped = numpy.array(mats) # numpy.fliplr(mats)
+            for d in range(flipped.shape[0]):
+                s = flipped.diagonal(offset=d)
+                s = s[s > 0] # filter no datas
+                m = numpy.sum(s) / s.shape[0] if s.shape[0] > 0 else 0
+                means.append(m)
+                        #means.append(d)
+            oldmeans = numpy.array(means) # [::-1]
+
+            # smooth means;
+            fit = lowess(oldmeans, numpy.arange(len(means)), frac=0.04, it=6, is_sorted=True)
+
+            ax.plot(means, lw=0.3, alpha=0.5, c='red')
+            # The first ~2 points are a bad fit, so just replace them with the raw:
+            means = fit[:,1]
+            means[0] = oldmeans[0]
+            means[1] = oldmeans[1]
+            #means[2] = oldmeans[2]
+            #print(means[0:4], oldmeans[0:4])
+            ax.plot(fit[:,0], means, lw=0.6, alpha=0.2, c='black')
+            sliding_means = means #[::-1] # initial;
+            full_window = numpy.concatenate((means[::-1], means[1:], means[::-1], means[1:]), axis=None) # for sliding window;
+
+            # Now get O/E for each point;
+            newmat = numpy.array(mats)
+            for x in range(mats.shape[0]):
+                for y in range(mats.shape[0]):
+                    with numpy.errstate(divide='ignore', invalid='ignore'):
+                        newmat[x,y] = newmat[x,y] / sliding_means[y] # actual O/E calc;
+                        #newmat[x,y] = sliding_means[y]
+                        #newmat[x,y] = y
+                t = mats.shape[0] - x
+                sliding_means = full_window[t-2:t+mats.shape[0]+1] # increment;
+                # inc
+            newmat[numpy.isnan(flipped)] = 0
+            newmat[numpy.isinf(flipped)] = 0
+            newmat[flipped == 0] = 0 # remove no data
+
+            newmat = numpy.corrcoef(newmat)
+
+            grp.create_dataset('OE', newmat.shape, dtype=numpy.float32, data=newmat)
+        config.log.info('Calculated O/E data')
+
+        fig.savefig('OE_decay_{}.pdf'.format(self['name']))
+
+        self.hdf5_handle.attrs['OE'] = True
+        return
+
+    def _ABcompart(self):
+        '''
+
+        Build A/B compartments;
+
+        '''
+
+        # From: https://github.com/dekkerlab/cworld-dekker/blob/master/scripts/python/getEigenVectors.py
+
+        numPCs = 3
+
+        """
+        performs eigen vector analysis, and returns 3 best principal components
+        result[0] is the first PC, etc
+        """
+        '''
+        for chrom in self.all_chrom_names:
+            newmat = self.hdf5_handle['OE_{}/OE'.format(chrom)]
+            with numpy.errstate(divide='ignore', invalid='ignore'):
+                A = numpy.corrcoef(newmat) # Pearson Corr of normalised distance
+
+            A = numpy.array(A)
+            M = (A - numpy.mean(A.T, axis=1)).T
+            covM = numpy.dot(M, M.T)
+            latent, coeff = scipy.sparse.linalg.eigsh(covM, numPCs)
+            #return (np.transpose(coeff[:,::-1]),latent[::-1])
+            pc1 = numpy.transpose(coeff[:,::-1])
+
+            grp = self.hdf5_handle.create_group('AB_{}'.format(chrom))
+            grp.create_dataset('AB', pc1.shape, dtype=numpy.float32, data=pc1)
+
+        config.log.info('Calculated A/B compartments')
+        self.hdf5_handle.attrs['AB'] = True
+        return
+        '''
+
+        for chrom in self.all_chrom_names:
+            m = numpy.array(self.hdf5_handle['OE_{}/OE'.format(chrom)])
+
+            grp = self.hdf5_handle.create_group('AB_{}'.format(chrom))
+            with numpy.errstate(divide='ignore', invalid='ignore'):
+                #m = numpy.corrcoef(m)
+                #m = numpy.log2(m)
+                m[numpy.isnan(m)] = 0
+                m[numpy.isinf(m)] = 0
+
+            w, v = numpy.linalg.eig(m)
+            if hasattr(v, 'mask'):
+                v.mask = False
+            e = numpy.real(v[:, 0]) # first PC
+
+            grp.create_dataset('AB', e.shape, dtype=numpy.float32, data=e)
+        config.log.info('Calculated A/B compartments')
+
+        self.hdf5_handle.attrs['AB'] = True
+        return
+
 
     def load_hicpro_matrix(self, matrix_filename, bed_file):
         """
@@ -447,6 +656,9 @@ class hic:
         dat = [str(n).encode("ascii", "ignore") for n in self.all_chrom_names]
         self.hdf5_handle.create_dataset('all_chrom_names', (len(self.all_chrom_names), 1), 'S10', dat)
 
+        self._OEmatrix()
+        self._ABcompart()
+
         return True
 
     def load_cooler_pixels_dump(self, matrix_filename):
@@ -491,17 +703,18 @@ class hic:
 
             lin = lin.strip().split('\t')
 
-            chr1 = lin[0]
             if not bin_size: # sample the bin size;
                 bin_size = int(lin[2]) - int(lin[1])
-            if chr1 not in self.all_chrom_names:
+
+            chr1 = lin[0]
+            if chr1 not in max_chrom_size:
                 max_chrom_size[chr1] = 0
             if int(lin[2]) > max_chrom_size[chr1]:
                 max_chrom_size[chr1] = int(lin[2])
 
             # same for other read, as you could imagine a situation where a right bin is not seen in the left bin?
             chr2 = lin[3]
-            if chr2 not in self.all_chrom_names:
+            if chr2 not in max_chrom_size:
                 max_chrom_size[chr2] = 0
             if int(lin[5]) > max_chrom_size[chr2]:
                 max_chrom_size[chr2] = int(lin[5])
@@ -557,7 +770,7 @@ class hic:
             # Now I know how big the arrays need to be, and all of the chromosomes:
             size = self.chrom_edges[chrom][1]-self.chrom_edges[chrom][0]
             matrices[chrom] = numpy.zeros((size+1, size+1), dtype='float32')
-            # TODO: Support inter-chromosomal contacts with a sparse array:
+            # TODO: Support for interchrom with a sparse array:
 
         oh = gzip.open(matrix_filename, 'rt')
         p = progressbar(self['num_bins'] * self['num_bins']) # expected maximum
@@ -581,10 +794,6 @@ class hic:
 
                 matrices[chrom][x,y] = float(lin[7]) # i.e. weight
                 matrices[chrom][y,x] = float(lin[7])
-            else:
-                # TODO: Support for interchrom with a sparse array:
-                pass
-
             p.update(idx)
         p.update(self['num_bins'] * self['num_bins']) # the above is unlikely to make it to 100%, so fix the progressbar.
         oh.close()
@@ -616,6 +825,9 @@ class hic:
 
         dat = [str(n).encode("ascii", "ignore") for n in self.all_chrom_names]
         self.hdf5_handle.create_dataset('all_chrom_names', (len(self.all_chrom_names), 1), 'S10', dat)
+
+        self._OEmatrix()
+        self._ABcompart()
 
         return True
 
@@ -652,7 +864,7 @@ class hic:
             actual_filename = '%s_chrom%s.matrix' % (filename, chrom)
             with open(actual_filename, 'w') as oh:
                 mostLeft, mostRight = self.__find_binID_chromosome_span(chrom)
-                mat = self.mats[chrom].value
+                mat = self.mats[chrom][()]
                 bins = self.bin_lookup_by_chrom[chrom]
                 for m, b in zip(mat, bins):
                     if nohead:
@@ -704,8 +916,15 @@ class hic:
 
         return self.tad_calls
 
-    def heatmap(self, filename, chr=None, loc=None,
-        bracket=None, colour_map=cm.inferno_r, log2=False, **kargs):
+    def heatmap(self,
+        filename,
+        chr=None,
+        loc=None,
+        key='matrix',
+        bracket=None,
+        colour_map=cm.inferno_r,
+        log2=False,
+        **kargs):
         """
         **Purpose**
             Draw an interaction heatmap
@@ -719,6 +938,13 @@ class hic:
                 Exclusive: You can use only one of chr and loc
                 You can set the view to an entire chromosome with chr,
                 or you can set a specific location with loc
+
+            key (Optional, default='matrix')
+                The data matrix name to use for plotting.
+                Valid options are
+                    matrix: normal contact probability
+                    OE: generated with OEmatrix
+                    AB: generated with ABmatrix
 
             aspect (Optional, default='square')
                 image aspect for the heatmap
@@ -744,16 +970,36 @@ class hic:
         if chr and loc:
             raise AssertionError('chr and loc both contain values. You can only use one')
 
+        dataset_to_use = {
+            'matrix': self.mats,
+            'OE': self.OE,
+            'AB': self.OE,
+            }
+        # TODO: sanity checking on matrix availability;
+        cmap_to_use = {
+            'matrix': cm.viridis,
+            'OE': cm.RdBu_r,
+            'AB': cm.BrBG_r,
+            }
+
+        assert key in dataset_to_use, '{} is not a valid dataset key'.format(key)
+
         if chr:
-            data = self.mats[str(chr)]
+            data = dataset_to_use[key][str(chr)]
+            #ABdata = self.AB[str(chr)]
         elif loc:
             if not isinstance(loc, location):
                 loc = location(loc)
 
+            chrom = loc.loc['chr']
+            if 'chr' not in chrom:
+                chrom = 'chr{}'.format(chrom)
+
             # Need to get the binIDs and the updated location span
             localLeft, localRight, loc, _, _ = self.__find_binID_spans(loc)
 
-            data = self.mats[loc['chr']][localLeft:localRight, localLeft:localRight]
+            data = dataset_to_use[key][chrom][localLeft:localRight, localLeft:localRight]
+            #ABdata = self.AB[chrom][localLeft:localRight]
         else:
             raise NotImplementedError('chr=None not implemented')
             data = self.matrix # use the whole lot
@@ -768,14 +1014,17 @@ class hic:
         fig = self.draw.getfigure(**kargs)
 
         # positions of the items in the plot:
-        heatmap_location  = [0.05,   0.01,   0.90,   0.90]
-        scalebar_location = [0.05,   0.97,   0.90,   0.02]
+        heatmap_location  = [0.20,   0.01,   0.79,   0.79]
+        ABtop =             [0.20,   0.81,   0.79,   0.07]
+        ABlef =             [0.12,   0.01,   0.07,   0.79]
+        scalebar_location = [0.20,   0.97,   0.79,   0.02]
 
         if bracket: # done here so clustering is performed on bracketed data
             #data = self.draw.bracket_data(numpy.log2(self.matrix+0.1), bracket[0], bracket[1])
             if log2:
                 with numpy.errstate(divide='ignore'):
                     data = numpy.log2(data)
+                    data[numpy.isneginf(data)] = 0
                 colbar_label = 'Log2(Density)'
             # Faster numpy"
             data = numpy.clip(data, bracket[0], bracket[1])
@@ -791,11 +1040,34 @@ class hic:
             vmin = data.min()
             vmax = data.max()
 
+        # ---------------- (A/B plots) ---------------------
+        if key == 'AB':
+            ABdata = numpy.array(self.AB[str(chr)])
+
+            ax1 = fig.add_subplot(142)
+            ax1.set_position(ABtop)
+            ax1.plot(ABdata)
+            ax1.set_xlim([0, len(ABdata)])
+            ax1.axhline(0.0, lw=1.0, c='black')
+            ax1.tick_params(left=None, bottom=None)
+            ax1.set_xticklabels('')
+            ax1.set_yticklabels('')
+
+            ax2 = fig.add_subplot(143)
+            ax2.set_position(ABlef)
+            ax2.plot(range(len(ABdata)), ABdata)
+            ax2.set_ylim([0, len(ABdata)])
+            ax2.axvline(0.0, lw=1.0, c='black')
+            #ax2.tick_params(left=None, bottom=None)
+            #ax2.set_xticklabels('')
+            #ax2.set_yticklabels('')
+
+
         # ---------------- (heatmap) -----------------------
-        ax3 = fig.add_subplot(121)
+        ax3 = fig.add_subplot(141)
 
         ax3.set_position(heatmap_location) # must be done early for imshow
-        hm = ax3.imshow(data, cmap=colour_map, vmin=vmin, vmax=vmax, aspect="auto",
+        hm = ax3.imshow(data, cmap=cmap_to_use[key], vmin=vmin, vmax=vmax, aspect="auto",
             origin='lower', extent=[0, data.shape[1], 0, data.shape[0]],
             interpolation=config.get_interpolation_mode(filename))
 
@@ -810,11 +1082,11 @@ class hic:
         [t.set_fontsize(5) for t in ax3.get_yticklabels()] # generally has to go last.
         [t.set_fontsize(5) for t in ax3.get_xticklabels()]
 
-        ax0 = fig.add_subplot(122)
+        ax0 = fig.add_subplot(144)
         ax0.set_position(scalebar_location)
         ax0.set_frame_on(False)
 
-        cb = fig.colorbar(hm, orientation="horizontal", cax=ax0, cmap=colour_map)
+        cb = fig.colorbar(hm, orientation="horizontal", cax=ax0)
         cb.set_label(colbar_label)
         [label.set_fontsize(5) for label in ax0.get_xticklabels()]
 
@@ -1178,7 +1450,6 @@ class hic:
             if i.max() > max:
                 max = i.max()
 
-        print(max)
         data = [0] * (int(max)+1)
         for r in self.matrix:
             for i in r:
@@ -1418,10 +1689,12 @@ class hic:
         filename:str = None,
         center_anchors = None,
         distal_anchors = None,
+        bedpe = None,
         window:int = None,
+        num_bins:int = None,
         bracket = None,
         log2 = None,
-        colour_map = cm.plasma,
+        colour_map = cm.viridis,
         **kargs
         ):
         """
@@ -1429,26 +1702,99 @@ class hic:
             Draw a square plot for HiC intensity,
             Take the center_anchor points, and then draw out to eith ther distal anchors, or to some <window>
             Take the average of the matrix;
+
+        **Arguemnts**
+            filename
+
+            center_anchors
+
+            distal_anchors
+
+            bedpe (Optional, default=None)
+                Or, you could pass a genelist with a loc1 and loc2 pair of locations to use for the corners.
+
+        **Returns**
+            ?
+
         """
         assert self.readonly, 'must be readonly to draw a square_plot. set new=False'
         assert filename, 'You need a filename to save the image to'
         assert not (distal_anchors and window), 'Only one of distal_anchors or window can be valid'
-        if not window: assert distal_anchors, 'distal_anchors not True'
-        if not distal_anchors: assert window, 'window not True'
+        if bedpe: assert num_bins, 'You must specify num_bins for the heatmap if bedpe=True'
+        if not window: assert (bedpe or distal_anchors), 'distal_anchors or bedpe not True'
+        if not distal_anchors and not bedpe: assert window, 'window not True'
+        if bedpe:
+            assert 'loc1' in bedpe.keys(), 'need a "loc1" key in bedpe genelist'
+            assert 'loc2' in bedpe.keys(), 'need a "loc2" key in bedpe genelist'
 
         if distal_anchors:
             raise NotImplementedError('distal_anchors not implemented')
 
-        num_bins = (window * 2) // self['bin_size']
+        if bedpe:
+            __num_skipped = 0
+            __intra_chroms = 0
+            mat = numpy.zeros((num_bins, num_bins))
+            int_range = numpy.arange(num_bins)
 
-        mat = numpy.zeros((num_bins, num_bins))
-        int_range = numpy.arange(num_bins)
+            left = [(loc['chr'], loc['left'], loc['right']) for loc in bedpe['loc1']]
+            right = [(loc['chr'], loc['left'], loc['right']) for loc in bedpe['loc2']]
+            p = progressbar(len(bedpe))
+            for aidx, (l, r) in enumerate(zip(left, right)):
+                if l[0] != r[0]:
+                    __intra_chroms += 1
+                    continue # differnent chroms are not supported
 
-        if distal_anchors:
+                chrom = 'chr{0}'.format(l[0])
+
+                scaled_window = (max([l[2], r[2]]) - min([l[1], r[1]])) // 10
+
+                #print(l, r)
+                localLeft1, localRight1 = self.__quick_find_binID_spans(chrom, l[1]-scaled_window, l[2]+scaled_window, do_assert_check=False)
+                localLeft2, localRight2 = self.__quick_find_binID_spans(chrom, r[1]-scaled_window, r[2]+scaled_window, do_assert_check=False)
+
+                localLeft = min([localLeft1, localRight1, localLeft2, localRight2])
+                localRight = max([localLeft1, localRight1, localLeft2, localRight2])
+
+                #scaled_window = (localRight - localLeft) // 5 # must match the data.shape[0] < 5 below;
+
+                #print(localLeft, localRight)
+
+                localLeft -= scaled_window
+                localRight += scaled_window
+
+                #print(localLeft, localRight, scaled_window)
+
+                data = self.mats[chrom][localLeft:localRight, localLeft:localRight]
+
+                if data.shape != mat.shape:
+                    if data.shape[0] < 10:
+                        # Seems the two loops are too close together for this resolution, skip it;
+                        __num_skipped += 1
+                        continue
+                    #print(data.shape, mat.shape)
+                    data = reshap_mats(data, num_bins, num_bins)
+
+                mat += data
+                p.update(aidx)
+
+            mat /= len(bedpe)
+
+            m10 = mat.shape[0] // 10
+
+            markers = [m10, mat.shape[0] - m10]
+
+            config.log.info('{0} were on differnet chromsomes and were not used'.format(__intra_chroms))
+            config.log.info('{0} loci were too close together for this hiccy resolution and were not used'.format(__num_skipped))
+
+        elif distal_anchors:
             for anchor, distal in zip(center_anchors, distal_anchors):
                 pass # Not implemented yet.
 
         elif window:
+            num_bins = (window * 2) // self['bin_size']
+            mat = numpy.zeros((num_bins, num_bins))
+            int_range = numpy.arange(num_bins)
+
             p = progressbar(len(center_anchors))
             for aidx, anchor in enumerate(center_anchors):
                 chrom = anchor['loc']['chr']
@@ -1456,15 +1802,40 @@ class hic:
                     chrom = 'chr{0}'.format(chrom)
                 localLeft, localRight = self.__quick_find_binID_spans(chrom, anchor['loc']['left']-window, anchor['loc']['right']+window)
 
-                data = self.mats[chrom][localLeft:localRight, localLeft:localRight]
+                1/0 # I feel this is wrong somehow:
+                ##data = self.mats[chrom][localLeft:localRight, localLeft:localRight]
 
                 if data.shape != mat.shape:
-                    data = reshap_mats(data, int_range, int_range)
+                    data = reshap_mats(data, num_bins, num_bins)
 
                 mat += data
                 p.update(aidx)
 
             mat /= len(center_anchors)
+
+            markers = [mat.shape[0] // 2, (mat.shape[0] // 2)+1]
+
+        return self.square_plot_heatmap(filename=filename,
+            center_anchors=center_anchors, distal_anchors=distal_anchors,
+            window=window, bracket=bracket,
+            log2=log2,
+            mat=mat,
+            colour_map=colour_map,
+            markers = markers,
+            **kargs)
+
+    def square_plot_heatmap(self,
+        filename:str = None,
+        center_anchors = None,
+        distal_anchors = None,
+        window:int = None,
+        bracket = None,
+        log2 = None,
+        colour_map = cm.plasma,
+        mat = None,
+        markers = None,
+        **kargs
+        ):
 
         fig = self.draw.getfigure(**kargs)
 
@@ -1472,7 +1843,7 @@ class hic:
         heatmap_location  = [0.05,   0.01,   0.90,   0.90]
         scalebar_location = [0.05,   0.97,   0.90,   0.02]
 
-        if "colbar_label" not in kargs:
+        if not "colbar_label" in kargs:
             colbar_label = "Density"
 
         if bracket: # done here so clustering is performed on bracketed data
@@ -1481,13 +1852,13 @@ class hic:
                 with numpy.errstate(divide='ignore'):
                     mat = numpy.log2(mat)
                 colbar_label = "Log2(Density)"
-            data = numpy.clip(data, bracket[0], bracket[1])
+            mat = numpy.clip(mat, bracket[0], bracket[1])
             vmin = bracket[0]
             vmax = bracket[1]
         else:
             if log2:
                 with numpy.errstate(divide='ignore'):
-                    data = numpy.log2(data)
+                    mat = numpy.log2(mat)
                 colbar_label = "Log2(Density)"
             mat[mat == -numpy.inf] = 0
             vmin = mat.min()
@@ -1497,8 +1868,11 @@ class hic:
         ax = fig.add_subplot(121)
 
         ax.set_position(heatmap_location) # must be done early for imshow
-        hm = ax.imshow(mat, cmap=colour_map, vmin=vmin, vmax=vmax, aspect="auto",
-            origin='lower', extent=[0, data.shape[1], 0, data.shape[0]],
+        hm = ax.imshow(mat, cmap=colour_map,
+            vmin=vmin, vmax=vmax,
+            aspect="auto",
+            origin='lower',
+            extent=[0, mat.shape[1], 0, mat.shape[0]],
             interpolation=config.get_interpolation_mode(filename))
 
         #ax3.set_frame_on(True)
@@ -1508,8 +1882,10 @@ class hic:
         ax.set_yticklabels("")
         ax.set_xticklabels("")
 
-        ax.axvline(mat.shape[0] // 2, ls=":", color="grey")
-        ax.axhline(mat.shape[1] // 2, ls=":", color="grey")
+        if markers:
+            for m in markers:
+                ax.axvline(m, ls=":", lw=0.5, color="grey")
+                ax.axhline(m, ls=":", lw=0.5, color="grey")
 
         ax.tick_params(top=False, bottom=False, left=False, right=False)
         [t.set_fontsize(5) for t in ax.get_yticklabels()] # generally has to go last.
@@ -1528,3 +1904,188 @@ class hic:
         config.log.info("heatmap: Saved '%s'" % actual_filename)
 
         return mat
+
+    def measure_loop_strength(self,
+        bedpe=None,
+        log=False,
+        min_bins:int = 4,
+        **kargs):
+        '''
+        **Purpose**
+            Measure the loop strength for the selected bedpe (containig a loc1 and loc2 key)
+            that describes a loop of chromatin between two loci. (i.e. take the diagonal)
+
+            Only loops on the same chromsome are supported.
+
+        **Arguments**
+            bedpe (Required)
+                a genelist containing a loc1 and loc2 key for the start of the loop and the end.
+
+            min_bins (Optional, default=4)
+                minimum number of bins distant to measure the loop (i.e. exclude loops that are too close).
+
+        **Returns**
+            a new genelist containing all the valid loci with a new key 'loop_strength'
+
+        '''
+        assert self.readonly, 'must be readonly to draw a square_plot. set new=False'
+        #assert filename, 'You need a filename to save the image to'
+        assert bedpe, 'You must specify a bedpe'
+        assert 'loc1' in bedpe.keys(), 'need a "loc1" key in bedpe genelist'
+        assert 'loc2' in bedpe.keys(), 'need a "loc2" key in bedpe genelist'
+
+        newl = []
+
+        min_pad = 0.01
+        __num_skipped = 0
+        __intra_chroms = 0
+
+        p = progressbar(len(bedpe))
+        for aidx, item in enumerate(bedpe.linearData):
+            p.update(aidx)
+
+            l1 = item['loc1'].loc
+            l2 = item['loc2'].loc
+
+            if l1['chr'] != l2['chr']:
+                __intra_chroms += 1
+                continue # differnent chroms are not supported
+
+            chrom = 'chr{}'.format(l1['chr'])
+
+            try:
+                localLeft1, localRight1 = self.__quick_find_binID_spans(chrom, l1['left'], l1['right'], do_assert_check=False)
+                localLeft2, localRight2 = self.__quick_find_binID_spans(chrom, l2['left'], l2['right'], do_assert_check=False)
+            except KeyError:
+                # The chrom is in one list, but not in the other, ignore it
+                continue
+
+            localLeft = min([localLeft1, localRight1, localLeft2, localRight2])
+            localRight = max([localLeft1, localRight1, localLeft2, localRight2])
+
+            #print(localLeft1, localRight1, localLeft2, localRight2, localLeft, localRight, item['loc1'], item['loc2'], self.mats[chrom][localLeft, localRight])
+
+            if localRight - localLeft < min_bins:
+                __num_skipped += 1
+                continue
+
+            loop_strength = self.mats[chrom][localLeft, localRight]
+
+            item = dict(item)
+            if log:
+                item['loop_strength'] = math.log2(float(loop_strength)+min_pad)
+            else:
+                item['loop_strength'] = float(loop_strength)
+            newl.append(item)
+
+        gl = genelist()
+        gl.load_list(newl)
+        gl.name = bedpe.name
+
+        config.log.info('{} were on different chromosomes and were not used'.format(__intra_chroms))
+        config.log.info('{} loci were too close together for this hiccy resolution and were not used'.format(__num_skipped))
+
+        return gl
+
+    def contact_probability(self, min_dist, max_dist, anchors=None, filename=None, skip_Y_chromosome=True, **kargs):
+        '''
+        **Purpose**
+            Measure the contact probability from in_dist to max dist,
+            draw an image and return the histogram.
+
+        **Arguments**
+            min_dist (Required)
+                minimum genomic distance to consider.
+
+            max_dist (Required)
+                maximum genomic distance to consider.
+
+            anchors (Optional, default=FAlse)
+                By default contact_probability considers all genomic locations.
+                If this is set to a genelist with a 'loc' key then only those specific loci will be used.
+
+            filename (Optional, default=False)
+                filename to save the resulting histogram to.
+
+            skip_Y_chromosome (Optional, default=True)
+                HiC data on the Y chromsome is pretty messy, and if your cells are female is not valid. Skip it by default;
+
+        '''
+        if anchors: assert 'loc' in anchors.keys(), '"loc" key not found in anchors'
+        assert min_dist, 'max_dist must be specified'
+        assert max_dist, 'min_dist must be specified'
+
+        # basically you just step through all diagonals, and take the histogram;
+        bin_span = math.ceil((max_dist - min_dist) / self['bin_size'])
+        min_bin = math.ceil(min_dist / self['bin_size'])
+
+        hist = numpy.zeros(bin_span)
+
+        if anchors: # selected anchors only
+            used_bins = set([]) # Don't use same bin twice;
+
+            anchors = anchors['loc']
+            p = progressbar(len(anchors))
+            for lidx, loc in enumerate(anchors):
+                chrom = 'chr{}'.format(loc.loc['chr'])
+                cpt = ((loc.loc['left'] + loc.loc['right']) // 2) // self['bin_size']
+
+                if cpt in used_bins:
+                    continue
+                used_bins.add(cpt)
+
+                left_top_slice = cpt+min_bin+bin_span
+                if left_top_slice < self.mats[chrom].shape[1]:
+                    left = numpy.ravel(self.mats[chrom][cpt+min_bin:cpt+min_bin+bin_span, cpt:cpt+1])
+                    #print('left', left)
+                    hist += left
+
+                up_top_slice = cpt-min_bin-bin_span
+                if up_top_slice > 1:
+                    up = self.mats[chrom][cpt:cpt+1, up_top_slice:cpt-min_bin][0][::-1]
+                    #print('up', up)
+                    hist += up
+                p.update(lidx)
+
+        else: # Whole genome;
+            p = progressbar(len(self.mats))
+            for cidx, chrom in enumerate(self.mats):
+                if chrom == 'chrY' and skip_Y_chromosome:
+                    continue # The Y is often a mess skip it;
+                for cpt in range(self.mats[chrom].shape[0]):
+                    # Don't add the edges, as that includes things like telomeres;
+
+                    ri_top_slice = cpt+min_bin+bin_span
+                    if ri_top_slice < self.mats[chrom].shape[1]:
+                        ri = numpy.ravel(self.mats[chrom][cpt+min_bin:cpt+min_bin+bin_span, cpt:cpt+1])
+                        #print('ri', cpt, cpt+min_bin, cpt+min_bin+bin_span)
+                        #print(ri)
+                        hist += ri
+
+                    up_top_slice = cpt-min_bin-bin_span
+                    if up_top_slice > 1:
+                        up = self.mats[chrom][cpt:cpt+1, up_top_slice:cpt-min_bin][0][::-1]
+                        #print('up', cpt, up_top_slice, cpt-min_bin)
+                        #print(up)
+                        hist += up
+                p.update(cidx)
+
+        x = range(min_dist, max_dist, self['bin_size'])
+        log10x = [math.log10(i) for i in x]
+
+        if filename:
+            fig = self.draw.getfigure()
+            ax = fig.add_subplot(111)
+
+            hist = numpy.log10(hist)
+
+            ax.plot(log10x, hist)
+
+            self.draw.do_common_args(fig, *kargs)
+
+            actual_filename = self.draw.savefigure(fig, filename, dpi=300)
+            config.log.info('Saved {}'.format(actual_filename))
+
+        return hist
+
+

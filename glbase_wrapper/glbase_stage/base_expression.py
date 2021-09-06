@@ -12,6 +12,7 @@ from operator import itemgetter
 
 import numpy
 from numpy import array, arange, meshgrid, zeros, linspace, mean, object_, std # This use of array here is not good.
+import gzip as gzipfile
 
 from . import config
 from .flags import *
@@ -22,7 +23,7 @@ from .errors import AssertionError, ArgumentError, ExpressionNonUniqueConditionN
 from .utils import qdeepcopy
 
 class base_expression(genelist):
-    def __init__(self, filename=None, loadable_list=None, format=None, expn=None, silent:bool=False, **kargs):
+    def __init__(self, filename=None, loadable_list=None, format=None, expn=None, silent:bool=False, gzip=False, **kargs):
         """
         See the documentation in the expression class.
 
@@ -81,14 +82,19 @@ class base_expression(genelist):
 
             format = newf
 
-            self.loadCSV(filename=filename, format=format) # no need for error checking here - it's in genelist now.
+            self.loadCSV(filename=filename, format=format, gzip=gzip) # no need for error checking here - it's in genelist now.
 
             if "cond_names" in kargs and kargs["cond_names"]:
                 self._conditions = kargs["cond_names"]
             else:
                 # re-open the file and try to guess the conditions
                 # reopen the file to get the condition headers.
-                oh = open(filename, "rU")
+
+                if gzip:
+                    oh = gzipfile.open(filename, "rt")
+                else:
+                    oh = open(filename, "rt")
+
                 if "force_tsv" in format and format["force_tsv"]:
                     reader = csv.reader(oh, dialect=csv.excel_tab)
                 elif "dialect" in format:
@@ -118,7 +124,7 @@ class base_expression(genelist):
 
                 if not silent:
                     config.log.info("expression: I found the following conditions:")
-                    config.log.info("\n".join(["%s\t%s" % (n, i) for n, i in enumerate(self._conditions)]))
+                    config.log.info('\n' + "\n".join(["{}\t{}".format(n, i) for n, i in enumerate(self._conditions)]))
 
         # coerce the conditions errs etc to floats
         nans = set(('nan', 'Nan', 'NaN'))
@@ -145,12 +151,12 @@ class base_expression(genelist):
             if "cv_err" in i:
                 i["cv_err"] = [float(t) for t in i["cv_err"]]
 
-        self.__check_condition_names_are_unique()
+        self.check_condition_names_are_unique()
         self._optimiseData()
         if not silent:
             config.log.info("expression: loaded %s items, %s conditions" % (len(self), len(self.getConditionNames())))
 
-    def __check_condition_names_are_unique(self):
+    def check_condition_names_are_unique(self):
         """
         Bit of gotcha this one, but expression objects must have unique condition names
         or lots of things break. Here, check the condition names are unique.
@@ -158,10 +164,10 @@ class base_expression(genelist):
         """
         if len(self._conditions) > len(set(self._conditions)):
             raise ExpressionNonUniqueConditionNameError(self._conditions)
-        return(False)
+        return False
 
     def __repr__(self):
-        return("glbase.expression")
+        return "glbase.expression"
 
     def _load_numpy_back_into_linearData(self):
         """
@@ -197,7 +203,7 @@ class base_expression(genelist):
         #self.serialisedArrayDataList = all_array_data # This consumes massive amounts of memory.
         # presumably something downstream is doing something nasty.
 
-        return(True)
+        return True
 
     def saveCSV(self, filename=None, interleave_errors=True, no_header=False, no_col1_header=False, **kargs):
         """
@@ -313,7 +319,7 @@ class base_expression(genelist):
                 for data in self.linearData:
                     line = [data[k] for k in write_keys if k in data]
                     writer.writerow(line + data["conditions"])# conditions go last.
-        return(None)
+        return None
 
     def sort(self, key, reverse=False):
         """
@@ -350,8 +356,8 @@ class base_expression(genelist):
                 if reverse:
                     self.linearData.reverse()
                 self._optimiseData()
-                return(True)
-        return(False)
+                return True
+        return False
 
     def load_list(self, list_to_load, expn=None, name=False, cond_names=None, nan_value=0):
         """
@@ -487,7 +493,8 @@ class base_expression(genelist):
         """
         assert len(new_cond_names) == len(self._conditions), "setConditionNames(): new and old condition names are different lengths (%s vs. %s)" % (len(new_cond_names), len(self._conditions))
 
-        self.__check_condition_names_are_unique()
+        self.check_condition_names_are_unique()
         self._conditions = list(new_cond_names)
+        self.check_condition_names_are_unique()
         self._optimiseData()
-        return(self._conditions)
+        return self._conditions

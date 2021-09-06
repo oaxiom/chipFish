@@ -45,6 +45,7 @@ Then it can go::
 """
 
 import sys, os, copy, random, numpy, math
+from collections.abc import Iterable
 
 from numpy import array, arange, mean, max, min, std, float32
 from scipy.cluster.hierarchy import distance, linkage, dendrogram
@@ -108,7 +109,7 @@ class draw:
 
     def heatmap(self,
         filename:str = None,
-        cluster_mode: str = "euclidean",
+        cluster_mode:str = "euclidean",
         row_cluster:bool = True,
         col_cluster:bool = True,
         vmin = 0,
@@ -131,6 +132,7 @@ class draw:
         row_colbar:bool = None,
         col_colbar:bool = None,
         optimal_ordering:bool = True,
+        dpi:int = 300,
         **kargs):
         """
         my own version of heatmap.
@@ -426,12 +428,8 @@ class draw:
             # clear the ticks.
             ax1.tick_params(top=False, bottom=False, left=False, right=False)
 
-            #[item.set_markeredgewidth(0.0) for item in ax1.xaxis.get_ticklines()]
-            #[item.set_markeredgewidth(0.0) for item in ax1.yaxis.get_ticklines()]
-
             # Use the tree to reorder the data.
             order = a["ivl"]
-
             # resort the data by order;
             if "row_names" in kargs and kargs["row_names"]: # make it possible to cluster without names
                 newd = []
@@ -518,17 +516,20 @@ class draw:
 
             ax4 = fig.add_axes(loc_col_colbar)
             if 'imshow' in kargs and kargs['imshow']:
+                col_colbar = numpy.array(new_colbar).transpose(1,0,2)
                 ax4.imshow(col_colbar, aspect="auto",
                     origin='lower', extent=[0, len(col_colbar),  0, 1],
                     interpolation=config.get_interpolation_mode(filename))
+
             else:
+                col_colbar = numpy.array(new_colbar)
                 # unpack the oddly contained data:
                 col_colbar = [tuple(i[0]) for i in col_colbar]
                 cols = list(set(col_colbar))
                 lcmap = ListedColormap(cols)
                 col_colbar_as_col_indeces = [cols.index(i) for i in col_colbar]
 
-                ax4.pcolormesh([col_colbar_as_col_indeces,], cmap=lcmap,
+                ax4.pcolormesh(numpy.array([col_colbar_as_col_indeces,]), cmap=lcmap,
                     vmin=min(col_colbar_as_col_indeces), vmax=max(col_colbar_as_col_indeces),
                     antialiased=False, edgecolors=edgecolors, lw=0.4)
 
@@ -551,7 +552,7 @@ class draw:
                 else: # must be a named color:
                     new_colbar.append([newd[c]])
 
-            row_colbar = numpy.array(new_colbar)#.transpose(1,0,2)
+            row_colbar = numpy.array(new_colbar)
 
             ax4 = fig.add_axes(loc_row_colbar)
             if 'imshow' in kargs and kargs['imshow']:
@@ -618,12 +619,16 @@ class draw:
         ax0.set_position(scalebar_location)
         ax0.set_frame_on(False)
 
-        cb = fig.colorbar(hm, orientation="horizontal", cax=ax0, cmap=colour_map)
-        cb.set_label(kargs["colbar_label"])
+        cb = fig.colorbar(hm, orientation="horizontal", cax=ax0)
+        cb.set_label(kargs["colbar_label"], fontsize=6)
         cb.ax.tick_params(labelsize=4)
 
-        return({"real_filename": self.savefigure(fig, filename), "reordered_cols": col_names, "reordered_rows": kargs["row_names"],
-            "reordered_data": data})
+        return{
+            "real_filename": self.savefigure(fig, filename, dpi=dpi),
+            "reordered_cols": col_names,
+            "reordered_rows": kargs["row_names"],
+            "reordered_data": data
+            }
 
     def heatmap2(self, filename=None, cluster_mode="euclidean", row_cluster=True, col_cluster=True,
         vmin=0, vmax=None, colour_map=cm.plasma, col_norm=False, row_norm=False, heat_wid=0.25,
@@ -817,8 +822,21 @@ class draw:
         ax1 = fig.add_subplot(142)
         plot_data = arraydata.T
         if imshow:
-            hm = ax1.imshow(plot_data, cmap=cmap, vmin=vmin, vmax=vmax,
-                interpolation=config.get_interpolation_mode(filename))
+            ax1.set_position(left_heatmap)
+            #hm = ax1.imshow(plot_data, cmap=cmap, vmin=vmin, vmax=vmax,
+            #    interpolation=config.get_interpolation_mode(kargs["filename"]))
+
+            hm = ax1.imshow(
+                plot_data,
+                cmap=cmap,
+                vmin=vmin,
+                vmax=vmax,
+                aspect="auto",
+                origin='lower',
+                extent=[0, plot_data.shape[1], 0, plot_data.shape[0]],
+                interpolation=config.get_interpolation_mode(kargs["filename"])
+                )
+
         else:
             hm = ax1.pcolormesh(plot_data, cmap=cmap, vmin=vmin, vmax=vmax, antialiased=False)
 
@@ -855,7 +873,22 @@ class draw:
 
         a = array(bin) # reshape the bin array
         a.shape = 1,len(bin)
-        ax2.pcolormesh(a.T, cmap=cm.binary, antialiased=True)
+
+        if imshow:
+            ax2.set_position(binding_map)
+            #hm = ax1.imshow(plot_data, cmap=cmap, vmin=vmin, vmax=vmax,
+            #    interpolation=config.get_interpolation_mode(kargs["filename"]))
+            hm = ax2.imshow(
+                a.T,
+                cmap=cm.binary,
+                aspect="auto",
+                origin='lower',
+                extent=[0, a.T.shape[1], 0, a.T.shape[0]],
+                interpolation=config.get_interpolation_mode(kargs["filename"])
+                )
+
+        else:
+            hm = ax2.pcolormesh(a.T, cmap=cm.binary, antialiased=True)
 
         ax2.set_frame_on(draw_frames)
         ax2.set_position(binding_map)
@@ -887,11 +920,23 @@ class draw:
         ax3.axvline(x=(m+s), color='r', linestyle=":", linewidth=0.5)
         ax3.axvline(x=(m-s), color='r', linestyle=":", linewidth=0.5)
 
-        return(self.savefigure(fig, kargs["filename"]))
+        return self.savefigure(fig, kargs["filename"], dpi=600)
 
-    def multi_heatmap(self, list_of_data=None, filename=None, groups=None, titles=None,
-        vmin=0, vmax=None, colour_map=cm.YlOrRd, col_norm=False, row_norm=False, heat_wid=0.25,
-        frames=False, imshow=False, size=None, **kargs):
+    def multi_heatmap(self,
+        list_of_data=None,
+        filename=None,
+        groups=None,
+        titles=None,
+        vmin=0, vmax=None,
+        colour_map=cm.YlOrRd,
+        col_norm=False,
+        row_norm=False,
+        heat_wid=0.25,
+        frames=True,
+        imshow=False,
+        size=None,
+        dpi:int = 80,
+        **kargs):
         """
         **Purpose**
             Draw a multi-heatmap figure, i.e. containing multiple heatmaps. And also supports a
@@ -922,7 +967,7 @@ class draw:
         num_heatmaps = len(list_of_data)
 
         if size:
-            fig = self.getfigure(size=size)
+            fig = self.getfigure(size=size, figsize=size)
         else: # guess:
             fig = self.getfigure(size=(3*num_heatmaps, 10))
 
@@ -950,8 +995,10 @@ class draw:
                 vmax = list_of_data[index].max()
 
             if imshow:
-                hm = ax.imshow(list_of_data[index], cmap=colour_map, vmin=vmin, vmax=vmax, aspect="auto",
-                    origin='lower', extent=[0, list_of_data[index].shape[1], 0, list_of_data[index].shape[0]],
+                hm = ax.imshow(list_of_data[index], cmap=colour_map,
+                    vmin=vmin, vmax=vmax, aspect="auto",
+                    origin='lower',
+                    extent=[0, list_of_data[index].shape[1], 0, list_of_data[index].shape[0]],
                     interpolation=config.get_interpolation_mode(filename))
             else:
                 hm = ax.pcolormesh(list_of_data[index], cmap=colour_map, vmin=vmin, vmax=vmax, antialiased=False)
@@ -959,7 +1006,7 @@ class draw:
             ax.set_frame_on(frames)
             ax.set_position(heatmap_locations[index])
             if titles:
-                ax.set_title(titles[index])
+                ax.set_title(titles[index], fontdict={'fontsize': 6})
 
             ax.set_xlim([0,list_of_data[index].shape[1]])
             ax.set_ylim([0,list_of_data[index].shape[0]])
@@ -1022,7 +1069,7 @@ class draw:
         cb.set_label(kargs["colbar_label"])
         [label.set_fontsize(5) for label in ax0.get_xticklabels()]
 
-        return(self.savefigure(fig, filename))
+        return self.savefigure(fig, filename, dpi=dpi)
 
     def grid_heatmap(self,
         data_dict_grid:dict = None,
@@ -1156,8 +1203,18 @@ class draw:
 
         return self.savefigure(fig, filename, dpi=dpi)
 
-    def boxplot(self, data=None, filename=None, labels=None, showfliers=True, whis=1.5,
-        tight_layout=False, grid=True, **kargs):
+    def boxplot(self,
+        data=None,
+        filename=None,
+        labels=None,
+        showfliers=True,
+        whis=1.5,
+        showmeans=False,
+        meanline=False,
+        tight_layout=False,
+        grid=True,
+        facecolors=None,
+        **kargs):
         """
         wrapper around matplotlib's boxplot
         """
@@ -1166,16 +1223,32 @@ class draw:
 
         fig = self.getfigure(**kargs)
 
+        if showmeans:
+            meanline = True
+
         ax = fig.add_subplot(111)
         #ax.axhline(0, ls=":", color="grey") # add a grey line at zero for better orientation
         if grid:
-            ax.grid(axis="y", ls=":", color="grey", zorder=1000000)
-        r = ax.boxplot(data, showfliers=showfliers, whis=whis, widths=0.5)
+            ax.grid(axis="y", ls=":", color="grey", lw=0.5, zorder=1000000)
 
-        plot.setp(r['medians'], color='red') # set nicer colours
-        plot.setp(r['whiskers'], color='black', lw=1)
-        plot.setp(r['boxes'], color='black', lw=1)
-        plot.setp(r['fliers'], color="grey")
+        r = ax.boxplot(data, showfliers=showfliers, whis=whis, widths=0.5,
+            patch_artist=True,
+            showmeans=showmeans, meanline=meanline)
+
+        plot.setp(r['medians'], color='green') # set nicer colours
+        plot.setp(r['whiskers'], color='grey', lw=0.5)
+        plot.setp(r['boxes'], color='black', lw=0.5)
+        if facecolors:
+            for patch, color in zip(r['boxes'], facecolors):
+                patch.set_facecolor(color)
+        else:
+            for patch in r['boxes']:
+                patch.set_facecolor('lightgrey')
+
+        plot.setp(r['caps'], color='grey', lw=0.5)
+        plot.setp(r['fliers'], color="grey", lw=0.5)
+
+        #print(r.keys())
 
         ax.set_xticklabels(labels)
 
@@ -1183,6 +1256,9 @@ class draw:
             fig.tight_layout()
 
         fig.autofmt_xdate() # autorotate labels
+
+        ax.tick_params(axis='x', labelsize=6)
+        ax.tick_params(axis='y', labelsize=6)
 
         self.do_common_args(ax, **kargs)
 
@@ -2232,7 +2308,7 @@ class draw:
 
         self.do_common_args(ax, **kargs)
 
-        return(self.savefigure(fig, filename))
+        return self.savefigure(fig, filename)
 
     def bar_chart(self, filename=None, genelist=None, data=None, cols=None, **kargs):
         """
@@ -2505,6 +2581,7 @@ class draw:
             if min(data[d]) < cmin:
                 cmin = min(data[d])
 
+        ax.set_xticks(range(len(order)))
         ax.set_xticklabels(order)
 
         ax.set_ylim([cmin, cmax])
@@ -2513,14 +2590,86 @@ class draw:
 
         fig.autofmt_xdate()
 
-        self.do_common_args(ax, **kargs)
-        return(self.savefigure(fig, filename))
+        ax.tick_params(axis='x', labelsize=6)
+        ax.tick_params(axis='y', labelsize=6)
 
-    def unified_scatter(self, labels, xdata, ydata, x, y, mode='PC', filename=None,
-        spots=True, label=False, alpha=0.8, perc_weights=None, spot_cols='grey', overplot=None,
-        spot_size=40, label_font_size=7, label_style=None, cut=None, squish_scales=False, only_plot_if_x_in_label=None,
-        adjust_labels=False, cmap=None,
-        cluster_data=None, draw_clusters=None, cluster_labels=None, cluster_centroids=None,
+        self.do_common_args(ax, **kargs)
+        return self.savefigure(fig, filename)
+
+    def violinplot(self,
+        data,
+        filename:str,
+        violin=True,
+        order=None,
+        mean=False,
+        median=True,
+        colors=None,
+        **kargs):
+        '''
+        Uses the matplotlib implementation;
+
+        '''
+        fig = self.getfigure(**kargs)
+        ax = fig.add_subplot(111)
+
+        if not order:
+            order = list(data.keys())
+
+        pos = numpy.arange(len(order))
+
+        r = ax.violinplot([data[k] for k in order], pos, points=50, widths=0.5,
+            showmeans=mean,
+            showmedians=median,
+            )
+
+        for vidx, viol in enumerate(r['bodies']):
+            if colors and isinstance(colors, str):
+                viol.set_facecolor(colors)
+            elif colors and isinstance(colors, Iterable):
+                viol.set_facecolor(colors[vidx])
+
+        ax.set_xticks(range(len(order)))
+        ax.set_xticklabels(order)
+
+        #ax.set_ylim([cmin, cmax])
+        ax.set_xlim([-0.6, len(order)-0.4])
+        ax.set_xticks([i for i in range(len(order))]) # xticks must be 1 separated to get all labels for line up
+
+        fig.autofmt_xdate()
+
+        ax.tick_params(axis='x', labelsize=6)
+        ax.tick_params(axis='y', labelsize=6)
+
+        self.do_common_args(ax, **kargs)
+
+        return self.savefigure(fig, filename)
+
+    def unified_scatter(self,
+        labels,
+        xdata,
+        ydata,
+        x,
+        y,
+        mode='PC',
+        filename=None,
+        spots=True,
+        label=False,
+        alpha=0.8,
+        perc_weights=None,
+        spot_cols='grey',
+        overplot=None,
+        spot_size=40,
+        label_font_size=7,
+        label_style=None,
+        cut=None,
+        squish_scales=False,
+        only_plot_if_x_in_label=None,
+        adjust_labels=False,
+        cmap=None,
+        cluster_data=None,
+        draw_clusters=None,
+        cluster_labels=None,
+        cluster_centroids=None,
         **kargs):
         '''
         Unified for less bugs, more fun!
@@ -2584,9 +2733,11 @@ class draw:
                         c=spot_cols, cmap=cmap,
                         zorder=2)
         elif spots:
-            ax.scatter(xdata, ydata, s=8,
+            ax.scatter(xdata, ydata,
                 alpha=alpha, edgecolors="none",
-                c=spot_cols, cmap=cmap,
+                s=spot_size,
+                c=spot_cols,
+                cmap=cmap,
                 zorder=2)
         else:
             # if spots is false then the axis limits are set to 0..1. I will have to send my
@@ -2648,7 +2799,7 @@ class draw:
 
         real_filename = self.savefigure(fig, filename)
         config.log.info("scatter: Saved '%s%s' vs '%s%s' scatter to '%s'" % (mode, x, mode, y, real_filename))
-        return(ret_data)
+        return ret_data
 
     def dotbarplot(self, data, filename, yticktitle='Number', **kargs):
         """
@@ -2664,6 +2815,9 @@ class draw:
                 A dictionary of label: [0, 1, 2, ... n] values.
 
                 The x category labels will be taken from the dict key.
+
+            order (Optional, default=data.keys())
+                order for the conditions to be plotted
 
             filename (Required)
                 filename to save the image to
@@ -2738,9 +2892,22 @@ class draw:
             filename (Required)
                 filename to save the figure to.
 
+            data_dict (Required)
+                {
+                'row_name1': {'class1': 0, 'class2': 0},
+                'row_name2': {'class1': 0, 'class2': 0},
+                }
+
+            key_order (Optional)
+                order for the row_names;
+
             ...
 
         '''
+        assert filename, 'A filename to save the image to is required'
+        assert data_dict, 'data_dict is required'
+        assert isinstance(data_dict, dict), 'data_dict is not a dict'
+
         if not cols:
             cols = plot.rcParams['axes.prop_cycle'].by_key()['color']
 
@@ -2773,14 +2940,15 @@ class draw:
 
         for k in all_keys:
             vals[k] = numpy.array(vals[k])
+            scaled[k] = numpy.array(vals[k])
+            scaled[k] /= sums
+            scaled[k] *= 100
 
         plot_hei = (0.8) - (0.04*len(labs))
 
-        if 'figsize' not in kargs: # TODO: Sensible sizes
-            kargs['figsize'] = [4,3]
-
-        fig = self.getfigure(**kargs)
-        fig.subplots_adjust(left=0.35, right=0.95, bottom=plot_hei)
+        plot.rcParams['pdf.fonttype'] = 42
+        fig = plot.figure(figsize=[4,3])
+        fig.subplots_adjust(left=0.35, right=0.95, bottom=plot_hei,)
         ax = fig.add_subplot(111)
         ax.set_prop_cycle('color', cols)
 
@@ -2790,23 +2958,28 @@ class draw:
 
         bots = numpy.zeros(len(labs))
         for k in vals:
-            ax.barh(ypos, vals[k], 0.7, label=k, left=bots)
-            for y, v, s, b in zip(ypos, vals[k], vals[k], bots):
+            ax.barh(ypos, scaled[k], 0.7, label=k, left=bots)
+            for y, v, s, b in zip(ypos, vals[k], scaled[k], bots):
                 ax.text(b+(s//2), y, '{0:,.0f} ({1:.0f}%)'.format(v, s), ha='center', va='center', fontsize=6)
-            bots += vals[k]
+            bots += scaled[k]
 
         ax.set_yticks(ypos)
         ax.set_yticklabels(labs)
 
+        ax.set_xlim([-2, 102])
+        ax.set_xticks([0, 50, 100])
+        ax.set_xticklabels(['0%', '50%', '100%'])
         ax.set_title(title, size=6)
         ax.legend()
-        plot.legend(loc='upper left')#, bbox_to_anchor=(0.0, -0.4), prop={'size': 6})
+        plot.legend(loc='upper left', bbox_to_anchor=(0.0, -0.4), prop={'size': 6})
         [t.set_fontsize(6) for t in ax.get_yticklabels()]
         [t.set_fontsize(6) for t in ax.get_xticklabels()]
-
+        fig.savefig(filename)
+        fig.savefig(filename.replace('.png', '.pdf'))
+        print('Saved %s' % filename)
         self.do_common_args(ax, **kargs)
         fig.savefig(filename)
 
         real_filename = self.savefigure(fig, filename)
         config.log.info("proportional_bar: Saved '{0}'".format(real_filename))
-        return(real_filename)
+        return real_filename

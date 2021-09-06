@@ -20,7 +20,10 @@ from .errors import BadBinaryFileFormatError
 # ----------------------------------------------------------------------
 # Some helper functions
 
-def glload(filename:str):
+def glload(
+    filename:str,
+    name:str = False
+    ):
     """
     **Purpose**
         Load a glbase binary file
@@ -29,6 +32,10 @@ def glload(filename:str):
     **Arguments**
         filename (Required)
             the filename of the glbase binary file to load.
+
+        name (Optional, default=False)
+            Change the name of the loaded glb
+
 
     **Returns**
         The glbase object previously saved as a binary file
@@ -58,7 +65,11 @@ def glload(filename:str):
         config.log.info("Loaded '%s' binary file with %s items, %s conditions" % (filename, len(newl), cons))
     except AttributeError:
         config.log.info("Loaded '%s' binary file with %s items" % (filename, len(newl)))
-    return(newl)
+
+    if name:
+        newl.name = name
+
+    return newl
 
 def change_drawing_mode(mode: Union[str, list]):
     """
@@ -140,7 +151,7 @@ def XUp(data, names, normed = None, **kargs):
                 normed_data = (data[c] / data[normed])
                 # this is greedy - only 1 condition needs to fulfill the criteria.
                 return normed_data > X
-        return(False)
+        return False
 
 # For formatting the CSV loading.
 
@@ -149,7 +160,7 @@ def lst_find(lst, predicate): # I need a helper function to find the item
 
 def cat_columns(c1, c2, sep=' '):
     # concatenate two columns together
-    return('%s%s%s' % (c1, sep, c2))
+    return '%s%s%s' % (c1, sep, c2)
 
 def strandSorter(chr, left, right, strand):
     """
@@ -159,6 +170,15 @@ def strandSorter(chr, left, right, strand):
         return(location(chr=chr, left=left, right=left))
     elif strand in negative_strand_labels:
         return(location(chr=chr, left=right, right=right))
-    return(None)
+    return None
 
+def strandSorter_neg(chr, left, right, strand):
+    """
+    A helper proc to extract the tts (i.e. the - strand side) from a list of coords.
+    """
+    if strand in positive_strand_labels:
+        return(location(chr=chr, left=right, right=right))
+    elif strand in negative_strand_labels:
+        return(location(chr=chr, left=left, right=left))
+    return None
 # various other helpers for normalisation etc..

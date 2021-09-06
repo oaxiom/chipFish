@@ -22,6 +22,7 @@ from .location import location
 from .progress import progressbar
 from .genelist import genelist
 from .expression import expression
+from .data import positive_strand_labels, negative_strand_labels
 
 import matplotlib.pyplot as plot
 import matplotlib.cm as cm
@@ -56,7 +57,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         self.draw = draw(self)
 
     def __repr__(self):
-        return("glbase.glglob")
+        return "glbase.glglob"
 
     def __str__(self):
         # work out all of the types
@@ -64,7 +65,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         for item in self.linearData:
             if item.__repr__() not in types:
                 types.append(item.__repr__())
-        return("glglob contains: %s items of type(s): %s" % (len(self.linearData), ", ".join(types)))
+        return "glglob contains: %s items of type(s): %s" % (len(self.linearData), ", ".join(types))
 
     def _optimiseData(self): # no keys, so would die.
         """
@@ -85,7 +86,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
 
     def saveCSV(self):
         config.log.error("glglobs cannot be represented as a CSV/TSV file, use .save() to save binary files")
-        return(False)
+        return False
 
     def __getitem__(self, value):
         """
@@ -95,7 +96,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         """
         if value in self.__list_name_lookback:
             return(self.linearData[self.__list_name_lookback[value]]) # get the actual item
-        return(None)
+        return None
 
     def __setitem__(self, value):
         """
@@ -191,7 +192,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 **kargs)
 
     def __compare_fast(self, key=None, filename=None, method=None, delta=200, matrix_tsv=None,
-        row_cluster=True, col_cluster=True, bracket=None, pearson_tsv=None, bin_size=5000,
+        row_cluster=True, col_cluster=True, bracket=None, pearson_tsv=None, bin_size=2000,
         jaccard=False, **kargs):
         """
         **Purpose**
@@ -333,7 +334,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 for ib, lb in enumerate(peak_lengths):
                     matrix[ia,ib] = (matrix[ia,ib] / min([la, lb]))
 
-            print(matrix)
+            #print(matrix)
 
             corr_result_table = zeros( (len(self), len(self)) ) # square matrix to store the data.
             # convert the data to a pearson score.
@@ -396,11 +397,11 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         # draw the heatmap and save:
         ret = self.draw.heatmap(data=dict_of_lists, filename=filename,
             colbar_label=colbar_label, bracket=bracket,
-            square=square, cmap=cm.hot, cluster_mode="euclidean", row_cluster=row_cluster, col_cluster=col_cluster,
+            square=square, cmap=cm.RdBu_r, cluster_mode="euclidean", row_cluster=row_cluster, col_cluster=col_cluster,
             row_names=row_names, col_names=row_names, aspect=aspect, **kargs)
 
         config.log.info("compare: Saved Figure to '%s'" % ret["real_filename"])
-        return(dict_of_lists)
+        return dict_of_lists
 
     def __compare_slow(self, key=None, filename=None, method=None, delta=200, matrix_tsv=None,
         row_cluster=True, col_cluster=True, bracket=None, pearson_tsv=None,
@@ -468,6 +469,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
 
         if jaccard:
             result_table = matrix
+            corr_result_table = matrix
         else:
             # data must be normalised to the maximum possible overlap.
             for ia, la in enumerate(self.linearData):
@@ -487,7 +489,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         if pearson_tsv:
             names = [i.name for i in self.linearData]
             oh = open(pearson_tsv, "w")
-            oh.write("%s\n" % "\t".join([] + names))
+            oh.write("%s\n" % "\t".join([''] + names))
 
             for ia, la in enumerate(names):
                 oh.write("%s" % la)
@@ -533,11 +535,11 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         # draw the heatmap and save:
         ret = self.draw.heatmap(data=dict_of_lists, filename=filename,
             colbar_label=colbar_label, bracket=bracket,
-            square=square, cmap=cm.hot, cluster_mode="euclidean", row_cluster=row_cluster, col_cluster=col_cluster,
+            square=square, cmap=cm.RdBu_r, cluster_mode="euclidean", row_cluster=row_cluster, col_cluster=col_cluster,
             row_names=row_names, col_names=row_names, aspect=aspect, **kargs)
 
         config.log.info("compare: Saved Figure to '%s'" % ret["real_filename"])
-        return(dict_of_lists)
+        return dict_of_lists
 
     def venn(self, key=None, filename=None, mode='map', **kargs):
         """
@@ -737,7 +739,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             realfilename = self.draw.venn5(lists, labs, filename, **kargs)
 
         config.log.info("venn: Saved Figure to '%s'" % realfilename)
-        return(None)
+        return None
 
     def __venn_collide(self, key, filename, delta=200, **kargs):
         #assert key in self.keys()
@@ -764,7 +766,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             realfilename = self.draw.venn3(len(A), len(B), len(C), AB, AC, BC, ABC,
                 self.linearData[0].name, self.linearData[1].name, self.linearData[2].name,
                 filename, **kargs)
-        return(None)
+        return None
 
     def moving_average_maps(self, mode="graph", compare_array=None, filename=None, key=None,
         normalise=True, **kargs):
@@ -933,9 +935,9 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         tab = numpy.zeros([len(self.linearData), total_rows])
 
         crow = 0
-        for c in chr_blocks:
+        for c, value in chr_blocks.items():
             for bid in chr_blocks[c]:
-                for i in range(len(chr_blocks[c][bid])): # or len(self.linearData)
+                for i in range(len(value[bid])): # or len(self.linearData)
                     tab[i, crow] = chr_blocks[c][bid][i]
                 crow += 1
 
@@ -973,26 +975,20 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         clusters = {}
         for row in tab:
             # Make an identifier for the cluster:
-            id = tuple([bool(i) for i in row])
+            id = tuple(bool(i) for i in row)
             if id not in clusters:
                 clusters[id] = []
             clusters[id].append(row)
 
         # I want to sort the clusters first:
-        sorted_clusters = []
-        for c in clusters:
-            sorted_clusters.append({"id": c, "score": sum(c)})
+        sorted_clusters = [{"id": c, "score": sum(c)} for c in clusters]
         sorted_clusters = sorted(sorted_clusters, key=itemgetter("score"))
 
         # Flattent the arrays and load it back into a numpy array
         tab = None
         for c in sorted_clusters:
             new = numpy.vstack(clusters[c["id"]])
-            if tab is None:
-                tab = new
-            else:
-                tab = numpy.vstack([tab, new])
-
+            tab = new if tab is None else numpy.vstack([tab, new])
         ret = self.draw.heatmap(data=tab, filename=filename, col_names=[gl.name for gl in self.linearData], row_names=None,
                 row_cluster=False, col_cluster=True, colour_map=cm.Reds, heat_wid=0.7, heat_hei=0.7, bracket=[0,tab.max()])
 
@@ -1009,7 +1005,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             for p1 in gl["loc"]:
                 #p1 = p1.pointify().expand(merge_peaks_distance) # about 10% of the time is in __getitem__ from the loc, so unpack it;
                 cpt = (p1.loc["left"] + p1.loc['right']) // 2
-                p1_chr = p1['chr']
+                p1_chr = 'chr{0}'.format(p1['chr'])
                 p1_left = cpt - merge_peaks_distance
                 p1_right = cpt + merge_peaks_distance
                 if not p1_chr in chr_blocks:
@@ -1328,8 +1324,18 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         # sort out cached_data
         if cache_data and os.path.isfile(cache_data): # reload previously cached data.
             oh = open(os.path.realpath(cache_data), "rb")
-            chr_blocks = pickle.load(oh)
+            loaded_chr_blocks = pickle.load(oh)
             oh.close()
+
+            # Do some sanity checking;
+            assert len(loaded_chr_blocks) == len(chr_blocks), 'Error in the {0} file, does not match inputs, needs to be regenerated'.format(cache_data)
+            assert loaded_chr_blocks.keys() == chr_blocks.keys(), 'Error in the {0} file, does not match inputs, needs to be regenerated'.format(cache_data)
+            first_key = list(chr_blocks.keys())[0]
+            assert len(loaded_chr_blocks[first_key]) == len(chr_blocks[first_key]), 'Error in the {0} file, does not match inputs, needs to be regenerated'.format(cache_data)
+
+            # Seems okay, proceed:
+            chr_blocks = loaded_chr_blocks
+
             config.log.info("chip_seq_cluster_heatmap: Reloaded previously cached pileup data: '%s'" % cache_data)
             # this_loc will not be valid and I test it for length below, so I need to fake one.
 
@@ -1340,42 +1346,36 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             # Get the size of each library if we need to normalize the data.
             if norm_by_library_size:
                 # get and store the read_counts for each library to reduce an sqlite hit.
-                read_totals = [trk.get_total_num_reads()/float(1e6) for trk in list_of_trks]
+                read_totals = [trk.get_total_num_reads()/float(1e6) for trk in list_of_trks] # i.e something like RPM
 
             p = progressbar(len(list_of_trks))
             # New version that grabs all data and does the calcs in memory, uses more memory but ~2-3x faster
             for pindex, trk in enumerate(list_of_trks):
                 for index, chrom in enumerate(chr_blocks):
-                    # The chr_blocks iterates across all chromosomes, so this only hits the db once per chromosome:
-                    del data
-                    data = trk.get_array_chromosome(chrom, read_extend=read_extend) # This will use the fast cache version if available.
-
                     for block_id in chr_blocks[chrom]:
 
                         left = block_id[0] - pileup_distance
                         right = block_id[1] + pileup_distance
 
-                        # It's possible to ask for data beyond the edge of the actual data. So trim the right vals
-                        if right > len(data):
-                            right = len(data)
-                        if left > len(data):
-                            left = len(data)
+                        dd = trk.mats[chrom][left:right] # trk.get(loc=None, c=chrom, left=left, rite=right) # I'm not sure why, but this is slow here, but superfast in pileup()
 
-                        dd = data[left:right]
-                        #dd = trk.get(loc=None, c=chrom, left=left, rite=right) # I'm not sure why, but this is slow here, but superfast in pileup()
-
-                        if len(dd) < block_len: # This should be a very rare case...
-                            print('Block miss')
-                            num_missing = block_len - len(dd)
-                            ad = numpy.zeros(num_missing)
-                            dd = numpy.append(dd, ad)
-                            dd = list(dd)
+                        if len(dd) != block_len: # This should be a very rare case...
+                            if len(dd) < block_len:
+                                config.log.warning('Block miss (short)')
+                                num_missing = block_len - len(dd)
+                                ad = numpy.zeros(num_missing, dtype=numpy.float32)
+                                dd = numpy.append(dd, ad)
+                            elif len(dd) > block_len:
+                                config.log.warning('Block miss (long)')
+                                num_missing = block_len - len(dd)
+                                dd = dd[0:block_len] # just grab the start. probably unreliable though?
 
                         if norm_by_library_size:
                             # normalise before bin?
                             pil_data = [av/read_totals[pindex] for av in dd]
 
-                        chr_blocks[chrom][block_id]["pil"][pindex] = [sum(dd[i:i+bin_size]) for i in range(0, len(dd), bin_size)] #pil_data = utils.bin_sum_data(dd, bin_size)
+                        chr_blocks[chrom][block_id]["pil"][pindex] = dd[:(dd.size // bin_size) * bin_size].reshape(-1, bin_size).sum(axis=1) # [sum(dd[i:i+bin_size]) for i in range(0, len(dd), bin_size)] #pil_data = utils.bin_sum_data(dd, bin_size)
+                        #chr_blocks[chrom][block_id]["pil"][pindex] = [sum(dd[i:i+bin_size]) for i in range(0, len(dd), bin_size)] #pil_data = utils.bin_sum_data(dd, bin_size)
                 p.update(pindex)
 
             if cache_data: # store the generated data for later.
@@ -1459,22 +1459,21 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         # rebuild the genelist quickdata and make genelist valid:
         for cid in ret_data:
             ret_data[cid]["genelist"]._optimiseData()
+            ret_data[cid]['binary_membership'] = ''.join([str(int(a)) for a in ret_data[cid]["cluster_membership"]])
 
-        colbar_label = "Tag density"
+        if not log_pad:
+            log_pad = 0.1
 
-        if log:
-            if not log_pad:
-                log_pad = 0.1
-
-            for index in range(len(list_of_tables)):
-                if log == 2:
-                    list_of_tables[index] = numpy.log2(numpy.array(list_of_tables[index])+log_pad)
-                    colbar_label = "Log2(Tag density)"
-                elif log == 10:
-                    list_of_tables[index] = numpy.log10(numpy.array(list_of_tables[index])+log_pad)
-                    colbar_label = "Log10(Tag density)"
-                else:
-                    list_of_tables[index] = numpy.array(list_of_tables[index])
+        for index in range(len(list_of_tables)):
+            if log == 2:
+                list_of_tables[index] = numpy.log2(numpy.array(list_of_tables[index])+log_pad)
+                colbar_label = "Log2(Tag density)"
+            elif log == 10:
+                list_of_tables[index] = numpy.log10(numpy.array(list_of_tables[index])+log_pad)
+                colbar_label = "Log10(Tag density)"
+            else:
+                list_of_tables[index] = numpy.array(list_of_tables[index])
+                colbar_label = "Tag density"
 
         if norm_by_library_size:
             colbar_label = "Normalised %s" % colbar_label
@@ -1493,8 +1492,11 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         elif bracket:
             bracket = bracket # Fussyness for clarity.
         else: # guess a range:
-            bracket = [tab_mean, tab_mean+(tab_stdev*2.0)]
-            config.log.info("chip_seq_cluster_heatmap: suggested bracket = [%s, %s]" % (bracket[0], bracket[1]))
+            if log:
+                bracket = [tab_mean, tab_mean+(tab_stdev*2.0)]
+            else: # better to make it thinner
+                bracket = [tab_mean, tab_mean+(tab_stdev*1.0)]
+            config.log.info("chip_seq_cluster_heatmap: suggested bracket = [{:.2f}, {:.2f}]".format(bracket[0], bracket[1]))
 
         #real_filename = self.draw.heatmap2(filename=filename, row_cluster=False, col_cluster=False,
         #    data=tab, colbar_label=colbar_label, bracket=bracket)
@@ -1502,12 +1504,18 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             if not titles:
                 titles = [p.name for p in list_of_peaks]
             real_filename = self.draw.multi_heatmap(filename=filename, groups=groups, titles=titles, imshow=imshow, size=size,
-                list_of_data=list_of_tables, colour_map=cmap, colbar_label=colbar_label, bracket=bracket, frames=frames)
+                list_of_data=list_of_tables, colour_map=cmap, colbar_label=colbar_label, bracket=bracket, frames=frames,
+                dpi=300, **kargs)
 
-        config.log.info("chip_seq_cluster_heatmap: Saved overlap heatmap to '%s'" % real_filename)
+            config.log.info("chip_seq_cluster_heatmap: Saved overlap heatmap to '%s'" % real_filename)
+
         return ret_data
 
-    def chip_seq_cluster_pileup(self, filename=None, multi_plot=True, **kargs):
+    def chip_seq_cluster_pileup(self,
+        filename=None,
+        multi_plot=True,
+        min_members=False,
+        **kargs):
         """
         **Purpose**
             This is an addendum to chip_seq_cluster_heatmap(). You only need run this
@@ -1536,6 +1544,9 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
 
                 If False then plot them all on the same graph, and with a legend.
 
+            min_members (Optional, default=False)
+                Only save the image in > min_members
+
         **Returns**
             The pileup_data as a dict in the form:
             {<cluster_id>: [array_data1, array_data2 ... array_dataN],
@@ -1556,7 +1567,11 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
 
         maxx = self.__pileup_data[1][0].shape[0]
         for cid in self.__pileup_data:
-            this_filename = "%s_cid%s.png" % (base_filename, cid) # savefigure will modify png if needed.
+            binary_membership = ''.join([str(int(a)) for a in self.__pileup_groups_membership[cid-1]["id"]])
+            this_filename = "{}_bin_{}_cid{}.png".format(base_filename, binary_membership, cid) # savefigure will modify png if needed.
+
+            if min_members and self.__pileup_group_sizes[cid] < min_members:
+                continue
 
             fig = self.draw.getfigure(**kargs)
             fig.suptitle("Group: %s #members: %s Membership: %s" % (cid, self.__pileup_group_sizes[cid], self.__pileup_groups_membership[cid-1]["id"]))
@@ -1581,7 +1596,8 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 self.draw.do_common_args(ax, **kargs)
 
             self.draw.savefigure(fig, this_filename)
-        return(self.__pileup_data)
+            config.log.info('Saved {}'.format(this_filename))
+        return self.__pileup_data
 
     def genome_dist_radial(self, genome, layout, filename=None, randoms=None, **kargs):
         """
@@ -1789,7 +1805,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             return(False)
 
         if heat_hei == 'proportional':
-            heat_hei=0.012*len(goex)
+            heat_hei=0.011*len(goex)
 
         res = goex.heatmap(filename=filename, size=size, bracket=bracket,
             row_cluster=row_cluster, col_cluster=col_cluster,
@@ -1909,7 +1925,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             log (Optional, default=False)
                 log transform the resulting matrix
 
-            peak_window (Optional, default=100)
+            peak_window (Optional, default=200)
                 window around the center of the peak to score the peak enrichment.
 
             local_lambda (Optional, default=5000)
@@ -1922,6 +1938,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         assert isinstance(trks, list), 'measure_enrichment: trks must be a list'
         assert 'loc' in list(peaks.keys()), 'measure_enrichment: no loc key found in peaks'
         all_trk_names = [t["name"] for t in trks]
+        print(all_trk_names)
         assert len(set(all_trk_names)) == len(all_trk_names), 'track names are not unique. Please change the track.meta_data["name"] to unique names'
 
         peaks = peaks.deepcopy()
@@ -1987,14 +2004,26 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
 
         return(expn)
 
-    def redefine_peaks(self, super_set_of_peaks, list_of_flats, filename=None, Z_threshold=1.2,
-        peak_window=200, lambda_window=5000, **kargs):
+    def redefine_peaks(self,
+        super_set_of_peaks,
+        list_of_flats,
+        filename = None,
+        Z_threshold = 1.2,
+        peak_window:int = 200,
+        lambda_window:int = 5000,
+        **kargs):
         """
         **Purpose**
             A strategy for re-calling peaks from some arbitrary set of flat files.
 
             It's a bit similar to the strategy published in Li et al., Cell Stem Cell 2017.
-            However, this version uses a local lambda model drawn from a 10 kb window surrounding the peak.
+            However, this version uses a local lambda model drawn from a 10 kb window surrounding
+            the peak. This has the advantage that you don't need to go to the fiddly
+            trouble of generating a suitable pseudo-background for ATAC-seq. Additionally it
+            should take into account the relative background of the library, allowing extraction
+            of information even ion poor quality libraries. The disadvantage - and this
+            is theoretical - but if you have a lot of very large repeat elements then it
+            might lead to erroneous calling of not-peaks.
 
             Breifly, the strategy is:
 
@@ -2006,15 +2035,15 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             It then builds a model, constructs a Z-score and then only keeps those peaks
             that are greater than the threshold.
 
-            This allows you to rescue weak peaks, and also to clean the false-negatives that are very common
-            when cross-comparing peaks.
+            This allows you to rescue weak peaks, and also to clean the false-negatives
+            that are very common when cross-comparing peaks.
 
         **Arguments**
             super_set_of_peaks (Required)
                 A genelist, containing a 'loc' key.
 
                 This can be any list of peaks. I suggest you create this using the
-                glglob.chip_seq_cluster() function. However, you can also ue bedtools
+                glglob.chip_seq_cluster() function. However, you can also use bedtools
                 or your favourite grouping strategy.
 
                 I will pointify and expand the genomic locations to make them all uniform in size.
@@ -2023,7 +2052,8 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 a list of flats, make sure each flat has a unique 'name' slot as that
                 will be used to store the result.
 
-                For each flat the peaks will be recalled, and returned as a key in the returned dictionary.
+                For each flat, the peaks will be re-called, and returned as a key in the
+                returned dictionary.
 
             filename (Optional)
                 the basefilename to save the model images to, one file for each flat.
@@ -2169,12 +2199,12 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         list_of_peaks,
         list_of_trks,
         filename:str = None,
-        normalise = False,
+        norm_by_library_size = False,
         bins:int = 100,
         pileup_distance:int = 1000,
-        cache_data=False,
-        bracket=None,
-        range_bracket=None,
+        cache_data = False,
+        bracket = None,
+        range_bracket = None,
         frames = True,
         row_labels = None,
         col_labels = None,
@@ -2187,6 +2217,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         sort_by_sum_intensity:bool = False,
         sort_by_intensity:bool = False,
         size = None,
+        respect_strand:bool = False,
         **kargs):
         """
         **Purpose**
@@ -2207,12 +2238,12 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             filename (Optional, default=None)
                 If set to a string a heatmap & pileup will be saved to filename.
 
-            normalise (Optional, default=False)
+            norm_by_library_size (Optional, default=False)
                 Normalize the read pileup data within each library to the size of the
                 library to assist in cross-comparison of ChIP-seq libraries.
 
             pileup_distance (Optional, default=1000)
-                distance around the particular bin to draw in the pileup.
+                distance around the particular location to draw in the pileup.
 
             read_extend (Optional, default=200)
                 The size in base pairs to extend the read. If a strand is present it will expand
@@ -2245,6 +2276,11 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 True: Sort by the sum of each row, but independently for each heatmap;
 
                 Note, exclusive with sort_by_sum_intensity
+
+            respect_strand (Optional, default=False)
+                If available, respect the orientation of the strand from the genelist.
+                This is useful if you are, say, using the TSS's and want to maintain the
+                orientation with respect to the transcription direction.
 
             ######## Bracket system:
 
@@ -2305,17 +2341,20 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         assert not (range_bracket and bracket), "You can't use both bracket and range_bracket"
         assert False not in ['loc' in gl.keys() for gl in list_of_peaks], 'At least one of your peak data (list_of_peaks) does not contain a "loc" key'
         assert not (sort_by_sum_intensity and sort_by_intensity), 'sort_by_sum_intensity and sort_by_intensity cannot both be True'
+        if 'normalize' in kargs: raise AssertionError('normalize has been deprecated, use norm_by_library_size')
 
         total_rows = 0
 
         # Get the size of each library if we need to normalize the data.
-        if normalise:
+        if norm_by_library_size:
             # get and store the read_counts for each library to reduce an sqlite hit.
             read_totals = [trk.get_total_num_reads()/float(1e6) for trk in list_of_trks]
+            if True in [i <= 0 for i in read_totals]:
+                raise AssertionError('norm_by_read_count=True, but at least one flat_track has no total number of reads')
 
         # I will need to go back through the chr_blocks data and add in the pileup data:
         bin_size = int((pileup_distance+pileup_distance) / bins)
-        #block_len = pileup_distance+pileup_distance # get the block size
+        block_len = pileup_distance+pileup_distance # get the block size
         data = None
 
         # Populate the datastores:
@@ -2348,14 +2387,14 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             oh.close()
             config.log.info("chip_seq_heatmap: Reloaded previously cached pileup data: '%s'" % cache_data)
             # sanity check the matrix data
-            assert isinstance(matrix, dict), '{0} does not match the expected data, suggest you rebuild'.format(cache_data)
-            assert isinstance(matrix[0], dict), '{0} does not match the expected data, suggest you rebuild'.format(cache_data)
+            assert isinstance(matrix, dict), '{} does not match the expected data, suggest you rebuild'.format(cache_data)
+            assert isinstance(matrix[0], dict), '{} does not match the expected data, suggest you rebuild'.format(cache_data)
             assert isinstance(matrix[0][0], (numpy.ndarray, numpy.generic)), '{0} does not match the expected data, suggest you rebuild'.format(cache_data)
-            assert len(matrix) == len(list_of_trks), '{0} does not match the expected data, suggest you rebuild'.format(cache_data)
-            assert len(matrix[0]) == len(list_of_peaks), '{0} does not match the expected data, suggest you rebuild'.format(cache_data)
+            assert len(matrix) == len(list_of_trks), '{} does not match the expected data, suggest you rebuild'.format(cache_data)
+            assert len(matrix[0]) == len(list_of_peaks), '{} does not match the expected data, suggest you rebuild'.format(cache_data)
             for it, t in enumerate(list_of_trks):
                 for ip, p in enumerate(list_of_peaks):
-                    assert matrix[it][ip].shape == (len(p), bins), '{0} ({1} {2}) does not match the expected data, suggest you rebuild'.format(cache_data, t['name'], p.name)
+                    assert matrix[it][ip].shape == (len(p), bins), '{} ({} {}) does not match the expected data, suggest you rebuild'.format(cache_data, t['name'], p.name)
         else:
             # No cached data, so we have to collect ourselves.
             expected_len = pileup_distance * 2
@@ -2382,8 +2421,20 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                                 left = len(data)
 
                             dd = data[left:rite]
-                            while len(dd) < expected_len: # pad out any missing 0
-                                dd.append(0)
+
+                            if len(dd) < block_len: # This should be a very rare case...
+                                config.log.warning('Block miss (short)')
+                                num_missing = block_len - len(dd)
+                                ad = numpy.zeros(num_missing, dtype=numpy.float32)
+                                dd = numpy.append(dd, ad)
+                            elif len(dd) > block_len: # Should be never?
+                                config.log.warning('Block miss (long)')
+                                num_missing = block_len - len(dd)
+                                dd = dd[0:block_len] # just grab the start. probably unreliable though?
+
+                            if respect_strand:
+                                if peaklist.linearData[peak]["strand"] in negative_strand_labels: # For the reverse strand all I have to do is flip the array.
+                                    dd = dd[::-1]
 
                             # Fill in the matrix table:
                             #pileup[tindex][plidx][pidx] += pil_data
@@ -2429,13 +2480,13 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                         matrix[tindex][plidx] = numpy.log10(matrix[tindex][plidx]+log_pad)
                         colbar_label = "Log10(Tag density)"
                     else:
-                        raise AssertionError('log={0} not found'.format(log))
+                        raise AssertionError('log={} not found'.format(log))
         else:
             if not range_bracket: # suggest reasonable range;
-                range_bracket = [0.0, 0.1]
+                range_bracket = [0.02, 0.1]
 
-        if normalise:
-            colbar_label = "Normalised %s" % colbar_label
+        if norm_by_library_size:
+            colbar_label = "Normalised {}".format(colbar_label)
 
             # Data is always saved unnormalised;
             for plidx, peaklist in enumerate(list_of_peaks):
@@ -2527,7 +2578,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
 
                 bracket = [max([b[0] for b in brackets]), max([b[1] for b in brackets])]
                 brackets = None
-                config.log.info("chip_seq_heatmap: suggested bracket=({0:.2f}, {1:.2f})".format(bracket[0], bracket[1]))
+                config.log.info("chip_seq_heatmap: suggested bracket=({:.2f}, {:.2f})".format(bracket[0], bracket[1]))
 
         if filename:
             real_filename = self.draw.grid_heatmap(
@@ -2547,3 +2598,73 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
 
         config.log.info("chip_seq_heatmap: Saved overlap heatmap to '{0}'".format(real_filename))
         return None
+
+    def hic_correlate(self,
+        list_of_hiccys:list,
+        filename:str = None,
+        optimal_ordering=True,
+        bracket=[0.0, 1.0],
+        aspect="square",
+        **kargs):
+        '''
+        **Purpose**
+            Get the correlation between hiccy 2D matrix arrays.
+
+        **Arguments**
+            list_of_hiccys (required)
+                list of hiccy objects to perform correlations agains. Labels
+                for the rows/columns are taken from the hiccy['name'] slot
+
+            filename (Required)
+                filename to save the correlation heatmap to
+
+        **Returns**
+            A dictionary containing he Pearson R scores and the labels, in the same
+            order as the heatmap;
+
+        '''
+        assert list_of_hiccys, 'need a list_of_hiccys'
+        assert isinstance(list_of_hiccys, list), 'list_of_hiccys must be a list'
+        assert filename, 'Need a filename to save the correlation heatmap to'
+
+        mode = 'Pearson R' # only 1 mode
+
+        num_hiccys = len(list_of_hiccys)
+
+        result = numpy.zeros((num_hiccys, num_hiccys))
+
+        p = progressbar(num_hiccys)
+
+        for idx1, h1 in enumerate(list_of_hiccys):
+            for idx2, h2 in enumerate(list_of_hiccys):
+                if idx1 <= idx2:
+                    if idx1 == idx2: # fill i nthe diagonals
+                        result[idx1, idx2] = 1.0
+                    continue
+
+                rs = []
+                for chrom in h1.all_chrom_names: # hope they match!
+                    m1 = numpy.array(h1.mats[chrom]).flatten()
+                    m2 = numpy.array(h2.mats[chrom]).flatten()
+                    rs.append(pearsonr(m1, m2)[0]) # scipy.stats
+                r = numpy.mean(rs)
+                result[idx1, idx2] = r
+                result[idx2, idx1] = r
+
+            p.update(idx1)
+
+        labels = [i['name'] for i in list_of_hiccys]
+
+        square = True
+        if "heat_hei" in kargs or "heat_wid" in kargs:
+            square=False
+
+        results = self.draw.heatmap(filename=filename, data=result, square=square,
+            bracket=bracket, row_names=labels, aspect=aspect, col_names=labels,
+            colbar_label="Correlation (%s)" % mode, optimal_ordering=optimal_ordering,
+            **kargs)
+
+        config.log.info("hic_correlate: Saved '%s'" % results["real_filename"])
+
+        return {"pearsonr": results["reordered_data"], "labels": results["reordered_cols"]}
+
