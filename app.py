@@ -17,7 +17,7 @@ import sys, os, copy, re, shlex
 
 import opt, gDraw
 
-from glbase_wrapper import glload, track, location, format, flat_track, genelist, genome_sql
+from glbase_wrapper import glload, location, format, flat_track, genelist, genome_sql
 from error import *
 from genome_data import genomes
 

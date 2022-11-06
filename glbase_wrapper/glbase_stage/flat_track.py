@@ -99,13 +99,12 @@ class flat_track():
 
             self.mats = {}
             for chrom in self.chrom_names:
-                print(chrom)
                 self.mats[chrom] = self.hdf5_handle[f'matrix_{chrom}/mat']
 
             self.draw = draw()
             config.log.info('Bound "%s" flat file' % filename)
 
-        # NAme override:
+        # Name override:
         if name:
             self.name = name
         else:

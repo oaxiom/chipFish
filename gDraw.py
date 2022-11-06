@@ -16,7 +16,7 @@ from error import *
 from constants import *
 from boundbox import bbox
 from operator import itemgetter
-from glbase_wrapper import location, track, utils
+from glbase_wrapper import location, utils
 from data import *
 from ruler import ruler
 from log import log

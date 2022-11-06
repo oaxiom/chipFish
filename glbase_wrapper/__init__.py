@@ -27,17 +27,16 @@ from .glbase_stage.flags import * # just pass through.
 from .glbase_stage.location import location
 from .glbase_stage.helpers import * # pass through
 from .glbase_stage.delayedlist import delayedlist
-from .glbase_stage.tools.seqToTrk import seqToTrk 
+from .glbase_stage.tools.seqToTrk import seqToTrk
 from .glbase_stage import format
 
 # get the wrapped versions.
 from .genelist import genelist
 from .genome import genome
 from .genome_sql import genome_sql
-from .track import track
 from .flat_track import flat_track
 
 # make these functions available in the package
 __all__ = ["genelist", "location", "genome", "delayedlist", "VERSION",
-    "track", "format",
-    ] + dir(glbase_stage.flags) + dir(glbase_stage.helpers) 
+    "format",
+    ] + dir(glbase_stage.flags) + dir(glbase_stage.helpers)
