@@ -11,11 +11,10 @@ import sys, os, csv, string, math, collections
 from operator import itemgetter
 
 import numpy
-from numpy import array, arange, meshgrid, zeros, linspace, mean, object_, std # This use of array here is not good.
+from numpy import array, arange, meshgrid, zeros, linspace, mean, object_, std
 import gzip as gzipfile
 
 from . import config
-from .flags import *
 from .draw import draw
 from .genelist import genelist
 from .progress import progressbar
@@ -115,7 +114,7 @@ class base_expression(genelist):
                         do = True # do anyway
 
                     if do:
-                        names = eval("{0}".format(format["conditions"]["code"])) # yay, more nice happy arbitrary code execution.
+                        names = eval("{}".format(format["conditions"]["code"])) # yay, more nice happy arbitrary code execution.
 
                         if names:
                             self._conditions = [str(k) for k in names]
@@ -124,11 +123,11 @@ class base_expression(genelist):
 
                 if not silent:
                     config.log.info("expression: I found the following conditions:")
-                    config.log.info('\n' + "\n".join(["{}\t{}".format(n, i) for n, i in enumerate(self._conditions)]))
+                    config.log.info('\n' + "\n".join([f"{n}\t{i}" for n, i in enumerate(self._conditions)]))
 
         # coerce the conditions errs etc to floats
         nans = set(('nan', 'Nan', 'NaN'))
-        for idx, i in enumerate(self):
+        for idx, i in enumerate(self.linearData):
             try:
                 # Nan policy:
                 if True in [t in nans for t in i["conditions"]]:
@@ -140,10 +139,24 @@ class base_expression(genelist):
                         else:
                             newc.append(c)
                     i['conditions'] = newc
-                i["conditions"] = [float(str(t).replace(",", "")) for t in i["conditions"]] # because somebody once sent me a file with ',' for thousands!
+
+                i["conditions"] = [float(str(t)) for t in i["conditions"]] # because somebody once sent me a file with ',' for thousands!
             except ValueError:
-                config.log.warning("line %s, contains missing data (%s), filling with 0" % (idx, i["conditions"]))
-                i["conditions"] = [0 for t in self._conditions] # Use conditions as the example I had here was also missing all of the other values.
+                try:
+                    newi = []
+                    for v in i["conditions"]:
+
+                        if v:
+                            v = float(v)
+                        else:
+                            v = 0.0
+                        newi.append(v)
+                        i["conditions"] = newi
+                    config.log.warning("line {}, contains missing data ({}), filling with 0, when I can".format(idx, i["conditions"]))
+                except ValueError:
+                    # Just die, I can't rescue
+                    i["conditions"] = [0 for t in self._conditions] # Use conditions as the example I had here was also missing all of the other values.
+                    config.log.warning("line %s, contains missing data (%s), that cannot be rescude, filling with 0, proceed with caution" % (idx, i["conditions"]))
 
             # These will bomb on missing data...
             if "err" in i:
@@ -209,8 +222,8 @@ class base_expression(genelist):
         """
         A CSV version of saveTSV(), see saveTSV() for syntax
         """
-        self.saveTSV(filename=filename, tsv=False, interleave_errors=True, no_header=False, no_col1_header=False, **kargs)
-        config.log.info("saveCSV(): Saved '%s'" % filename)
+        self.saveTSV(filename=filename, tsv=False, interleave_errors=interleave_errors, no_header=no_header, no_col1_header=no_col1_header, **kargs)
+        config.log.info(f"saveCSV(): Saved '{filename}'")
 
     def saveTSV(self, filename=None, tsv=True, interleave_errors=True, no_header=False, no_col1_header=False, **kargs):
         """
@@ -256,8 +269,8 @@ class base_expression(genelist):
             returns None
 
         """
-        self._save_TSV_CSV(filename=filename, tsv=tsv, interleave_errors=True, no_header=False, no_col1_header=False, **kargs)
-        config.log.info("saveTSV(): Saved '%s'" % filename)
+        self._save_TSV_CSV(filename=filename, tsv=tsv, interleave_errors=interleave_errors, no_header=no_header, no_col1_header=no_col1_header, **kargs)
+        config.log.info(f"saveTSV(): Saved '{filename}'")
 
     def _save_TSV_CSV(self, filename=None, tsv=True, interleave_errors=True, no_header=False, no_col1_header=False, **kargs):
         """
@@ -304,7 +317,7 @@ class base_expression(genelist):
                 else:
                     if not no_header:
                         title_row = [k for k in write_keys in k in list(self.keys())]
-                        writer.writerow(write_keys + self.getConditionNames() + ["err_%s" % i for i in self.getConditionNames()])
+                        writer.writerow(write_keys + self.getConditionNames() + [f"err_{i}" for i in self.getConditionNames()])
 
                     for data in self.linearData:
                         line = [data[k] for k in write_keys if k in data]
@@ -345,7 +358,7 @@ class base_expression(genelist):
 
         returns False if not valid.
         """
-        assert (key in self.linearData[0]) or key in self._conditions, "'%s' search key not found in list or array data" % key
+        assert (key in self.linearData[0]) or key in self._conditions, f"'{key}' search key not found in list or array data"
 
         if key in self.linearData[0]:
             return(genelist.sort(self, key, reverse=reverse)) # use the parents sort.
@@ -411,7 +424,7 @@ class base_expression(genelist):
                     nl = t
                     if not __nan_warnings:
                         __nan_warnings = True
-                        config.log.warning("Expression list contains 'not a number' values, setting them to <nan_value=%s>" % nan_value)
+                        config.log.warning(f"Expression list contains 'not a number' values, setting them to <nan_value={nan_value}>")
 
                 new["conditions"] = nl
                 for k in expn:
@@ -426,7 +439,7 @@ class base_expression(genelist):
             else:
                 # conditions can get lost in a loadable list. fill in a dummy one
                 if len(self._conditions) != len(newl[0]["conditions"]):
-                    self._conditions = ["cond_%s" % i for i in range(len(newl[0]["conditions"]))]
+                    self._conditions = [f"cond_{i}" for i in range(len(newl[0]["conditions"]))]
 
         # Now call parent with new list
         genelist.load_list(self, newl, name)

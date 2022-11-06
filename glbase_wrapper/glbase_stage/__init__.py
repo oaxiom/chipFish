@@ -54,26 +54,34 @@ else:
 if 'h5py' in available_modules:
     config.H5PY_AVAIL = True
 else:
-    config.log.warning('h5py not available or not installed')
+    raise LibraryNotFoundError("Fatal - h5py not available or not installed")
 
 if 'networkx' in available_modules:
     config.NETWORKX_AVAIL = True
-    # pass silently as pygraphviz is optional.
+else:
+    config.log.warning('networkx not available')
 
 if 'pygraphviz' in available_modules:
     config.PYGRAPHVIZ_AVAIL = True
+else:
+    pass
     # pass silently as pygraphviz is optional.
 
 if 'graphviz' in available_modules: # sometimes comes in the wrong namespace!
     config.PYGRAPHVIZ_AVAIL = True
+else:
+    pass
     # pass silently as pygraphviz is optional.
 
 if 'pydot' in available_modules:
     config.PYDOT_AVAIL = True
-    # pass silently as pydot is optional.
+else:
+    config.log.warning('pydot not available')
 
 if 'statsmodels' in available_modules:
     config.STATSMODELS_AVAIL = True
+else:
+    config.log.warning('statsmodels not available')
 
 #try:
 #    import numexpr
@@ -92,16 +100,15 @@ else:
 # Now import the rest of my libraries - assumes here they are available.
 # If I can get config and errors then these are probably available too.
 
+from .genelist import genelist
 from .helpers import glload, change_drawing_mode, fold2UpOrDown, fold2Down, fold2Up, XDown, XUp, lst_find, cat_columns, strandSorter
 from .location import location
-from .genelist import genelist
 from .expression import expression
 from .genome import genome
 from .genome_sql import genome_sql # To replace genome
 from .delayedlist import delayedlist
 from .glglob import glglob
 from .element import motif
-from .track import track
 from .flat_track import flat_track
 from .progress import progressbar
 from .pwm import pwm
@@ -111,19 +118,17 @@ from .logos import logo
 from .draw import draw
 from .format_container import fc
 from .fastq import fastq
-from .glgo import glgo
 from .draw import adjust_text
 from .hic import hic, merge_hiccys
-#from .ecrbase import ecrbase, tfbs_iter
+from .massspec import massspec
+from .glgo import glgo
 #from .region import region
 #from .intervaltree import intervaltree # Later integrate into genelist; expose here for now
 from . import realtime
-from . import gldata
 from . import utils
 from . import format
 from . import cmaps
 
-from .tools.seqToTrk import seqToTrk
 from .tools.wigstep_to_flattrack import wigstep_to_flat
 from .tools.merge_flat_track import merge_flats
 from .tools.gerp_to_flattrack import gerp_to_flat
@@ -133,7 +138,7 @@ from .tools.wig_to_flattrack import wig_to_flat
 from .tools.rnaseq import rnaseqqc
 
 def version():
-    config.log.info("glbase - version: {} {}".format(config.version, config.DATE))
+    config.log.info("glbase3 - version: {} {}".format(config.version, config.DATE))
     config.log.info("The working directory is: '{}'".format(os.getcwd()))
 
 config.set_log_level('info')
@@ -148,22 +153,21 @@ __all__ = [
     #"track", # Deprecated. use flat_track
     "flat_track",
     "delayedlist",
-    "glgo",
+    'massspec',
     "glglob",
     "hic",# primary objects
     'config',
     'merge_hiccys', # hic support
     "location",
     "pwm", "pwms", # PWM object support
-    "flags",
     "format",
     "glload",
     # Tools/
-    "seqToTrk", "wigstep_to_flat", "bedgraph_to_flat", 'bed_to_flat', 'wig_to_flat', "gerp_to_flat", 'merge_flats',
+    "wigstep_to_flat", "bedgraph_to_flat", 'bed_to_flat', 'wig_to_flat', "gerp_to_flat", 'merge_flats',
     "logo",
     "motif",
     "rnaseqqc",
-    "gldata",
+    "glgo",
     "fc",
     #"rigidgrid", # Unavailable
     #"ecrbase",

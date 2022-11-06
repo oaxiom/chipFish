@@ -178,7 +178,7 @@ class _base_genelist:
                 newl.linearData.append(copy.deepcopy(item))
 
         newl._optimiseData()
-        return(newl)
+        return newl
 
     def __add__(self, gene_list):
         """
@@ -296,7 +296,11 @@ class _base_genelist:
                     return int(value)
                 except ValueError:
                     try: # see if I can cooerce it into a location:
-                        return location(loc=value)
+                        # Turns out ~12% of loading was spent in this test:
+                        if ':' in value and '-' in value: # Shortcut
+                            return location(loc=value)
+                        else:
+                            raise ValueError
                     except (TypeError, IndexError, AttributeError, AssertionError, ValueError): # this is not working, just store it as a string
                         return str(value).strip()
         return "" # return an empty datatype.
@@ -382,7 +386,7 @@ class _base_genelist:
             if compressed:
                 config.log.warning("compression not currently implemented, saving anyway")
             pickle.dump(self, oh, -1)
-        config.log.info("Saved binary version of list: '{}'".format(filename))
+        config.log.info(f"Saved binary version: '{filename}'")
 
     def from_pandas(self, pandas_data_frame):
         """
@@ -391,7 +395,7 @@ class _base_genelist:
             Convert a pandas dataFrame to a genelist
 
             NOTE: This is an INPLACE method that will REPLACE any exisiting data
-            in the
+            in the genelist
 
         **Arguments**
 

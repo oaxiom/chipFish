@@ -54,14 +54,15 @@ class track(glbase_stage.track):
             return({"+": self.get(loc, resolution=resolution, strand="+", **kargs),
                 "-": self.get(loc, resolution=resolution, strand="-", **kargs)})
         else:
-            trk = self.get(loc, resolution=resolution, **kargs) 
-        
+            trk = self.get(loc, resolution=resolution, **kargs)
+
         if norm_factor:
             trk *= norm_factor
-            
+
         if norm_by_lib_size:
+            print('Normalised')
             trk /= (self.get_total_num_reads() / 100000000.0)# Quick hack to get it back to ints.
-            
+
         return(trk)
 
     # gui stuff.

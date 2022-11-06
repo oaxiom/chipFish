@@ -14,7 +14,7 @@ import os, logging, subprocess
 
 try:
     oh = open(os.path.join(os.path.split(__file__)[0], "version.num"), "rt")
-    VERSION = "1.%s" % oh.readline().strip().replace("+", "") # The hg hook will put a plus as I call just before committing.
+    VERSION = "3.%s" % oh.readline().strip().replace("+", "")
     oh.close()
 except Exception:
     VERSION = "version data not found"
@@ -51,10 +51,10 @@ PRINT_LAST_ITEM = True
 bucket_size = 10000 # in bp - tested, seems a reasonable choice.
 
 DEFAULT_DPI = 150 # not working?
-draw_mode = "png"
+draw_mode = "pdf"
 draw_size = "medium"
 draw_aspect = "normal"
-valid_draw_modes = frozenset(["png", "ps", "eps", "svg", 'pdf', 'tiff'])
+valid_draw_modes = frozenset(["png", "ps", "eps", "svg", 'pdf'])
 
 # -------------- Start of the new-style options:
 
@@ -86,6 +86,7 @@ def get_interpolation_mode(filename):
 # -------------- set up the logger here.
 # You can access it using config.log()
 logging.basicConfig(level=logging.INFO,
+                    #format='%(levelname)-8s: %(name)s : %(message)s', # Use this to trace orgue loggers
                     format='%(levelname)-8s: %(message)s',
                     datefmt='%m-%d %H:%M')
 
@@ -94,6 +95,7 @@ log = logging.getLogger('glbase3')
 
 mpl_logger = logging.getLogger('matplotlib') # Bodge to silence the matplotlib logging
 mpl_logger.setLevel(logging.WARNING)
+_ = logging.getLogger('fontTools.subset').setLevel(logging.WARNING) # Another rogue logger
 
 # helpers [Should be deprecated. Call config.log.<level>() to call info]
 info = log.info

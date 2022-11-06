@@ -28,13 +28,12 @@ also released under the MIT license
 
 """
 
-import sys, os, timeit, math, textwrap, random, itertools
+import sys, os, timeit, math, textwrap, random, itertools, statistics
 from time import time
 
 import numpy as np
 import scipy.spatial as spdist
 from scipy.sparse import csr_matrix
-#from sklearn.decomposition import RandomizedPCA
 from sklearn.decomposition import PCA
 from sklearn.manifold import MDS
 from sklearn import neighbors
@@ -321,7 +320,7 @@ class manifold_SOM(object):
                 for i in range(self.dim):
                     cc.append ('Variable-'+ str(i+1))
                     self.compnames = np.asarray(cc)[np.newaxis,:]
-            except:
+            except TypeError:
                 print('no data yet: please first set training data to the SOM')
         else:
             assert len(compname) == self.dim, 'compname should have the same size'

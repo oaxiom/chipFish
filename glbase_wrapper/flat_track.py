@@ -49,19 +49,19 @@ class flat_track(glbase_stage.flat_track):
 
         # flat_tracks do not respect a resolution argument.
         # This should probably be ported back to glbase
-        
+
         newa = numpy.zeros(int(len(data)/resolution)) # Possible to get here with no data...
-        
+
         for i in range(len(newa)):
             newa[i] = data[int(i*resolution)]
-        
+
         if norm_by_lib_size:
             if not self.get_total_num_reads():
                 raise AssertionError('Asked for norm_by_lib_size=True, but this flat does not have a valid total_num_reads')
             newa /= (self.get_total_num_reads() / 100000000.0)# Quick hack to get it back to ints.
-        
+
         if type in self._available_draw_types:
-            return(newa)
+            return newa
 
         raise AssertionError("draw mode not available")
 

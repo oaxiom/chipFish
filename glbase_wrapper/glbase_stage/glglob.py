@@ -11,10 +11,9 @@ import sys, os, csv, string, math, numpy, pickle
 from numpy import array, zeros, object_, arange
 from copy import deepcopy
 from operator import itemgetter
-from statistics import pstdev, mean
+from statistics import pstdev, mean, median
 
 from . import config, utils
-from .flags import *
 from .base_genelist import _base_genelist
 from .draw import draw
 from .errors import AssertionError, NotImplementedError, GlglobDuplicateNameError
@@ -1095,11 +1094,11 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
 
             merge_peaks_distance (Optional, default=400)
                 Maximum distance that the centers of any two peaks can be apart before the two peaks are merged into
-                a single peak. (taking the mean of the peak centers)
+                a single peak. (taking the mean center of the peak centers)
 
             sort_clusters (Optional, default=True)
                 sort the clusters from most complex to least complex.
-                Note that chip_seq_cluster_heatmap cannot preserve the order of the peaks
+                Note that chip_seq_cluster cannot preserve the order of the peaks
                 (it's impossible), so setting this to false will just randomise the order of the clusters
                 which may not be particularly helpful.
 
@@ -1440,7 +1439,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                         # Also add it into the return data.
                         if cluster_index+1 not in ret_data:
                             ret_data[cluster_index+1] = {"genelist": genelist(name="cluster_%s" % (cluster_index+1,)), "cluster_membership": cluster_id["id"]}
-                        this_loc = location(loc="chr%s:%s-%s" % (chrom, int(block_id[0]), int(block_id[1]))) # does not include the pileup_distance
+                        this_loc = location(loc=f"chr{chrom}:{int(block_id[0])}-{int(block_id[1])}") # does not include the pileup_distance
                         ret_data[cluster_index+1]["genelist"].linearData.append({"loc": this_loc})
                         groups.append(cluster_index+1)
 
@@ -1476,7 +1475,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 colbar_label = "Tag density"
 
         if norm_by_library_size:
-            colbar_label = "Normalised %s" % colbar_label
+            colbar_label = f"Normalised {colbar_label}"
 
         self.__pileup_y_label = "Tag density" # Trust me, you don't want to log them...
 
@@ -1579,10 +1578,15 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             maxy = max([a.max() for a in self.__pileup_data[cid]])
             miny = min([a.min() for a in self.__pileup_data[cid]])
 
-            for cfig, data in enumerate(self.__pileup_data[cid]):
+            for cfig, data in enumerate(zip(self.__pileup_data[cid], self.__pileup_groups_membership[cid-1]["id"])):
+                membership = data[1]
+                data = data[0]
                 ax = fig.add_subplot(1, len(self.__pileup_data[cid]), cfig+1)
                 x = numpy.arange(len(data))
-                ax.plot(x, data)
+                if membership:
+                    ax.plot(x, data, c='red')
+                else:
+                    ax.plot(x, data)
 
                 ax.set_xlim([0, maxx-2]) # -2 to trim off the unsightly tail due to binning.
                 [t.set_visible(False) for t in ax.get_xticklabels()]
@@ -1595,8 +1599,8 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
 
                 self.draw.do_common_args(ax, **kargs)
 
-            self.draw.savefigure(fig, this_filename)
-            config.log.info('Saved {}'.format(this_filename))
+            real_filename = self.draw.savefigure(fig, this_filename)
+            config.log.info(f'Saved {real_filename}')
         return self.__pileup_data
 
     def genome_dist_radial(self, genome, layout, filename=None, randoms=None, **kargs):
@@ -1681,9 +1685,11 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
 
     def GO_heatmap(self, filename, p_value_limit=0.01, num_top=5, pvalue_key='pvalue',
             size=[8, 6], bracket=[1.3,4], row_cluster=True, col_cluster=False, # heatmap args
-            heat_wid=0.15, cmap=cm.Reds, border=True, row_font_size=7,
-            heat_hei='proportional', grid=True, ontology=None, draw_numbers_fmt='%.1f',
-            draw_numbers=True, draw_numbers_threshold=2.0, draw_numbers_font_size=5, do_negative_log10=True,
+            heat_wid=0.15, cmap=cm.Reds, border=True, row_font_size=6,
+            heat_hei='proportional', grid=True, ontology=None, draw_numbers_fmt='{:.1f}',
+            draw_numbers=True, draw_numbers_threshold=2.0, draw_numbers_font_size=5,
+            do_negative_log10=True,
+            #row_colbar=None, col_colbar=None, # Not possible as cond_names is not known...
             **kargs):
         '''
         **Purpose**
@@ -1715,7 +1721,11 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 DAVID will give you a table containing all GO categories. Use this to specify using only
                 a single ontology to use. Assumes the genelists have a 'ontology' key.
 
-            This function will also accept all glbase heatmap arguments (see expression.heatmap).
+            do_negative_log10 (Optional, default=True)
+                By default convert the value in pvalue into the -log10()
+                Set this to False if you don't want to convert
+
+            This function will also accept most glbase heatmap arguments (see expression.heatmap).
             A few args have altered defaults:
 
             heat_hei (Optional, default='proportional')
@@ -1726,10 +1736,6 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 the bracket for the min and max of the heatmap. This sort of bracket
                 assumes your data is -log10 transformed and so the p-value would
                 range from 0.05 to 0.0001
-
-            do_negative_log10 (Optional, default=True)
-                By default convert the value in pvalue into the -log10()
-                Set this to False if you don't want to convert
 
         **Returns**
             The resorted row names (as a list) and a heatmap in filename
@@ -1802,21 +1808,31 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         goex = expression(loadable_list=newe, cond_names=cond_names)
         if len(goex) == 0:
             config.log.warning('GO list was empty, skipping')
-            return(False)
+            return False
 
         if heat_hei == 'proportional':
-            heat_hei=0.011*len(goex)
+            heat_hei=0.008*len(goex)
+
+        if do_negative_log10:
+            colbar_label = f'-log10({pvalue_key})'
+            draw_numbers_threshold = -math.log10(p_value_limit)
+        else:
+            colbar_label = f'{pvalue_key}'
+            draw_numbers_threshold = p_value_limit
 
         res = goex.heatmap(filename=filename, size=size, bracket=bracket,
             row_cluster=row_cluster, col_cluster=col_cluster,
             heat_wid=heat_wid, cmap=cmap, border=border,
             row_font_size=row_font_size, heat_hei=heat_hei, grid=grid,
-            draw_numbers=draw_numbers, colbar_label='-log10(%s)' % pvalue_key,
-            draw_numbers_threshold = -math.log10(p_value_limit),
+            draw_numbers=draw_numbers,
+            colbar_label=colbar_label,
+            draw_numbers_threshold = draw_numbers_threshold,
             draw_numbers_fmt=draw_numbers_fmt,
-            draw_numbers_font_size=draw_numbers_font_size)
+            draw_numbers_font_size=draw_numbers_font_size,
+            **kargs)
+
         config.log.warning("GO_heatmap: Saved heatmap '%s'" % filename)
-        return(reversed(res["reordered_rows"]))
+        return reversed(res["reordered_rows"])
 
     def measure_density(self, trks, peaks, norm_by_library_size=True, log=False,
         read_extend=0, pointify=True, expand=1000,
@@ -2021,11 +2037,11 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             the peak. This has the advantage that you don't need to go to the fiddly
             trouble of generating a suitable pseudo-background for ATAC-seq. Additionally it
             should take into account the relative background of the library, allowing extraction
-            of information even ion poor quality libraries. The disadvantage - and this
+            of information even in poor quality libraries. The disadvantage - and this
             is theoretical - but if you have a lot of very large repeat elements then it
             might lead to erroneous calling of not-peaks.
 
-            Breifly, the strategy is:
+            Briefly, the strategy is:
 
             Peak calling is conservative on any single ChIP-seq library. To get better sensitivity
             I pool information from other libraries by making a superset of peaks
@@ -2144,7 +2160,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 prog.update(i)
 
             lam10 = [p['lam10'] for p in super_set_of_peaks]
-            avg = mean(lam10)
+            avg = median(lam10)
             std = pstdev(lam10)
             config.log.info('Average background: %.3f' % avg)
             config.log.info('Average STDev: %.3f' % std)
@@ -2160,6 +2176,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 ax.hist([p['peak_score'] for p in super_set_of_peaks], bins=50, range=[0,50], histtype='step', label='Peaks')
                 ax.axvline(avg, ls=':', color='red')
                 ax.axvline(avg+(std * Z_threshold), ls=':', color='green')
+                ax.text(avg+(std * Z_threshold), ax.get_ylim()[1], 'Z={:.1f} used'.format(avg+(std * Z_threshold)))
                 ax.legend()
                 self.draw.savefigure(fig, '{0}_{1}.png'.format(filename, sam_name))
 
@@ -2199,13 +2216,13 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         list_of_peaks,
         list_of_trks,
         filename:str = None,
-        norm_by_library_size = False,
+        norm_by_library_size:bool = False,
         bins:int = 100,
         pileup_distance:int = 1000,
         cache_data = False,
         bracket = None,
         range_bracket = None,
-        frames = True,
+        frames:bool = False,
         row_labels = None,
         col_labels = None,
         read_extend:int = 200,
@@ -2326,7 +2343,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 pileup data generated. If the file does exist, data will be read from that
                 file and used for heatmap drawing.
 
-            frames (Optional, default=True)
+            frames (Optional, default=False)
                 Draw black frames around the heatmaps and category maps.
 
             imshow (Optional, default=False)
@@ -2342,6 +2359,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         assert False not in ['loc' in gl.keys() for gl in list_of_peaks], 'At least one of your peak data (list_of_peaks) does not contain a "loc" key'
         assert not (sort_by_sum_intensity and sort_by_intensity), 'sort_by_sum_intensity and sort_by_intensity cannot both be True'
         if 'normalize' in kargs: raise AssertionError('normalize has been deprecated, use norm_by_library_size')
+        if 'normalise' in kargs: raise AssertionError('normalise has been deprecated, use norm_by_library_size')
 
         total_rows = 0
 

@@ -10,11 +10,9 @@ from operator import itemgetter
 
 from . import config
 from . import utils
-from .flags import *
 from .helpers import *
 from .location import location
 from .draw import draw
-from .history import historyContainer
 from .errors import AssertionError, UnRecognisedCSVFormatError, UnrecognisedFileFormatError, ArgumentError
 from .progress import progressbar
 from .base_genelist import _base_genelist
@@ -181,7 +179,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             can include path short cuts (e.g. "./", "../" etc)
 
         format (Optional, default = "sniffer" (ie. guess))
-            format specifer, see format.py, flags.py and helpers.py and the
+            format specifer, see format.py and the
             documentation on how to write a valid format specifier
 
         **Result**
@@ -246,7 +244,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             can include path short cuts (e.g. "./", "../" etc)
 
         format (Optional, default = "sniffer" (ie. guess))
-            format specifer, see flags.py and helpers.py and the
+            format specifer, see format.py and helpers.py and the
             documentation on how to write a valid format specifier
 
         force_tsv (Optional, default=False)
@@ -264,7 +262,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
 
         fills the genelist with the CSV table.
         """
-        assert os.path.exists(os.path.realpath(filename)), "File %s not found" % filename
+        assert os.path.exists(os.path.realpath(filename)), f"File {filename} not found"
 
         self.name = '.'.join(os.path.split(filename)[1].split(".")[:-1]) # Put here otherwise realpath will force name from the symbolic link, not from the actual link!
         self.path = os.path.split(os.path.realpath(filename))[0]
@@ -367,7 +365,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             self.__deathline = column # For debugging purposes
             self.__deathindx = index
 
-            if not column: # if row is completely empty, so just omit.
+            if not column: # if row is completely empty omit.
                 continue
 
             if index <= skiplines or skiptill != "Done":
@@ -385,7 +383,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
 
             if "debug" in format and format["debug"]:
                 debug_line += 1
-                print("{0}:'{1}'".format(index, column))
+                print(f"{index}:'{column}'")
                 if isinstance(format["debug"], int) and debug_line > format["debug"]:
                     break # If an integer, collect that many items.
 
@@ -789,7 +787,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                     line.append("") # a blank key, fail gracefully.
             writer.writerow(line)
         oh.close()
-        config.log.info("Saved '%s'" % filename)
+        config.log.info(f"Saved '{filename}'")
         return None
 
     def saveFASTA(self, filename=None, seq_key="seq", **kargs):
@@ -823,7 +821,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         """
         valid_args = ["filename", "name"]
         for key in kargs:
-            assert key in valid_args, "saveFASTA() - Argument '%s' is not recognised" % key
+            assert key in valid_args, f"saveFASTA() - Argument '{key}' is not recognised"
 
         assert filename, "No filename specified"
         assert self.linearData[0]["seq"], "No sequence data available in this list"
@@ -840,13 +838,13 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
 
             for index, item in enumerate(self.linearData):
                 if name == "null_":
-                    save_name = "null_%s" % index
+                    save_name = f"null_{index}"
                 else:
                     save_name = "_".join(str(item[n]).replace(' ', '_') for n in name)
 
-                oh.write(">%s\n" % save_name)
-                oh.write("%s\n" % item[seq_key])
-        config.log.info("Saved FASTA file: %s" % filename)
+                oh.write(f">{save_name}\n")
+                oh.write(f"{item[seq_key]}\n")
+        config.log.info(f"Saved FASTA file: {filename}")
         return True
 
     def saveBED(self, filename=None, extra_keys=None, id=None, score=None, uniqueID=False, loc_only=False,
@@ -930,7 +928,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             oh.write("%s\n" % ("\t".join(todo)))
 
         oh.close()
-        config.log.info("Saved '%s' BED file" % filename)
+        config.log.info(f"Saved '{filename}' BED file")
         return filename
 
     def saveGTF(self, filename=None, strand=None, source=None, feature=None, score=None, frame=None,
@@ -1182,7 +1180,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         (Override)
         report the underlying representation
         """
-        return("glbase.genelist")
+        return "glbase.genelist"
 
     def __str__(self):
         """
@@ -1200,7 +1198,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                 out = "%s\n%s" % (out, "%s: %s" % (len(self.linearData), ", ".join(["%s: %s" % (key, self.linearData[-1][key]) for key in self.linearData[-1]])))
 
         elif len(self.linearData) == 0:
-            out = "This list is Empty"
+            out = "This list is empty"
 
         else: # just print first entry.
             out = []
@@ -1334,6 +1332,49 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
 
         config.log.info("getRowsByKey: Found %s items" % len(newl))
         return newl
+
+    def filter_by_in(self, key=None, value=None, remove=True, **kargs):
+        """
+        **Purpose**
+            filter the genelist, and
+
+            if remove=True, then delete all matching entries:
+            if <value> in <key> then remove
+
+            if remove=False, then do the opposite and only keep entries that match
+            if <value> in <key> then keep
+
+        **Arguments**
+            key (Required)
+                key to search for '<value>' in
+
+            value (Required)
+                value to test in key.
+
+            remove (Optional, default=True)
+                if remove=True, then remove matching entries
+                if remove=False, keep all entries that match
+
+        **Returns**
+            New genelist with the entries removed
+
+        """
+        assert key, 'You must specify a key'
+        assert value, 'You must specify a value'
+        assert key in self.keys(), '{} key not found in this genelist'.format(key)
+
+        newgl = self.deepcopy()
+
+        if remove:
+            newl = [item for item in newgl.linearData if value not in item[key]]
+            config.log.info('filter_by_in: Removed {} entries'.format(len(self) - len(newl)))
+        else:
+            newl = [item for item in newgl.linearData if value in item[key]]
+            config.log.info('filter_by_in: Kept {} matching entries'.format(len(self) - len(newl)))
+
+        newgl.linearData = newl
+        newgl._optimiseData()
+        return newgl
 
     def filter_by_value(self, key=None, evaluator=None, value=None, **kargs):
         """
@@ -2758,8 +2799,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                 the previous name.
 
         **Returns**
-            None. This is one of the few IN PLACE methods and returns
-            None.
+            self
         """
         try:
             list_to_load[0]
@@ -2783,7 +2823,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             self.name = name
 
         self._optimiseData()
-        return None
+        return self
 
     def raw_data(self):
         """
@@ -2987,7 +3027,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         **Purpose**
             split() the values of key into key:value pairs and add them back into the genelist
 
-            A good example is this:
+            An example is this:
 
             After loading a fasta  the entries are like this:
 
@@ -3005,7 +3045,8 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
 
             0: seq: EIV, transcript_biotype: TR_D_gene, pep: known, gene_biotype: TR_D_gene, gene: ENSG00000223997, transcript: ENST00000415118, chromosome: GRCh37:14:22907539:22907546:1
 
-            NOTE: This will work for a relatively simple example, but will fail rapidly in more complex versions.
+            NOTE: This will work for a relatively simple example, but will fail in more complex versions.
+
             Notice how the first ENSP00000451042 is lost as it does not have a val_sep (:).
 
         **Arguments**
@@ -3043,51 +3084,6 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
 
         newl._optimiseData()
         config.log.info("splitKeyValue: split '%s' into ~'%s'%s'%s' key value pairs" % (key, len(k), val_sep, len(v)))
-        return newl
-
-    def splitKey(self, key, key_names, keep_original=False):
-        """
-        **Purpose**
-            split a key that is a list into a new set of keys using key_names.
-
-            For example:
-                a = [{"data": [0, 5, 20]}]
-
-                b = a.splitKey("data", ["data_one", "data_two", "data_three"])
-
-                b = [{"data_one": 0, "data_two": 5, "data_three": 20}]
-
-            Some restrictions:
-            1. The length of key_names must equal the length of the list stored in Key
-            2. All lists stored in 'key' must be the same length.
-            3. The data stored in key is assumed to always be in the same order
-
-        **Arguments**
-            key
-                the key to split
-
-            key_names
-                A list of key names to use to split the key up by
-
-            keep_original (Optional, default=False)
-                keep the original key as well. Default behaviour deletes the key and its data
-
-        **Returns**
-            The new list
-        """
-        assert key in self.linearData[0], "'%s' not found in this genelist" % key
-        assert len(key_names) == len(self.linearData[0][key]), "the key_names list is not the same length as the data in the genelist"
-
-        newl = self.deepcopy()
-
-        for item in newl:
-            for i, newk in enumerate(key_names):
-                item[newk] = item[key][i]
-
-            if not keep_original:
-                del item[key]
-
-        newl._optimiseData()
         return newl
 
     def joinKey(self, new_key_name, formatter, keyA, keyB, keep_originals=False):
@@ -3681,8 +3677,10 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         if random_lists:
             rand = numpy.array([numpy.mean(back[k]) for k in kord])
             rand = rand*100
-            err = [(numpy.array(back[k]))for k in kord]
-            err = [numpy.std(i)*100 for i in err]
+            err = [(numpy.array(back[k]))*100 for k in kord]
+            print(err)
+            err = [numpy.std(i) for i in err]
+            print(err)
             ax.bar(x_bar + width, rand, width, color="grey", yerr=err, ec='none', ecolor="black", label="Background")
         else:
             rand = None # spoof entries for the return()
@@ -4133,4 +4131,167 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         self.draw.savefigure(fig, filename, **kargs)
         return None
 
-genelist = Genelist # Basically used only im map() for some dodgy old code I do not want to refactor.
+    def volcanoplot(self,
+        filename:str,
+        q_val_key:str,
+        fc_val_key:str,
+        log_q_values = False,
+        q_threshold = 2, # In log10
+        log_fc_values = False,
+        fc_threshold = 1, # In log2;
+        highlights = None,
+        highlight_key = None,
+        figsize=[3,3],
+        only_tes:bool = False,
+        only_genes:bool = False,
+        **kargs
+        ):
+        '''
+        **Purpose**
+            Draw a volcano plot of log2(fold-change) versus -log10(q-value)
+
+            using the keys fc vs. p_adjust
+
+        **Argumants**
+            filename (Required)
+                filename to save the image to.
+
+            q_val_key (Required)
+                q_value key name to use
+
+            fc_val_key (Required)
+                key containing the fold-change
+
+            log_q_values (Optional, default=False)
+                -log10 transform the q-values
+
+            q_threshold (Optional, default=2)
+                q-value threshold to use as significant;
+
+            log_fc_values (Optional, default=False)
+                -log10 transform the fold-change
+
+            fc_threshold (Optional, default=1)
+                fold-change threshold to use as significant;
+
+            highlights (Optional)
+                A list of items to draw a label over on the plot
+
+            highlights_key (Optional, required if highlights is True, or one of the only_* is True)
+                Key to match highlights in;
+
+            only_tes (Optional, default=False)
+                only plot the TEs (with a ':' in highlights_key
+
+            only_genes (Optional, default=False)
+                only plot the genes (lacking a ':' in highlights_key
+
+        **Returns**
+            The genes picked as up-regulated
+            The genes picked as down-regulated;
+            filename save the image to
+        '''
+        assert filename, 'You must specify a filename'
+        assert q_val_key, 'You must specify q_val_key'
+        assert fc_val_key,  'You must specify fc_val_key'
+        assert q_val_key in self.keys(), 'q_val_key was not found in this genelist'
+        assert fc_val_key in self.keys(), 'fc_val_key was not found in this genelist'
+        assert not (only_tes and only_genes), 'You cant have both only_tes and only_genes both True'
+        if only_tes:
+            assert highlight_key, 'if only_tes=True, you need to specify a highlights_key to look for the ":" character that signifies TEs'
+            assert highlight_key in self.keys(), 'highlight_key not found in this genelist'
+        if only_genes:
+            assert highlight_key, 'if only_genes=True, you need to specify a highlights_key to look for the ":" character that signifies TEs'
+            assert highlight_key in self.keys(), 'highlight_key not found in this genelist'
+
+        if highlights:
+            assert highlight_key, 'highlight_key must have a value if highlights=True'
+            assert highlight_key in self.keys(), 'highlight_key not found in this genelist'
+
+        fcs = self[fc_val_key]
+        qs = self[q_val_key]
+
+        if log_q_values:
+            qs = [-math.log10(i+1e-216) for i in qs]
+        if log_fc_values:
+            qs = [math.log2(f) for f in fcs]
+
+        up = []
+        dn = []
+        rest = []
+        upgl = []
+        dngl = []
+        highs = {}
+
+        for item, fc, q in zip(self.linearData, fcs, qs):
+            if only_tes and ':' not in item[highlight_key]:
+                continue
+
+            if only_genes and ':' in item[highlight_key]:
+                continue
+
+            if fc >= fc_threshold and q > q_threshold:
+                up.append((fc, q))
+                upgl.append(item)
+            elif fc <= -fc_threshold and q > q_threshold:
+                dn.append((fc, q))
+                dngl.append(item)
+            else:
+                rest.append((fc, q))
+
+            if highlights:
+                if item[highlight_key] in highlights:
+                    highs[item[highlight_key]] = (fc, q)
+
+        # Repack for return
+        if upgl:
+            gl = genelist()
+            upgl = gl.load_list(upgl)
+        if dngl:
+            gl = genelist()
+            dngl = gl.load_list(dngl)
+
+        fig = self.draw.getfigure(figsize=figsize)
+
+        ax = fig.add_subplot(111)
+
+        up = list(zip(*up))
+        dn = list(zip(*dn))
+        rest = list(zip(*rest))
+        if up:
+            ax.scatter(up[0], up[1], c='red', s=2, ec='none', alpha=0.3)
+        if dn:
+            ax.scatter(dn[0], dn[1], c='blue', s=2, ec='none', alpha=0.3)
+
+        ax.scatter(rest[0], rest[1], c='grey', s=2, alpha=0.1, ec='none')
+        if highlights and highs:
+            for gene_name in highs:
+                ax.text(highs[gene_name][0], highs[gene_name][1], gene_name, ha='center', va='center', fontsize=6)
+
+        ax.axhline(q_threshold, ls=':', c='grey')
+        ax.axvline(-fc_threshold, ls=':', c='grey')
+        ax.axvline(fc_threshold, ls=':', c='grey')
+
+        ax.set_xlim([-10, 10])
+        ax.set_ylim([-2, 40])
+
+        ax.tick_params(axis='x', labelsize=6)
+        ax.tick_params(axis='y', labelsize=6)
+
+        self.draw.do_common_args(ax, **kargs)
+
+        cxlims = ax.get_xlim()
+        cylims = ax.get_ylim()
+
+        ylim_pad = (cylims[1] - cylims[0]) * 0.05
+
+        if up: ax.text(cxlims[0], cylims[1]+ylim_pad, 'Down: {}'.format(len(dn[0])), fontsize=6, ha='left')
+        if dn: ax.text(cxlims[1], cylims[1]+ylim_pad, 'Up: {}'.format(len(up[0])), fontsize=6, ha='right')
+
+        real_filename = self.draw.savefigure(fig, filename)
+
+        config.log.info('volcanoplot: Saved {}'.format(real_filename))
+        return upgl, dngl, real_filename
+
+
+genelist = Genelist # Hack alert! Basically used only in map() for some dodgy old code I do not want to refactor.

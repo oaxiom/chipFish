@@ -6,7 +6,7 @@
 
 """
 
-import sys, os, csv, string, math, copy, heapq, itertools, functools
+import sys, os, csv, string, math, copy, heapq, itertools, functools, statistics
 
 from operator import itemgetter
 from collections.abc import Iterable
@@ -18,9 +18,9 @@ from scipy.cluster.vq import vq, kmeans, whiten, kmeans2
 from scipy.spatial.distance import pdist
 import matplotlib.pyplot as plot
 import matplotlib.cm as cm
+from scipy.stats import ttest_ind, mannwhitneyu
 
 from . import config, utils
-from .flags import *
 from .base_expression import base_expression
 from .draw import draw
 from .progress import progressbar
@@ -43,7 +43,7 @@ if config.NETWORKX_AVAIL and config.PYGRAPHVIZ_AVAIL and config.SKLEARN_AVAIL:
     from .manifold_mdsquish import manifold_mdsquish
 
 class expression(base_expression):
-    def __init__(self, loadable_list=None, filename=None, format=None, expn=None, gzip=False, **kargs):
+    def __init__(self, filename=None, loadable_list=None, format=None, expn=None, gzip=False, **kargs):
         """
         **Purpose**
             The base container for expression data.
@@ -114,6 +114,56 @@ class expression(base_expression):
 
     def __repr__(self):
         return "glbase.expression"
+
+    def __str_helper(self, index):
+        item = []
+        for key in self.linearData[index]:
+            if key == 'conditions':
+                pass
+            elif key == 'err':
+                pass
+            else:
+                item.append(f"{key}: {self.linearData[index][key]}") # % (,  for key in self.linearData[index]])
+
+        # Make sure data and err go on the end
+        for key in self.linearData[index]:
+            if key == 'conditions':
+                linc = str([f'{i:.2f}' for i in self.linearData[index][key]]).replace("'", '')
+                item.append(f"data: {linc}")
+            elif key == 'err':
+                linc = str([f'{i:.2f}' for i in self.linearData[index][key]]).replace("'", '')
+                item.append(f"error: Data has standard error data avaiable")
+
+        item = ', '.join(item)
+        return f"{index}: {item}"
+
+    def __str__(self):
+        """
+        (Override)
+        give a sensible print out.
+        """
+        if len(self.linearData) > config.NUM_ITEMS_TO_PRINT:
+            out = []
+            # welcome to perl
+            for index in range(config.NUM_ITEMS_TO_PRINT):
+                out.append(self.__str_helper(index))
+
+            out.append(f"... truncated, showing {config.NUM_ITEMS_TO_PRINT}/{len(self.linearData)}")
+
+            if config.PRINT_LAST_ITEM:
+                out.append(self.__str_helper(len(self.linearData)-1))
+
+            out = '\n'.join(out)
+
+        elif len(self.linearData) == 0:
+            out = "This list is empty"
+
+        else: # just print first entry.
+            out = []
+            out.append(self.__str_helper(0))
+            out = "%s\nShowing %s/%s" % ("\n".join(out), len(self.linearData), len(self.linearData))
+
+        return out
 
     def __getitem__(self, index):
         """
@@ -558,12 +608,6 @@ class expression(base_expression):
             Note that you can also use this method to change the order of the conditions.
             Just slice all of the keys in the order you want them to occur in.
 
-            Additionally, you can use this to replicate a key, e.g.
-
-            gl = gl.sliceConditions(["cond1", "cond2", "cond1"])
-
-            will now give you an expression set with two 'cond1' conditions
-
         **Arguments**
             conditions (Required)
                 A list, or other iterable of condition names to extract
@@ -571,10 +615,10 @@ class expression(base_expression):
                 on the expression-data.
 
         **Result**
-
             A new expression-data object with the same settings as the original,
             but containing only the expression-data conditions specified in
             the 'conditions' argument.
+
         """
         assert conditions, "sliceConditions: You must specify a list of conditions to keep"
         assert not isinstance(conditions, str), "sliceConditions: You must specify an iterable of conditions to keep"
@@ -822,8 +866,14 @@ class expression(base_expression):
                 item["conditions"] = [new_type(i) for i in item["conditions"]]
         return None
 
-    def heatmap(self, filename=None, row_label_key="name", row_color_threshold=None,
-        optimal_ordering=True, dpi=300, **kargs):
+    def heatmap(self,
+        filename:str =None,
+        row_label_key:str ="name",
+        row_color_threshold=None,
+        optimal_ordering=True,
+        dpi:int =300,
+        _draw_supplied_cell_labels=None,
+        **kargs):
         """
         **Purpose**
 
@@ -921,7 +971,7 @@ class expression(base_expression):
                 the size of the row labels (in points). If set this will also override the hiding of
                 labels if there are too many elements.
 
-            col_font_size (Optional, default=8)
+            col_font_size (Optional, default=6)
                 the size of the column labels (in points)
 
             heat_wid (Optional, default=0.25)
@@ -946,14 +996,21 @@ class expression(base_expression):
             draw_numbers_threshold (Optional, default=-9e14)
                 draw the values in the cell if > draw_numbers_threshold
 
-            draw_numbers_fmt (Optional, default= '%.1f')
+            draw_numbers_fmt (Optional, default= '{:.1f}')
                 string formatting for the displayed values
 
                 You can also send arbitrary text here, (for example, if you wanted to
                 mark significane with a '*' then you could set draw_numbers_fmt='*').
 
-            draw_numbers_font_size (Optional, default=7)
+            draw_numbers_font_size (Optional, default=6)
                 the font size for the numbers in each cell
+
+            _draw_supplied_cell_labels (Optional, default=False)
+                semi-undocumented function to draw text in each cell.
+
+                Please provide a 2D list, with the same dimensions as the heatmap, and this text
+                will be drawn in each cell. Useful for tings like drawing a heatmap of expression
+                and then overlaying p-values on top of all significant cells.
 
             imshow (Optional, default=False)
                 Embed the heatmap as an image inside a vector file. (Uses matplotlib imshow
@@ -1016,6 +1073,7 @@ class expression(base_expression):
             filename=filename,
             row_color_threshold=row_color_threshold,
             optimal_ordering=optimal_ordering, dpi=dpi,
+            _draw_supplied_cell_labels=_draw_supplied_cell_labels,
             **kargs)
 
         config.log.info("heatmap: Saved %s" % res["real_filename"])
@@ -1243,6 +1301,9 @@ class expression(base_expression):
                 If a filename, mean_replicates will output a square table for all of the Pearson
                 correlation values for each pair of RNA samples, where replicates are available.
 
+            skip_pearson_test (Optional, default=False)
+                skip the Pearson test for the replicates.
+
             pearson_hist (Optional, default=False)
                 Save a histogram of the distribution of Pearson correlations.
 
@@ -1260,7 +1321,7 @@ class expression(base_expression):
             all_reps = set([x for sublist in reps for x in sublist]) # Flatten the 2D list.
             missing_conds = [c for c in all_reps if c not in self._conditions]
             for c in sorted(missing_conds):
-                config.log.warning('  missing {}'.format(c))
+                config.log.warning(f'  missing {c}')
 
             # filter out the missing conditions;
             missing_conds = set(missing_conds)
@@ -1286,11 +1347,14 @@ class expression(base_expression):
 
         output_pears = False
         pearson_hist_filename = False
+        skip_pearson_test = False
 
         if "output_pears" in kargs and kargs["output_pears"]:
             output_pears = kargs["output_pears"]
         if "pearson_hist" in kargs and kargs["pearson_hist"]:
             pearson_hist_filename = kargs["pearson_hist"]
+        if 'skip_pearson_test' in kargs:
+            skip_pearson_test = kargs['skip_pearson_test']
 
         new_serialisedArrayDataDict = {}
         errors = {}
@@ -1303,7 +1367,7 @@ class expression(base_expression):
                     # get the p it is in:
                     p = [i for i in reps if cond in i][0] # the indeces of the replicates to merge, the [0] is so that if the rep is in two sets I don't end up with multiple sets
                     expn_vals = numpy.array([self.serialisedArrayDataDict[i] for i in p])
-                    mean = sum(expn_vals) / float(len(p))
+                    mean = expn_vals.mean() # sum(expn_vals) / float(len(p))
                     err = numpy.std(expn_vals, axis=0) / math.sqrt(len(expn_vals))
                     new_serialisedArrayDataDict[p[0]] = mean # merge into the 0th replicate key
                     errors[p[0]] = err
@@ -1334,51 +1398,52 @@ class expression(base_expression):
         # Load back
         newgl._load_numpy_back_into_linearData() # Already calls _optimiseData()
 
-        pear_out = numpy.zeros([len(self._conditions), len(self._conditions)])
-        # check pairs for pearson correlation
-        for r in reps:
-            # r can be a list n entries long. I need to compare all vs all
-            for i1, p1 in enumerate(r):
-                for i2, p2 in enumerate(r):
-                    if i1 != i2 and i1 < i2:
-                        p1d = self.getDataForCondition(p1)
-                        p2d = self.getDataForCondition(p2)
-                        corr = scipy.stats.pearsonr(p1d, p2d)
-                        if corr[0] < threshold:
-                            config.log.warning("Samples '%s' vs '%s', pearson=%.2f" % (p1, p2, corr[0]))
-                        if output_pears:
+        if not skip_pearson_test:
+            pear_out = numpy.zeros([len(self._conditions), len(self._conditions)])
+            # check pairs for pearson correlation
+            for r in reps:
+                # r can be a list n entries long. I need to compare all vs all
+                for i1, p1 in enumerate(r):
+                    for i2, p2 in enumerate(r):
+                        if i1 != i2 and i1 < i2:
+                            p1d = self.getDataForCondition(p1)
+                            p2d = self.getDataForCondition(p2)
+                            corr = scipy.stats.pearsonr(p1d, p2d)
+                            if corr[0] < threshold:
+                                config.log.warning(f"Samples '{p1}' vs '{p2}', pearson={corr[0]:.2f}")
+                            if output_pears:
+                                p1ind = self._conditions.index(p1)
+                                p2ind = self._conditions.index(p2)
+                                pear_out[p1ind, p2ind] = corr[0]
+                                pear_out[p2ind, p1ind] = corr[0]
+                            pearson_vals.append(corr[0])
+                        elif i1 == i2 and output_pears:
                             p1ind = self._conditions.index(p1)
-                            p2ind = self._conditions.index(p2)
-                            pear_out[p1ind, p2ind] = corr[0]
-                            pear_out[p2ind, p1ind] = corr[0]
-                        pearson_vals.append(corr[0])
-                    elif i1 == i2 and output_pears:
-                        p1ind = self._conditions.index(p1)
-                        pear_out[p1ind, p1ind] = 1.0
+                            pear_out[p1ind, p1ind] = 1.0
 
-        self.check_condition_names_are_unique()
+            self.check_condition_names_are_unique()
 
-        if output_pears:
-            oh = open(output_pears, "w")
-            oh.write("\t%s\n" % "\t".join(self._conditions))
-            for i, row in enumerate(pear_out):
-                d_out = []
-                for d in row:
-                    if d == 0:
-                        d_out.append("")
-                    else:
-                        d_out.append(str(d))
-                oh.write("%s\t%s\n" % (self._conditions[i], "\t".join(d_out)))
-            oh.close()
-            config.log.info("mean_replicates: Saved Pearson correlation table '%s'" % (output_pears,))
+            if output_pears:
+                oh = open(output_pears, "w")
+                oh.write("\t%s\n" % "\t".join(self._conditions))
+                for i, row in enumerate(pear_out):
+                    d_out = []
+                    for d in row:
+                        if d == 0:
+                            d_out.append("")
+                        else:
+                            d_out.append(str(d))
+                    oh.write("%s\t%s\n" % (self._conditions[i], "\t".join(d_out)))
+                oh.close()
+                config.log.info(f"mean_replicates: Saved Pearson correlation table '{output_pears}'")
 
-        if pearson_hist_filename:
-            fig = self.draw.getfigure(**kargs)
-            axis = fig.add_subplot(111)
-            axis.hist(pearson_vals, bins=50, range=[0, 1], facecolor='grey', ec="none", alpha=1.0)
-            axis.set_xlim([0,1])
+            if pearson_hist_filename:
+                fig = self.draw.getfigure(**kargs)
+                axis = fig.add_subplot(111)
+                axis.hist(pearson_vals, bins=50, range=[0, 1], facecolor='grey', ec="none", alpha=1.0)
+                axis.set_xlim([0,1])
 
-            config.log.info("mean_replicates: Saved Pearson histogram '%s'" % self.draw.savefigure(fig, pearson_hist_filename))
+                config.log.info("mean_replicates: Saved Pearson histogram '%s'" % self.draw.savefigure(fig, pearson_hist_filename))
 
         config.log.info("mean_replicates: Started with %s conditions, ended with %s" % (len(self._conditions), len(newgl[0]["conditions"])))
         return newgl
@@ -1710,11 +1775,40 @@ class expression(base_expression):
                 vals = [abs(v) > value for v in row["conditions"]]
             else:
                 vals = [v > value for v in row["conditions"]]
+
             if True in vals:
                 newl.linearData.append(row)
         newl._optimiseData()
         config.log.info("filter_by_value: removed %s items, list now %s items long" % (len(self) - len(newl), len(newl)))
-        return(newl)
+        return newl
+
+    def filter_by_low_and_high(self, low_value, high_value, num_conditions):
+        """
+        **Purpose**
+            Keep only rows with <low_value and >high_value if true for >= num_conditions
+
+        **Arguments**
+            value (Required)
+                Keep only rows with > value
+
+        **Returns**
+            A new expression object with rows that fail to pass removed.
+        """
+        newl = self.deepcopy()
+        newl.linearData = []
+
+        for row in self.linearData:
+            vals_lo = [v < low_value  for v in row["conditions"]]
+            vals_hi = [v > high_value for v in row["conditions"]]
+
+            #print(vals_lo, vals_hi, sum(vals_lo), sum(vals_hi))
+            if sum(vals_lo) + sum(vals_hi) >= num_conditions:
+                newl.linearData.append(row)
+
+        newl._optimiseData()
+        config.log.info(f"filter_by_low_and_high: removed {len(self)-len(newl):,} items, list now {len(newl):,} items long")
+
+        return newl
 
     def filter_by_CV(self, minCV, maxCV, pad=0.1):
         """
@@ -2037,6 +2131,137 @@ class expression(base_expression):
 
         config.log.info("boxplot: Saved %s" % actual_filename)
         return actual_filename
+
+    def boxplots_vertical(self,
+        filename=None,
+        cond_order=None,
+        box_colors='lightgrey',
+        vert_sizer=0.022,
+        p_values=None,
+        stats_baseline=None,
+        stats_test=None,
+        stats_multiple_test_correct=True,
+        stats_color_significant=False,
+        **kargs):
+        """
+        **Purpose**
+            Draw cute vertical boxplots. These can be preferable to the horizontal
+            boxplots as they have more space for labels. The disadvantage is that
+            they can only realistically present about 20 samples before the flow off
+            the top of the figure. Also they tend to overemphasise vertical
+            changes.
+
+            Nonetheless, they have their place. This implementation is also useful
+            as you can provide your own q-values (presented on the right hand side)
+            of you can specify the stats test and a one versus all stats comparison.
+
+        **Arguments**
+            filename (Required)
+                filename to save the image to
+
+            vert_sizer (Optional, default=0.022)
+                the vertical space each boxplot takes up.
+
+            cond_order (Optinoal, default=None)
+                optional order for the conditions (bottom to top), otherwise the condition order
+                is taken from the order of expression.getConditionNames()
+
+            box_colors (Optional, default='lightgrey')
+                either one color, or a list of colors for each box in the boxplot
+
+            p_values (Optional, default=None)
+                A list of p-values, or None if you are using the stats_* system
+                described below
+
+            stats_baseline (Optional, default=None)
+                condition name for all comparisons to be versus.
+
+            stats_test (Optional, default=None)
+                Which statistics test to use.
+                One of:
+                'ttest_ind' (two-sided, equal_var=True)
+                'welch' (two-sided, equal_var=False)
+                'mannwhitneyu'
+
+            stats_multiple_test_correct (Optional, default=None)
+                if False do not correct for multiple testing.
+                If True then use Benjamini-Hochberg to correct.
+                (Uses fdr_bh in statsmodels.stats.multitest.multipletests)
+
+            stats_color_significant (Optinoal, default=False
+                color statistically significant boxes by the color specified with this value
+                overrides box_colors
+
+                If there is a | in there then the left value is the down, the right value is the color
+                used for up-regulated. e.g. : "blue|red"
+
+        **Returns**
+            None
+        """
+        from statsmodels.stats.multitest import multipletests
+
+        assert filename, "must provide a filename"
+        if isinstance(box_colors, list):
+            assert len(box_colors) == len(self._conditions), 'box_colors must be the same length as the number of conditions in this dataset'
+
+        # Figure out the q-value tests:
+        if p_values and stats_test:
+            raise AssertionError('stats_test and p_values cannot both be true')
+        elif p_values:
+            assert isinstance(p_values, list), 'p_values must be a list'
+            assert len(p_values) == len(self.serialisedArrayDataList), 'p_values must be the same length as the number of conditions in this dataset'
+        elif stats_test:
+            assert stats_baseline in self._conditions, 'stats_baseline not found in this expression data sets conditions'
+            assert stats_test in ('ttest_ind', 'welch', 'mannwhitneyu'), f'stats_test {stats_test} not found in (ttest_ind, welch, mannwhitneyu)'
+
+            p_values = []
+            base_line = self[stats_baseline]
+            for c in self._conditions:
+                if c == stats_baseline:
+                    p = 1.0
+                else:
+                    if stats_test == 'ttest_ind':      p = ttest_ind(base_line, self[c], equal_var=True, alternative='two-sided')[1]
+                    elif stats_test == 'welch':        p = ttest_ind(base_line, self[c], equal_var=False, alternative='two-sided')[1]
+                    elif stats_test == 'mannwhitneyu': p = mannwhitneyu(base_line, self[c], alternative='two-sided')[1]
+                p_values.append(p)
+
+        if stats_test and stats_multiple_test_correct and p_values:
+            p_values = list(multipletests(p_values, method='fdr_bh')[1])
+
+        if not cond_order:
+            data_as_list = [self.serialisedArrayDataDict[k] for k in self._conditions]
+            data_labels = self._conditions
+        else:
+            data_as_list = [self.serialisedArrayDataDict[k] for k in cond_order]
+            data_labels = cond_order
+
+        if p_values and stats_color_significant:
+            box_colors = []
+            m = statistics.median(base_line)
+            for c, q in zip(self._conditions, p_values):
+                if q < 0.01:
+                    if '|' in stats_color_significant:
+                        if statistics.median(self[c]) < m: box_colors.append(stats_color_significant.split('|')[0])
+                        else: box_colors.append(stats_color_significant.split('|')[1])
+                    else:
+                        box_colors.append(stats_color_significant)
+                else:
+                    box_colors.append('lightgrey')
+
+        # do plot
+        real_filename = self.draw.boxplots_vertical(
+            filename=filename,
+            data_as_list = data_as_list,
+            data_labels = data_labels,
+            qs=p_values,
+            sizer=vert_sizer,
+            vert_height=4, # does nothing?!
+            cols=box_colors,
+            bot_pad=0.1,
+            **kargs)
+
+        config.log.info(f"boxplots_vertical: Saved '{real_filename}'")
+        return None
 
     def violinplot(self, filename=None, beans=False, **kargs):
         """
@@ -2411,7 +2636,6 @@ class expression(base_expression):
             used to test for fold_up, sig_up, etc...
 
             function can be any helper_function, which uses data[] as it's set for each item.
-            a set of already defined functions exist in flags.py
             function must accept these arguments: (data[], conditionNames)
             data is a dict of the form {"con_name1": value, "con_name2": value ...}
         """
@@ -2463,73 +2687,6 @@ class expression(base_expression):
             item["conditions"].append(toAdd)
         self._optimiseData()
         return(True)
-
-    def cumulative_distributions(self, genelists=None, filename=None, key=None, **kargs):
-        """
-        **Purpose**
-
-            draw a set of cumulative distributions, based on a selection
-            of genelist-like objects that can be mapped to
-            this expression object using 'key'
-
-        **Arguments**
-
-            genelists (Required)
-                a list or other iterable of genelists
-
-            filename (Required)
-                the filename to save the image to.
-
-            key (Required)
-                the key to use to match the microarray to the genelist.
-
-        **Returns**
-
-            An image, saved to 'filename'
-        """
-        valig_args = ["genelists", "filename", "key"]
-        for k in kargs:
-            if k not in valig_args:
-                raise ArgumentError(self.cumulative_distributions, k)
-
-        assert filename, "you must specify a valid filename"
-        assert key, "you must specify a mapping key"
-        assert genelists[0], "you must specify a valid list of genelists"
-        assert key in genelists[0], "key '%s' not found in the genelists" % key
-        assert key in self, "key '%s' not found in the expression-data" % key
-
-        mapped_scores = []
-
-        fig = self.draw.getfigure(**kargs)
-        ax = fig.add_subplot(111)
-        axis = fig.add_subplot(111)
-
-        for g in genelists:
-            mapped = self.map(genelist=g, key=key)
-
-            nmap = []
-            # this will sum all items in array.
-            for a in mapped:
-                print(a["conditions"])
-                s = sum(a["conditions"])
-                nmap.append(s)
-
-            # cumulate the nmap
-            for i, v in enumerate(nmap):
-                try:
-                    nmap[i] = nmap[i] + nmap[i+1]
-                except:
-                    break
-
-            print(nmap)
-
-        # matplotlib junk is inappropriately here: to go later.
-
-        axis.plot(nmap, label=g.name)
-
-        axis.set_title("")
-        #axis.show_legend()
-        fig.savefig(filename)
 
     def drawBarChart(self, gene_symbols=None, filename=None, key=None, labels=None,
         errs_are_absolute=False, error_keys=None, fake_entries=True, **kargs):
@@ -2755,6 +2912,7 @@ class expression(base_expression):
         return({"data": all_data, "labels": self._conditions})
 
     def tree(self, mode="conditions", filename=None, row_name_key=None,
+        _data=None, # supply your own data matrix, should be numpy array;
         cluster_mode="euclidean", color_threshold=None, label_size=6, cut=False,
         radial=False, optimal_ordering=True,
         **kargs):
@@ -2819,7 +2977,10 @@ class expression(base_expression):
 
         fig = self.draw.getfigure(**kargs)
 
-        data = numpy.array(self.serialisedArrayDataList)
+        if _data is None:
+            data = numpy.array(self.serialisedArrayDataList)
+        else:
+            data = _data # Pass through custom data.
 
         if "log" in kargs:
             data = self.__log_transform_data(self.serialisedArrayDataList, log=kargs["log"])
@@ -2858,15 +3019,18 @@ class expression(base_expression):
         if cut:
             # I believe that the old code is actually correct
             ret = []
-            config.log.info("tree: Using local threshold '%.2f'" % color_threshold)
+            config.log.info(f"tree: Using local threshold '{color_threshold:.2f}'")
             clus = scipy.cluster.hierarchy.fcluster(link, color_threshold, 'distance')
             for i, net in enumerate(sorted(set(clus))):
                 # get all of the gene names back out.
                 idxs = [idx for idx, x in enumerate(clus) if x == net]
                 newl = [{row_name_key: row_names[idx]} for idx in idxs]
+                # Do a map to get back to an expression()
                 newgl = genelist()
                 newgl.load_list(newl)
-                ret.append(newgl)
+                newe = newgl.map(genelist=self, key=row_name_key, silent=True)
+
+                ret.append(newe)
 
             '''
             ret = []
@@ -3178,7 +3342,7 @@ class expression(base_expression):
             bracket=bracket, aspect=aspect, row_names=labels, col_names=labels,
             colbar_label="Correlation (%s)" % mode, optimal_ordering=optimal_ordering, **kargs)
         config.log.info("correlation_heatmap: Saved '%s'" % results["real_filename"])
-        return({"data": results["reordered_data"], "labels": results["reordered_cols"]})
+        return {"data": results["reordered_data"], "labels": results["reordered_cols"]}
 
     def closest_correlate(self, target_condition, number=5, cut_off=0.7, method="r2",
         pretty_print=False, **kargs):
@@ -3247,7 +3411,7 @@ class expression(base_expression):
             for rank, item in enumerate(res):
                 print("%s:\t%s (%.3f)" % (rank+1, item["name"], item["correlation"]))
 
-        return(res)
+        return res
 
     def cut(self, function):
         """
@@ -3294,6 +3458,7 @@ class expression(base_expression):
 
     def barh_single_item(self, key=None, value=None, filename=None, tree=None,
         plot_mean=True, plot_stdev=False, fold_change=False, tight_layout=False,
+        vline_for_condition=None,
         bar_cols=None, vert_space=0.75, hori_space=0.5, **kargs):
         """
         **Purpose**
@@ -3325,6 +3490,9 @@ class expression(base_expression):
 
             bar_cols (Optional, default=None)
                 a list of colours to use to colour the bars
+
+            vline_for_condition (Optiona, default=False)
+                draw a vline for the indicated condition
 
             fold_change (Optional, default=False)
                 by default barh_single_itme expects absolute levels of expression, but if you want to
@@ -3362,10 +3530,18 @@ class expression(base_expression):
 
         if not item:
             config.log.warning("barh_single_item: '%s:%s' not found in this list, not saving" % (key, value))
-            return(None)
+            return None
 
         if not bar_cols:
             bar_cols = 'grey'
+
+        if vline_for_condition:
+            assert vline_for_condition in self._conditions, f"{vline_for_condition} not found in this expression data"
+            val = item['conditions'][self._conditions.index(vline_for_condition)]
+            if 'vlines' in kargs and kargs:
+                kargs['vlines'].append(val)
+            else:
+                kargs['vlines'] = [val,]
 
         err = None
         # re-order "conditions" by tree, if present:
@@ -3463,6 +3639,7 @@ class expression(base_expression):
             fig.tight_layout()
         actual_filename = self.draw.savefigure(fig, filename)
         config.log.info("barh_single_item: Saved '%s'" % actual_filename)
+
         return item
 
     def violinplot_by_conditions(self,
@@ -4128,8 +4305,16 @@ class expression(base_expression):
         config.log.info("bundle: Saved '%s'" % actual_filename)
         return res
 
-    def volcano(self, condition_name, p_value_key, label_key=None, filename=None,
-        label_fontsize=6, label_significant=0.01, **kargs):
+    def volcano(self,
+        condition_name,
+        p_value_key,
+        label_key=None,
+        filename=None,
+        label_fontsize:int=6,
+        label_significant=0.01,
+        highlights=None,
+        highlight_key=None,
+        **kargs):
         """
         **Purpose**
             draw a Volcano plot (fold change versus P/Q-value
@@ -4158,6 +4343,21 @@ class expression(base_expression):
             spot_size (Optional, default=5)
                 The size of each dot.
 
+            highlights (Optional, default=None)
+                use this to label specific genes or items in the volcano.
+
+                Should be a list or set;
+
+                Requires highlights_key to be a valid key in the expression object to find the
+                labels location.
+
+                Note this is different from the label_significant system which will label
+                all points above certain thresholds.
+
+            highlights_key (Optional, default=None)
+                The key to search for highlight labels on the volcano.
+                Only needed if highlights contains values;
+
             available key-word arguments:
             xlabel, ylabel, title, log (set this to the base to log the data by),
             xlims, ylims, spot_size,
@@ -4168,6 +4368,11 @@ class expression(base_expression):
         assert filename, "no filename specified"
         assert condition_name in self.serialisedArrayDataDict, "%s condition not found" % x_condition_name
         assert p_value_key in self.keys(), '"%s" p_value_key not found in this list' % p_value_key
+        if highlights:
+            assert highlight_key, 'highlight_key must hold a value if highlights=True'
+            assert highlight_key in self.keys(), f'highlight_key "{highlight_key}" not found in this list'
+            assert len(highlights) > 0, 'highlights has no entries'
+            highlights = set(highlights)
 
         x_data = self.getDataForCondition(condition_name)
         y_data = self[p_value_key]
@@ -4192,12 +4397,21 @@ class expression(base_expression):
                     matches.append(label)
                 kargs["spot_labels"] = matches
 
+            if highlights:
+                highs_for_nice_scatter = []
+                for x, p, label in zip(x_data, y_data, self[highlight_key]):
+                    if label in highlights:
+                        tx.append(x)
+                        ty.append(p)
+                        highs_for_nice_scatter.append( (x, p, label) )
+
             real_filename = self.draw.nice_scatter(x=x_data, y=y_data,
                 filename=filename,
                 #spots=(tx, ty),
                 xlims=[-xlim, xlim],
                 plot_diag_slope=False,
                 label_fontsize=label_fontsize,
+                highlights=highs_for_nice_scatter,
                 **kargs)
         #else:
         #    real_filename = self.draw.nice_scatter(x_data, y_data, filename, xlims=[-xlim, xlim],
