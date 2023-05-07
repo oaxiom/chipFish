@@ -44,7 +44,7 @@ class base_track:
         if new:
             self.__setup_db(filename) # return an empty track
         else:
-            assert os.path.exists(filename), "track '%s' cannot be found" % filename
+            assert os.path.isfile(filename), f"track '{filename}' cannot be found"
             self.__load_tables(filename)
             self._load_meta_data()
             # Unpack any meta_data
@@ -177,11 +177,11 @@ class base_track:
         # kill any previously exisiting file (Use with care!)
         # make sure the directory is available:
         path = os.path.split(filename)[0]
-        if path and not os.path.exists(path):
+        if path and not os.path.isdir(path):
             os.makedirs(path)
 
         try:
-            if os.path.exists(filename): # overwrite old file.
+            if os.path.isfile(filename): # overwrite old file.
                 os.remove(filename)
                 # This could potentially fail - I should report and fail
                 # nicely... At the moment it just throws an exception.
@@ -436,7 +436,7 @@ class base_track:
                 cached_chrom = self.get_array_chromosome(l['chr'], read_extend=read_extend) # Will hit the DB if not already in cache
                 # if we are a flat_track, we need to put it to a numpy array:
                 if isinstance(cached_chrom, list):
-                    cached_chrom = numpy.array(cached_chrom, dtype=numpy.float32)
+                    cached_chrom = numpy.array(cached_chrom, dtype=float)
 
             actual_width = cached_chrom.shape[0] - l['left']
 
@@ -467,7 +467,7 @@ class base_track:
                     a = a[::-1]
             if number_of_tags_in_library:
                 #print(a, number_of_tags_in_library)
-                a = numpy.array(a, dtype=numpy.float)
+                a = numpy.array(a, dtype=float)
                 a /= float(number_of_tags_in_library) # This is 1.0 if norm_by_read_count == False
 
             # bin the data

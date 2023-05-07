@@ -29,8 +29,7 @@ class progressbar:
             self.maximum = -1
 
         self.__writer = output
-        self.__barwidth = 30 # bar_width in characters. This may need to change on later computers
-                             # with larger terminals
+        self.__barwidth = 30 # bar_width in characters.
         self.__last_percent = -1 # only print if __last_pecent is incremented.
 
     def update(self, new_value):
@@ -52,12 +51,13 @@ class progressbar:
 
         if t_percent_done > self.__last_percent:
             percent_done = int(((new_value+1) / self.maximum) * 100)
-
-            bar = "".join(["=" for x in range(t_percent_done)] + ["-" for x in range(self.__barwidth-t_percent_done)])
-            self.__writer.write("\r[{}] {}% ({:,}/{:,})".format(bar, percent_done, new_value+1, self.maximum))
+            done = "".join("=" * t_percent_done)
+            self.__writer.write(f"\r[{done:-<30}] {percent_done}% ({new_value+1:,}/{self.maximum:,})")
             self.__last_percent = t_percent_done
 
         if new_value+1 >= self.maximum: # if the last line, reset the console so the result overprints the progress bar.
             self.__writer.write("\r") # pad out to overwrite the previous bar.
             self.__writer.write("\r                                                        ") # pad out to overwrite the previous bar.
             self.__writer.write("\r") # pad out to overwrite the previous bar.
+
+

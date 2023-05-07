@@ -326,7 +326,7 @@ hmmer_domtbl = fc(name="hmmer_domtbl",
 
 def _load_hmmer_domtbl(filename, gzip=False):
     """
-    # Unbelievably stupid format for hmmer:
+    # Irritating format for hmmer:
     Load the hmmer domtblout format table
     """
     oh = gzipfile.open(filename, "rt") if gzip else open(filename, "rt")
@@ -358,7 +358,7 @@ def _load_hmmer_domtbl(filename, gzip=False):
 
 go_GREAT_shown = fc(name="go_GREAT_shown",
     description="GO shown-* tables from GREAT",
-    format={"commentlines": "#", "term": 0, "rank": 1, "q-value": 3, "force_tsv": True}
+    format={"commentlines": "#", "name": 0,  "qvalue": 3, "force_tsv": True}
     )
 
 go_DAVID = fc(name="go_DAVID",

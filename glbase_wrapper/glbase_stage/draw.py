@@ -942,7 +942,7 @@ class draw:
         [t.set_fontsize(6) for t in ax3.get_xticklabels()]
 
         m = statistics.mean(peakdata)
-        s = statistics.std(peakdata)
+        s = statistics.stdev(peakdata)
 
         ax3.axvline(x=m, color='black', linestyle=":", linewidth=1)
         ax3.axvline(x=(m+s), color='r', linestyle=":", linewidth=0.5)
@@ -1997,12 +1997,19 @@ class draw:
         **Returns**
             the actual filename used to save the image
         """
-        temp_draw_mode = config.draw_mode
-        if isinstance(config.draw_mode, str):
-            temp_draw_mode = [config.draw_mode] # for simple compat
+        if config.draw_mode == 'jupyter':
+            fig.show()
+            if not filename: # if filename is something, then allow
+                return None
+
+            temp_draw_mode = ['pdf']
+        else:
+            temp_draw_mode = config.draw_mode
+            if isinstance(config.draw_mode, str):
+                temp_draw_mode = [config.draw_mode] # for simple compat
 
         for mode in temp_draw_mode:
-            assert mode in config.valid_draw_modes, "'%s' is not a supported drawing mode" % temp_draw_mode
+            assert mode in config.valid_draw_modes, f"'{mode}' is not a supported drawing mode"
 
             if mode == 'svg':
                 matplotlib.rcParams["image.interpolation"] = 'nearest'
@@ -2014,7 +2021,8 @@ class draw:
                 save_name = "%s.%s" % (head, mode)
 
             fig.savefig(os.path.join(path, save_name), bbox_inches=bbox_inches, dpi=dpi)
-            plot.close(fig) # Saves a huge amount of memory.
+            if config.draw_mode != 'jupyter': # Cannot close in jupyter, it will delete the figure
+                plot.close(fig) # Saves a huge amount of memory when saving thousands of images
         return save_name
 
     def do_common_args(self, ax, **kargs):
@@ -2050,6 +2058,7 @@ class draw:
                 ticks - True/False, display any ticks at all
                 xticks - List of tick positions you want to draw
                 yticks - List of tick positions you want to draw
+                grid - True/False switch the grid on or off
 
         **Returns**
             None
@@ -2105,7 +2114,7 @@ class draw:
                 # quples are interleaved, list of x's and list of y's
                 ax.plot((quple[0], quple[2]), (quple[1], quple[3]), ls=':', color='grey', lw=0.5)
         if "grid" in kargs and kargs["grid"]:
-            ax.grid()
+            ax.grid(kargs["grid"])
         if "ticks" in kargs and not kargs["ticks"]:
             ax.tick_params(top="off", bottom="off", left="off", right="off")
         if "ticks_top" in kargs and not kargs["ticks_top"]:
@@ -2946,7 +2955,7 @@ class draw:
             ...
 
         '''
-        assert filename, 'A filename to save the image to is required'
+        #assert filename, 'A filename to save the image to is required'
         assert data_dict, 'data_dict is required'
         assert isinstance(data_dict, dict), 'data_dict is not a dict'
 
@@ -2960,7 +2969,7 @@ class draw:
                 for kk in data_dict[k]:
                     if kk not in all_keys:
                         all_keys.append(kk)
-            print('Found {0} keys'.format(all_keys))
+            config.log.info(f'Found {all_keys} keys')
         else:
             all_keys = key_order
 
@@ -3011,14 +3020,13 @@ class draw:
         ax.set_xticks([0, 50, 100])
         ax.set_xticklabels(['0%', '50%', '100%'])
         ax.set_title(title, size=6)
+        ax.grid(False)
         ax.legend()
         plot.legend(loc='upper left', bbox_to_anchor=(0.0, -0.4), prop={'size': 6})
         [t.set_fontsize(6) for t in ax.get_yticklabels()]
         [t.set_fontsize(6) for t in ax.get_xticklabels()]
-        fig.savefig(filename)
-        fig.savefig(filename.replace('.png', '.pdf'))
+
         self.do_common_args(ax, **kargs)
-        fig.savefig(filename)
 
         real_filename = self.savefigure(fig, filename)
         config.log.info("proportional_bar: Saved '{0}'".format(real_filename))

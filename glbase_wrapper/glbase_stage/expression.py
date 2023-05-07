@@ -107,10 +107,20 @@ class expression(base_expression):
             gzip (Optional)
                 is the filename gzipped?
         """
+        # Not correct, it is possible to generate an empty expression object, for example to load a pandas table
+        # This also makes it compatible with genelist() which can also be empty.
+        #assert loadable_list or filename, 'You must provide one or other of filename or loadable_list'
+
         if loadable_list:
             base_expression.__init__(self, loadable_list=loadable_list, expn=expn, **kargs)
-        else:
+        elif filename:
             base_expression.__init__(self, filename=filename, expn=expn, format=format, gzip=gzip, **kargs)
+        else:
+            genelist.__init__(self)
+
+            self.filename = filename
+            self._conditions = [] # Provide a dummy conditions temporarily
+            self.name = "None"
 
     def __repr__(self):
         return "glbase.expression"
@@ -623,6 +633,8 @@ class expression(base_expression):
         assert conditions, "sliceConditions: You must specify a list of conditions to keep"
         assert not isinstance(conditions, str), "sliceConditions: You must specify an iterable of conditions to keep"
         assert isinstance(conditions, (tuple, list, set, Iterable)), "sliceConditions: You must specify an iterable of conditions to keep"
+
+        assert len(conditions) == len(set(conditions)), 'The provided condition names are not unique'
 
         conditions = list(conditions) # Some weird bugs if not a list;
         for item in conditions:
@@ -1367,7 +1379,7 @@ class expression(base_expression):
                     # get the p it is in:
                     p = [i for i in reps if cond in i][0] # the indeces of the replicates to merge, the [0] is so that if the rep is in two sets I don't end up with multiple sets
                     expn_vals = numpy.array([self.serialisedArrayDataDict[i] for i in p])
-                    mean = expn_vals.mean() # sum(expn_vals) / float(len(p))
+                    mean = expn_vals.mean(axis=0) # sum(expn_vals) / float(len(p))
                     err = numpy.std(expn_vals, axis=0) / math.sqrt(len(expn_vals))
                     new_serialisedArrayDataDict[p[0]] = mean # merge into the 0th replicate key
                     errors[p[0]] = err
@@ -1380,48 +1392,59 @@ class expression(base_expression):
                 errors[cond] = numpy.zeros(len(self.serialisedArrayDataDict[cond]))
                 new_condition_name_list.append(cond)
 
-        # reload self.serialisedArrayDataDict back into numpy_array_all_data
-        newgl = self.deepcopy()
-        newgl._conditions = new_condition_name_list
-
-        # Get an numpy array of all of the data:
-        newgl.serialisedArrayDataDict = new_serialisedArrayDataDict
-        newgl.numpy_array_all_data = numpy.vstack([new_serialisedArrayDataDict[i] for i in new_condition_name_list])
-        newgl.numpy_array_all_data = newgl.numpy_array_all_data.T
-
-        # Do the same for errors:
-        # Get an array of all errors:
-        error_stack = numpy.vstack([errors[i] for i in new_condition_name_list]).T
-        for i, row in enumerate(error_stack):
-            newgl.linearData[i]["err"] = list(row)
-
-        # Load back
-        newgl._load_numpy_back_into_linearData() # Already calls _optimiseData()
-
         if not skip_pearson_test:
-            pear_out = numpy.zeros([len(self._conditions), len(self._conditions)])
+            '''
+            # It's a lot faster, but leads to incomplete output, and seems to crash occasioanlly.
+            # Also has a very hihg peak memory use. Not sure why.
+            pear_out = numpy.corrcoef(self.numpy_array_all_data) # The original (unmerged) data
             # check pairs for pearson correlation
             for r in reps:
                 # r can be a list n entries long. I need to compare all vs all
                 for i1, p1 in enumerate(r):
                     for i2, p2 in enumerate(r):
                         if i1 != i2 and i1 < i2:
-                            p1d = self.getDataForCondition(p1)
-                            p2d = self.getDataForCondition(p2)
-                            corr = scipy.stats.pearsonr(p1d, p2d)
-                            if corr[0] < threshold:
-                                config.log.warning(f"Samples '{p1}' vs '{p2}', pearson={corr[0]:.2f}")
+                            p1ind = self._conditions.index(p1)
+                            p2ind = self._conditions.index(p2)
+                            print(p1ind, p2ind)
+
+                            r_corr = pear_out[p1ind, p2ind]
+
+                            if r_corr < threshold:
+                                config.log.warning(f"Samples '{p1}' vs '{p2}', pearson={r_corr:.2f}")
+
+                            if output_pears:
+                                pear_out[p1ind, p2ind] = r_corr
+                                pear_out[p2ind, p1ind] = r_corr
+
+                            pearson_vals.append(r_corr)
+
+                        elif i1 == i2 and output_pears:
+                            p1ind = self._conditions.index(p1)
+                            p2ind = self._conditions.index(p2)
+                            pear_out[p1ind, p1ind] = 1.0
+            '''
+            pear_out = numpy.zeros([len(self._conditions), len(self._conditions)])
+            # check pairs for pearson correlation
+            scipy_stats_pearsonr = scipy.stats.pearsonr # Reduce call overhead
+            for r in reps:
+                # r can be a list n entries long. I need to compare all vs all
+                for i1, p1 in enumerate(r):
+                    for i2, p2 in enumerate(r):
+                        if i1 != i2 and i1 < i2:
+                            p1d = self.serialisedArrayDataDict[p1]
+                            p2d = self.serialisedArrayDataDict[p2]
+                            corr = scipy_stats_pearsonr(p1d, p2d)[0] # This is very slow...
+                            if corr < threshold:
+                                config.log.warning(f"Samples '{p1}' vs '{p2}', pearson={corr:.2f}")
                             if output_pears:
                                 p1ind = self._conditions.index(p1)
                                 p2ind = self._conditions.index(p2)
-                                pear_out[p1ind, p2ind] = corr[0]
-                                pear_out[p2ind, p1ind] = corr[0]
-                            pearson_vals.append(corr[0])
+                                pear_out[p1ind, p2ind] = corr
+                                pear_out[p2ind, p1ind] = corr
+                            pearson_vals.append(corr)
                         elif i1 == i2 and output_pears:
                             p1ind = self._conditions.index(p1)
                             pear_out[p1ind, p1ind] = 1.0
-
-            self.check_condition_names_are_unique()
 
             if output_pears:
                 oh = open(output_pears, "w")
@@ -1444,6 +1467,28 @@ class expression(base_expression):
                 axis.set_xlim([0,1])
 
                 config.log.info("mean_replicates: Saved Pearson histogram '%s'" % self.draw.savefigure(fig, pearson_hist_filename))
+
+        ##### Finish up and pack return data
+
+        # reload self.serialisedArrayDataDict back into numpy_array_all_data
+        newgl = self.deepcopy()
+        newgl._conditions = new_condition_name_list
+
+        # Get an numpy array of all of the data:
+        newgl.serialisedArrayDataDict = new_serialisedArrayDataDict
+        newgl.numpy_array_all_data = numpy.vstack([new_serialisedArrayDataDict[i] for i in new_condition_name_list])
+        newgl.numpy_array_all_data = newgl.numpy_array_all_data.T
+
+        # Do the same for errors:
+        # Get an array of all errors:
+        error_stack = numpy.vstack([errors[i] for i in new_condition_name_list]).T
+        for i, row in enumerate(error_stack):
+            newgl.linearData[i]["err"] = list(row)
+
+        # Load back
+        newgl._load_numpy_back_into_linearData() # Already calls _optimiseData()
+
+        newgl.check_condition_names_are_unique()
 
         config.log.info("mean_replicates: Started with %s conditions, ended with %s" % (len(self._conditions), len(newgl[0]["conditions"])))
         return newgl
@@ -1835,6 +1880,9 @@ class expression(base_expression):
             if CV > minCV and CV < maxCV:
                 row['CV'] = CV
                 newl.linearData.append(row)
+
+        assert len(newl) > 0, 'filterCV resulted in an empty list'
+
         newl._optimiseData()
         config.log.info("filter_by_CV: removed %s items, list now %s items long" % (len(self) - len(newl), len(newl)))
         return(newl)
@@ -1990,7 +2038,7 @@ class expression(base_expression):
         return(None)
 
     def scatter(self, x_condition_name, y_condition_name, filename=None, genelist=None, key=None,
-        label=False, label_fontsize=12, **kargs):
+        label=False, label_fontsize=6, **kargs):
         """
         **Purpose**
             draw an X/Y dot plot or scatter plot, get R^2 correlation etc.
@@ -3928,8 +3976,20 @@ class expression(base_expression):
         config.log.info("time_course_plot: Saved '%s'" % actual_filename)
         return(actual_filename)
 
-    def fc_scatter(self, cond1, cond2, filename=None, plot_diagonals=True, zoom_bracket=[-3,3],
-        label_key="name", text_threshold=1.0, alpha=0.2, **kargs):
+    def fc_scatter(self,
+        cond1:str,
+        cond2:str,
+        filename:str = None,
+        plot_diagonals:bool = True,
+        zoom_bracket=[-3,3],
+        label_key:str = "name",
+        text_threshold:float = 1.0,
+        alpha:float = 0.1,
+        pearsonr:bool = True,
+        spot_size:int = 5,
+        hist2d:bool = False,
+        highlights = None,
+        **kargs):
         """
         **Purpose**
             Draw a scatter plot of the fold-changes between two conditions
@@ -3969,8 +4029,17 @@ class expression(base_expression):
             text_threshold (Optional, default=1.0)
                 Only draw the gene label if > abs(text_threshold) in any direction
 
-            alpha (Optional, default=0.2)
+            alpha (Optional, default=0.1)
                 Blening fraction for the alpha (opacity) channel for the dots.
+
+            pearsonr (Optional, default=True)
+                Add the Pearson R and p-value to the title.
+
+            spot_size (Optional, default=5)
+                Spot size for the scatters
+
+            highlights (Optional, default=False)
+                genes to highlight on the plot
 
         **Returns**
             None
@@ -3995,22 +4064,6 @@ class expression(base_expression):
             # do the colouring here if away from the diagonal
             if label_key:
                 labs.append(names[index])
-            """
-                    # get the distance from the diagonal:
-            dx = (ex[l1] - ex[l2]) # i.e. x - y
-            dy = (ex[l2] - ex[l1]) # i.e. y - x
-
-            d = dx * dx # actually the squared distance
-            print dx, dy, d
-            if d > 0.05 or d < -0.05:
-                cols.append("red")
-                labs.append(g["name"])
-                print "%s\t%.2f" % (g["name"], d)
-                both.append({"ensg": g["ensg"]})
-            else:
-                cols.append("blue")
-                labs.append("")
-            """
 
         # plot
         if "size" not in kargs:
@@ -4018,10 +4071,12 @@ class expression(base_expression):
         fig = self.draw.getfigure(**kargs)
 
         ax = fig.add_subplot(121)
-        ax.scatter(pt_x, pt_y, alpha=alpha, edgecolor='none', color=cols)
-        for i in range(len(labs)):
-            if abs(pt_x[i]) > text_threshold or abs(pt_y[i]) > text_threshold:
-                ax.text(pt_x[i], pt_y[i], labs[i], size=5, ha="center")
+        ax.scatter(pt_x, pt_y, alpha=alpha, edgecolor='none', color=cols, s=spot_size)
+
+        if highlights:
+            for i in range(len(labs)):
+                if labs[i] in highlights:
+                    ax.text(pt_x[i], pt_y[i], labs[i], size=6, ha="center")
 
         # Diagonal slopes:
         ax.plot([5, -5], [5, -5], ":", color="grey")
@@ -4034,39 +4089,44 @@ class expression(base_expression):
         ax.set_xlabel(cond1)
         ax.set_ylabel(cond2)
 
+        # NEed to do early for range on hist2d
+        if 'xlims' in kargs and 'ylims' in kargs and kargs['xlims'] and kargs['ylims']:
+            xlims = kargs['xlims']
+            ylims = kargs['ylims']
+        else:
+            minmax = max([abs(min(c1d)), max(c1d), abs(min(c2d)), max(c2d)])
+            xlims = [-minmax,minmax]
+            ylims = [-minmax,minmax]
+
         ax = fig.add_subplot(122)
-        ax.scatter(pt_x, pt_y, alpha=alpha, edgecolor='none', color=cols)
-        #for i in xrange(len(labs)):
-        #    ax.text(pt_x[i], pt_y[i], labs[i], size=6, ha="center")
+        if hist2d:
+            ax.hist2d(pt_x, pt_y, bins=50,
+                range=[kargs['xlims'], kargs['ylims']],
+                cmin=1)
+
+        else:
+            ax.scatter(pt_x, pt_y, alpha=alpha, edgecolor='none', color=cols,
+                s=spot_size)
 
         # Diagonal slopes:
         if plot_diagonals:
             ax.plot([5, -5], [5, -5], ":", color="grey")
             ax.plot([-5, 5], [5,-5], ":", color="grey")
 
-        minmax = max([abs(min(c1d)), max(c1d), abs(min(c2d)), max(c2d)])
+        ax.set_xlim(xlims)
+        ax.set_ylim(ylims)
 
         ax.axvline(0, color="grey", ls=":")
         ax.axhline(0, color="grey", ls=":")
-        ax.set_xlim([-minmax,minmax])
-        ax.set_ylim([-minmax,minmax])
+
         ax.set_xlabel(cond1)
         ax.set_ylabel(cond2)
 
         # best fit:
-        """
-        (ar, br) = polyfit(pt_x, pt_y, 1)
-        print ar, br
-        #xr = polyval([ar,br], pt_x)
-        slope, intercept, r_value, p_value, std_err = linregress(pt_x,pt_y)
+        if pearsonr:
+            r = scipy.stats.pearsonr(pt_x, pt_y)
 
-        print "m, x, r2:", slope, intercept, r_value*r_value
-
-        mx = [min(pt_x), max(pt_x)]
-        my = [(slope * min(pt_x)) + intercept, (slope * max(pt_x)) + intercept]
-
-        ax.plot(mx, my, "r.-")
-        """
+            ax.set_title(f"R={r[0]:.2f} p={r[1]:.2e}")
 
         actual_filename = self.draw.savefigure(fig, filename)
         config.log.info("fc_scatter: Saved '%s'" % actual_filename)

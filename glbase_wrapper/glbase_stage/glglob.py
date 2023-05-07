@@ -211,7 +211,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             if not bracket:
                 bracket = [-0.2, 1]
 
-        matrix = zeros( (len(self), len(self)), dtype=numpy.float64 ) # Must be float;
+        matrix = zeros( (len(self), len(self)), dtype=float) # Must be float;
 
         config.log.info('Stage 1: Overlaps')
         p = progressbar(num_samples)
@@ -416,7 +416,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             if not bracket:
                 bracket = [0.0, 0.4]
             # I need a float matrix? I thought the default is a float64?
-            matrix = zeros( (len(self), len(self)), dtype=numpy.float64) # 2D matrix.
+            matrix = zeros( (len(self), len(self)), dtype=float) # 2D matrix.
         else: # Integers will do fine to store the overlaps
             if not bracket:
                 bracket = [-0.2, 1]
@@ -582,11 +582,6 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         **Returns**
             A venn diagram saved in filename.
         """
-        valid_args = ["filename", "key", "title", "experimental_proportional_venn"]
-        for k in kargs:
-            if not k in valid_args:
-                raise ArgumentError(self.map, k)
-
         assert len(self.linearData) <= 5, "currently glglob venn diagrams only support at most 5 overlaps"
         assert len(self.linearData) >= 2, "you must send at least two lists"
         assert filename, "no filename specified for venn_diagrams to save to"
@@ -1362,7 +1357,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                             if len(dd) < block_len:
                                 config.log.warning('Block miss (short)')
                                 num_missing = block_len - len(dd)
-                                ad = numpy.zeros(num_missing, dtype=numpy.float32)
+                                ad = numpy.zeros(num_missing, dtype=float)
                                 dd = numpy.append(dd, ad)
                             elif len(dd) > block_len:
                                 config.log.warning('Block miss (long)')
@@ -1432,7 +1427,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                                 pileup_data[cluster_index+1] = [None for i in list_of_peaks]
 
                             if pileup_data[cluster_index+1][peaks] is None: # numpy testing.
-                                pileup_data[cluster_index+1][peaks] = numpy.array(row, dtype=numpy.float64)
+                                pileup_data[cluster_index+1][peaks] = numpy.array(row, dtype=float)
                             else:
                                 pileup_data[cluster_index+1][peaks] += row
 
@@ -1482,7 +1477,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         tab_max = max([tab.max() for tab in list_of_tables]) # need to get new tab_max for log'd values.
         tab_min = min([tab.min() for tab in list_of_tables])
         #tab_median = numpy.median([numpy.median(tab) for tab in list_of_tables])
-        tab_mean = mean([numpy.average(tab) for tab in list_of_tables])
+        tab_mean = mean([numpy.average(tab.astype(float)) for tab in list_of_tables])
         tab_stdev = numpy.std(numpy.array([tab for tab in list_of_tables]))
 
         config.log.info("chip_seq_cluster_heatmap: min=%.2f, max=%.2f, mean=%.2f, stdev=%.2f" % (tab_min, tab_max, tab_mean, tab_stdev))
@@ -2403,7 +2398,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             oh = open(os.path.realpath(cache_data), "rb")
             matrix = pickle.load(oh)
             oh.close()
-            config.log.info("chip_seq_heatmap: Reloaded previously cached pileup data: '%s'" % cache_data)
+            config.log.info(f"chip_seq_heatmap: Reloaded previously cached pileup data: '{cache_data}'")
             # sanity check the matrix data
             assert isinstance(matrix, dict), '{} does not match the expected data, suggest you rebuild'.format(cache_data)
             assert isinstance(matrix[0], dict), '{} does not match the expected data, suggest you rebuild'.format(cache_data)
@@ -2421,13 +2416,14 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             # New version that grabs all data and does the calcs in memory, uses more memory but ~2-3x faster
             for tindex, trk in enumerate(list_of_trks):
                 for plidx, peaklist in enumerate(list_of_peaks):
+                    peaklist_linearData_loc = peaklist['loc'] # faster?
                     for chrom in porder[plidx]:
                         # The chr_blocks iterates across all chromosomes, so this only hits the db once per chromosome:
                         data = trk.get_array_chromosome(chrom, read_extend=read_extend) # This will use the fast cache version if available.
 
                         for pidx, peak in enumerate(porder[plidx][chrom]): # peak is the index to look into
-                            left = peaklist.linearData[peak]['loc']['left']
-                            rite = peaklist.linearData[peak]['loc']['right']
+                            left = peaklist_linearData_loc[peak]['left']
+                            rite = peaklist_linearData_loc[peak]['right']
                             cpt = (left + rite) // 2
                             left = cpt - pileup_distance
                             rite = cpt + pileup_distance
@@ -2443,7 +2439,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                             if len(dd) < block_len: # This should be a very rare case...
                                 config.log.warning('Block miss (short)')
                                 num_missing = block_len - len(dd)
-                                ad = numpy.zeros(num_missing, dtype=numpy.float32)
+                                ad = numpy.zeros(num_missing, dtype=float)
                                 dd = numpy.append(dd, ad)
                             elif len(dd) > block_len: # Should be never?
                                 config.log.warning('Block miss (long)')
@@ -2451,7 +2447,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                                 dd = dd[0:block_len] # just grab the start. probably unreliable though?
 
                             if respect_strand:
-                                if peaklist.linearData[peak]["strand"] in negative_strand_labels: # For the reverse strand all I have to do is flip the array.
+                                if peaklist_linearData[peak]["strand"] in negative_strand_labels: # For the reverse strand all I have to do is flip the array.
                                     dd = dd[::-1]
 
                             # Fill in the matrix table:

@@ -41,7 +41,6 @@ else:
 
 try:
     import matplotlib
-    matplotlib.use("Agg") # cluster friendly!
     config.MATPLOTLIB_AVAIL = True
 except ImportError:
     raise LibraryNotFoundError("Fatal - matplotlib not available or not installed")
@@ -96,6 +95,22 @@ if 'umap' in available_modules:
 else:
     pass # pass silently as umap is optional.
 
+# Work out if we are in IPython and/or jupyter and reconfigure some settings
+
+try:
+    shell = get_ipython().__class__.__name__
+    if shell == 'ZMQInteractiveShell':
+        config.draw_mode = 'jupyter' # Jupyter notebook or qtconsole
+        matplotlib.rcParams['axes.grid'] = False
+        matplotlib.use('TkAgg')
+    elif shell == 'TerminalInteractiveShell':
+        pass # Terminal running IPython
+    else:
+        pass # Other type (?)
+except NameError:
+    matplotlib.use("Agg") # cluster friendly!
+    # Probably standard Python interpreter
+
 # ----------------------------------------------------------------------
 # Now import the rest of my libraries - assumes here they are available.
 # If I can get config and errors then these are probably available too.
@@ -122,8 +137,6 @@ from .draw import adjust_text
 from .hic import hic, merge_hiccys
 from .massspec import massspec
 from .glgo import glgo
-#from .region import region
-#from .intervaltree import intervaltree # Later integrate into genelist; expose here for now
 from . import realtime
 from . import utils
 from . import format
@@ -150,7 +163,6 @@ __all__ = [
     "expression",
     "genome",
     "genome_sql",
-    #"track", # Deprecated. use flat_track
     "flat_track",
     "delayedlist",
     'massspec',
@@ -171,11 +183,8 @@ __all__ = [
     "fc",
     #"rigidgrid", # Unavailable
     #"ecrbase",
-    #"region",
     "realtime",
-    #"realtime2", # This is deprecated
     #"tfbs_iter",
-    'intervaltree',  # Useful utils to export
     "utils",
     'adjust_text',
     "change_drawing_mode",

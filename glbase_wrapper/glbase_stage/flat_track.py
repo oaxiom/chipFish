@@ -104,7 +104,7 @@ class flat_track():
             self.draw = draw()
             config.log.info('Bound "%s" flat file' % filename)
 
-        # Name override:
+        # NAme override:
         if name:
             self.name = name
         else:
@@ -155,12 +155,11 @@ class flat_track():
         if 'chr' not in chromosome:
             chromosome = 'chr{}'.format(chromosome)
 
-        grp = self.hdf5_handle.create_group('matrix_{}'.format(chromosome))
-        grp.create_dataset('mat', arr.shape, dtype=numpy.float32, data=arr, chunks=True, compression='lzf')
-        config.log.info('Added chrom={} to table'.format(chromosome))
+        grp = self.hdf5_handle.create_group(f'matrix_{chromosome}')
+        grp.create_dataset('mat', arr.shape, dtype=float, data=arr, chunks=True, compression='lzf')
+        config.log.info(f'Added chrom={chromosome} to table')
 
         self.chrom_names.append(chromosome)
-
         return None
 
     def get_all_chrom_names(self):
@@ -439,7 +438,7 @@ class flat_track():
                     if len(a) < loc_span: # This should be a very rare case...
                         config.log.warning('Block miss (short)')
                         num_missing = loc_span - len(a)
-                        ad = numpy.zeros(num_missing, dtype=numpy.float32)
+                        ad = numpy.zeros(num_missing, dtype=float)
                         a = numpy.append(a, ad)
 
                     hist += a
@@ -526,7 +525,7 @@ class flat_track():
             bkgd = None
 
         leg = ax.legend()
-        [t.set_fontsize(6) for t in leg.get_texts()]
+        [t.set_fontsize(3) for t in leg.get_texts()]
         ax.set_ylabel("Magnitude")
 
         if window_size:
@@ -591,7 +590,7 @@ class flat_track():
 
                 if loc_chrom not in available_chroms:
                     if loc_chrom not in __already_warned:
-                        config.log.warning('Asked for chromosome {} but not in this flat_track, skipping'.format(loc_chrom))
+                        config.log.warning(f'Asked for chromosome {loc_chrom} but not in this flat_track, skipping')
                         __already_warned.append(loc_chrom)
                     continue
 
@@ -600,19 +599,19 @@ class flat_track():
                 rite_flank = self.get(None, c=loc_chrom, left=loc['right'], rite=loc['right']+window_size, strand="+")
 
                 if center.size < 100:
-                    config.log.warning('center is shorter than 100 bp {}, skipping'.format(loc))
+                    config.log.warning(f'center is shorter than 100 bp {loc}, skipping')
                     continue
 
                 # scale center to 0 1000
                 #print('Before', center.size)
-                center = numpy.array(center, dtype=numpy.float)
+                center = numpy.array(center, dtype=float)
                 if center.size != 1000:
                     f = scipyinterp.interp1d(numpy.arange(center.size), center)
                     center = f(numpy.linspace(0, center.size-1, 1000))
                     #print('After', center.size)
 
-                left_flank = numpy.array(left_flank, dtype=numpy.float)
-                rite_flank = numpy.array(rite_flank, dtype=numpy.float)
+                left_flank = numpy.array(left_flank, dtype=float)
+                rite_flank = numpy.array(rite_flank, dtype=float)
 
                 if respect_strand:
                     # positive strand is always correct, so I leave as is.
@@ -671,8 +670,7 @@ class flat_track():
             ax.plot(stacked, stacked_hist, label=gl.name, alpha=0.7)
             all_hists[gl.name] = (stacked, stacked_hist)
 
-        leg = ax.legend()
-        [t.set_fontsize(6) for t in leg.get_texts()]
+        leg = ax.legend(fontsize=6)
 
         ax.set_ylabel("Magnitude")
 
@@ -682,11 +680,13 @@ class flat_track():
         ax.axvline(half_scale+full_scale, ls=":", color="grey")
         ax.set_xlabel('Base pairs (bp)')
 
+        ax.tick_params(axis='both', labelsize=6)
+
         self._draw.do_common_args(ax, **kargs)
 
         actual_filename = self._draw.savefigure(fig, filename)
 
-        config.log.info("pileup(): Saved '%s'" % actual_filename)
+        config.log.info(f"pileup(): Saved '{actual_filename}'")
 
         return (all_hists, bkgd)
 
@@ -932,7 +932,7 @@ class flat_track():
                 cached_chrom = self.get_array_chromosome(l['chr'], read_extend=read_extend) # Will hit the DB if not already in cache
                 # if we are a flat_track, we need to put it to a numpy array:
                 if isinstance(cached_chrom, list):
-                    cached_chrom = numpy.array(cached_chrom, dtype=numpy.float32)
+                    cached_chrom = numpy.array(cached_chrom, dtype=float)
 
             actual_width = cached_chrom.shape[0] - l['left']
 
@@ -963,7 +963,7 @@ class flat_track():
                     a = a[::-1]
             if number_of_tags_in_library:
                 #print(a, number_of_tags_in_library)
-                a = numpy.array(a, dtype=numpy.float)
+                a = numpy.array(a, dtype=float)
                 a /= float(number_of_tags_in_library) # This is 1.0 if norm_by_read_count == False
 
             # bin the data
@@ -1083,7 +1083,7 @@ class flat_track():
             # The interpolation size will be based on
 
             interp_size = distance * scaled_view_fraction
-            center = numpy.array(center, dtype=numpy.float)
+            center = numpy.array(center, dtype=float)
             if center.size != 1000:
                 f = scipyinterp.interp1d(numpy.arange(center.size), center)
                 center = f(numpy.linspace(0, center.size-1, 1000))

@@ -1001,7 +1001,7 @@ class gDraw:
         if opt.draw.braces_between_exons:
             pass
 
-        return(True)
+        return True
 
     def __drawRepeats(self, track_data, **kargs):
         # Draw a genome

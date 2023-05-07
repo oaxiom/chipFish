@@ -12,7 +12,7 @@ from glbase3 import *
 # Combined GTF:
 print('GENCODE GTF...')
 gsql = genome_sql(new=True, filename='hg38_gencode.sql')
-with open(os.path.expanduser('~/hg38/gencode.v29.annotation.filtered.gtf'), 'r') as oh:
+with open(os.path.expanduser('~/hg38/gencode/gencode.v29.annotation.filtered.gtf'), 'r') as oh:
     newgl = []
 
     done = 0

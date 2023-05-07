@@ -158,7 +158,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             else:
                 raise AssertionError('Due to excessive ambiguity the sniffing function of genelists has been removed and you now MUST provide a format argument, you can reenable this feature by specifying the sniffer: format=format.sniffer')
 
-            config.log.info("genelist: loaded '{0}' found {1:,} items".format(filename, len(self.linearData)))
+            config.log.info(f"genelist: loaded '{filename}' found {len(self.linearData):,} items")
         elif loadable_list:
             self.load_list(loadable_list)
 
@@ -188,7 +188,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         the format specifier.
         """
         assert filename, "No filename specified"
-        assert os.path.exists(os.path.realpath(filename)), "File %s not found" % filename
+        assert os.path.isfile(os.path.realpath(filename)), f"File {filename} not found"
 
         self.path = os.path.split(os.path.realpath(filename))[0]
         self.filename = os.path.split(os.path.realpath(filename))[1]
@@ -262,7 +262,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
 
         fills the genelist with the CSV table.
         """
-        assert os.path.exists(os.path.realpath(filename)), f"File {filename} not found"
+        assert os.path.isfile(os.path.realpath(filename)), f"File {filename} not found"
 
         self.name = '.'.join(os.path.split(filename)[1].split(".")[:-1]) # Put here otherwise realpath will force name from the symbolic link, not from the actual link!
         self.path = os.path.split(os.path.realpath(filename))[0]
@@ -284,14 +284,10 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             try:
                 self._loadCSV(filename=self.fullfilename, format=format, **kargs)
             except Exception:
-                try: # try again, guessing it might be a tsv
-                    config.log.warning("Failed to load as a 'csv'. Try to load as a 'tsv' file")
-                    format["dialect"] = csv.excel_tab
-                    self._loadCSV(filename=self.fullfilename, format=format, **kargs)
-                except Exception: # oh dear. Die.
-                    if self.__deathline:
-                        config.log.error("Died on line: '%s'" % self.__deathline)
-                    raise UnRecognisedCSVFormatError("'%s' appears mangled, the file does not fit the format specifier" % self.fullfilename, self.fullfilename, format)
+                # oh dear. Die.
+                if self.__deathline:
+                    config.log.error(f"Died on line: '{self.__deathline}'")
+                raise UnRecognisedCSVFormatError("'%s' appears mangled, the file does not fit the format specifier" % self.fullfilename, self.fullfilename, format)
 
     def _loadCSV(self, **kargs):
         """
@@ -304,7 +300,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         """
         assert "filename" in kargs, "No filename specified"
         assert "format" in kargs, "_loadCSV requres a format specifier"
-        assert os.path.exists(kargs["filename"]), "%s file not found" % kargs["filename"]
+        assert os.path.isfile(kargs["filename"]), f"{kargs['filename']} file not found"
 
         filename = kargs["filename"]
         format = kargs["format"]
@@ -453,23 +449,6 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                         self.buckets[chr][b] = []
                     self.buckets[chr][b].append(n) # use index to maintain uniqueness.
 
-        # Then to do a collision =
-        """
-        left_buck = (item[loc_key]["left"]//config.bucket_size)*config.bucket_size
-        right_buck = (item[loc_key]["right"]//config.bucket_size)*config.bucket_size
-        buckets_reqd = range(left_buck, right_buck, config.bucket_size)
-
-        for buck in buckets_reqd:
-            cbuck = set(self.buckets[chr][buck]) # unique ids
-        """
-
-        """
-        # Build a quickfinder:
-
-        This is dict representation of the list, and allows you to do things like:
-
-        indeces = self.qkeyfind[key][value]
-        """
         self.qkeyfind = {}
         for index, item in enumerate(self.linearData):
             for key in item:
@@ -481,9 +460,10 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                         self.qkeyfind[key][item[key]] = []
                     self.qkeyfind[key][item[key]].append(index)
                 except TypeError:
+                    # TODO: This is indeed present if the genelist is an expresion object;
                     # The item in unhashable and cannot be added to the qkeyfind
                     # This should be pretty rare if not impossible.
-                    #print '!Unhashable key: %s for qkeyfind system' % key
+                    #config.log.error(f'!Unhashable key: {key} for qkeyfind system')
                     pass
 
                 # Now to do a find you just go:
@@ -554,7 +534,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         **Returns**
             A new genelist or None
         """
-        assert key in self.keys(), '"{0}" key not found in this list'.format(key)
+        assert key in self.keys(), f'"{key}" key not found in this list'
 
         if mode == "greedy":
             r = self._findDataByKeyGreedy(key, value)
@@ -563,7 +543,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             if r:
                 r = [r]
         else:
-            raise AssertionError("mode '%s' for get() is not known" % mode)
+            raise AssertionError(f"mode '{mode}' for get() is not known")
 
         # The internal methods return vanilla lists for compatability with er... internal stuffs
         # repackage to a new gl.
@@ -754,7 +734,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             oh = open(filename, "w")
 
         if not self.linearData: # data is empty, fail graciously.
-            config.log.error("csv file '%s' is empty, no file written" % filename)
+            config.log.error(f"csv file '{filename}' is empty, no file written")
             oh.close()
             return None
 
@@ -1250,7 +1230,8 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         """
         return self.getRowsByKey(key=key, list_of_values=list_of_items, use_re=use_re, **kargs)
 
-    def getRowsByKey(self, key=None, values=None, use_re=True, case_sensitive=True, **kargs):
+    def getRowsByKey(self, key=None, values=None, use_re=True, case_sensitive=True,
+        silent=False, **kargs):
         """
         **Purpose**
             extract all rows from a genelist for which the values in key are in the
@@ -1327,11 +1308,46 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         if newl:
             newl._optimiseData()
         else:
-            config.log.info("getRowsByKey: Found 0 items")
+            if not silent: config.log.info("getRowsByKey: Found 0 items")
             return None
 
-        config.log.info("getRowsByKey: Found %s items" % len(newl))
+        if not silent: config.log.info(f"getRowsByKey: Found {len(newl)} items")
+
         return newl
+
+    def filter_remove_noncanonical_chromosomes(self,
+        key=None,
+        canonical_names=None,
+        trim_chr_if_present=True
+        ):
+        '''
+        **Purpose**
+            Remove all locations in htis genelist that do not match any one of the
+            canonical_names
+
+        **Arguments**
+            key (Required)
+                key containing a <location> object
+
+            canonical_names (Required)
+                list of chromsome names considered canonical
+
+        '''
+        assert key, 'You must specify a key'
+        assert canonical_names, 'You must specify a value'
+        assert key in self.keys(), f'{key} key not found in this genelist'
+        assert isinstance(canonical_names, list), 'canonical_names should be a list'
+        assert isinstance(self.linearData[0][key], location), f'{key} doe not appear to be a location'
+
+        newgl = self.deepcopy()
+
+        newl = [item for item in newgl.linearData if item[key].loc['chr'] in canonical_names]
+        newgl.linearData = newl
+        newgl._optimiseData()
+
+        config.log.info(f'filter_remove_noncanonical_choromosomes: Kept {len(newl)} matching entries')
+
+        return newgl
 
     def filter_by_in(self, key=None, value=None, remove=True, **kargs):
         """
@@ -1688,10 +1704,6 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             distance
                The distance (in base pairs) to look for a match.
 
-            image_filename (Optional)
-                If set to a filename it will cause annotate to save a moving average window of
-                the distances annotated.
-
             window (Optional)
                 annotate() draws a histogram of the distance to the
                 nearest tss_loc creates an image and saves it to image_filename.
@@ -1826,19 +1838,6 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         newgl = genelist.shallowcopy() # make a new copy, I need to copy to preserve the attributes.
         # or if it is a derived class.
         newgl.load_list(newl)
-
-        if image_filename:
-            # first I need to bin the data (by 1) - then do the moving average.
-            linData = numpy.zeros(distance*2) # set-up a blank array
-            for item in dist_hist:
-                linData[int(item - distance)] += 1
-            x, m_average = utils.movingAverage(linData, window)
-
-            self.draw._plot(image_filename,
-                m_average, x=x,
-                title="%s - loc of site around tss, moving window (%s)" % (newgl.name, window),
-                xlabel="Distance to transcription start site (base pairs)",
-                ylabel="Frequency (Raw)", **kargs)
 
         config.log.info("Annotated %s, found: %s within: %s bp" % (newgl.name, len(newgl), distance))
         return newgl
@@ -2609,7 +2608,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             return newl
 
         else:
-            assert key in list(self.keys()), "the key '{}' was not found in this genelist".format(key)
+            assert key in list(self.keys()), f"the key '{key}' was not found in this genelist"
 
             newl = self.shallowcopy()
             newl.linearData = []
@@ -3241,10 +3240,10 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         assert filename, "must specify a filename to save as"
         assert expression, "must provide some expression data"
         assert match_key, "'match_key' is required"
-        assert match_key in list(self.linearData[0].keys()), "match_key '{}' not found in this list".format(match_key)
-        assert match_key in list(expression.linearData[0].keys()), "match_key '{}' not found in expression object".format(match_key)
+        assert match_key in list(self.linearData[0].keys()), f"match_key '{match_key}' not found in this list"
+        assert match_key in list(expression.linearData[0].keys()), f"match_key '{match_key}' not found in expression object"
         if spline_interpolate:
-            assert spline_interpolate in ('slinear', 'quadratic', 'cubic' ), "'%s' spline_interpolate method not found" % spline_interpolate
+            assert spline_interpolate in ('slinear', 'quadratic', 'cubic' ), f"'{spline_interpolate}' spline_interpolate method not found"
 
         tag_key = None
         if "tag_key" in kargs and kargs["tag_key"]:
@@ -3300,17 +3299,13 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         if "bracket" not in kargs:
             kargs["bracket"] = [0, 1]
 
-        # Sorry this is a bit of a mess. I was still getting the hang of kargs and
-        # Now I can't be arsed to clean it up.
-        # Actually, I just spent quite a while getting it into
-        # A more sensible shape. Now my enthusiasm has evaporated...
         actual_filename = self.draw._heatmap_and_plot(peakdata=peak_data,
             bin=bin,
             row_label_key=match_key,
             imshow=imshow,
             **kargs)
 
-        config.log.info("frequencyAgainstArray: Saved '%s'" % actual_filename)
+        config.log.info(f"frequencyAgainstArray: Saved '{actual_filename}'")
         return newgl
 
     def islocinlist(self, loc, key="loc", mode="collide", delta=200):
@@ -3525,7 +3520,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         labels = ["Gene desert", "-200 kb to -100 kb", "-100 kb to -50 kb", "-50 kb to -10 kb", "-10 kb to 0 kb",
             "0 kb to 10 kb", "10 kb to 50 kb", "50 kb to 100 kb", "100 kb to 200 kb"]
 
-        data = numpy.array([hist[k] for k in kord], dtype=numpy.float64)
+        data = numpy.array([hist[k] for k in kord], dtype=float)
         rand = numpy.array([numpy.mean(back[k]) for k in kord])
 
         total = sum(data)
@@ -3664,7 +3659,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         ax = fig.add_subplot(111)
         ax.set_position([0.1, 0.2, 0.8, 0.70])
 
-        data = numpy.array([hist[k] for k in kord], dtype=numpy.float64)
+        data = numpy.array([hist[k] for k in kord], dtype=float)
 
         total = sum(data)
 
@@ -4285,8 +4280,10 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
 
         ylim_pad = (cylims[1] - cylims[0]) * 0.05
 
-        if up: ax.text(cxlims[0], cylims[1]+ylim_pad, 'Down: {}'.format(len(dn[0])), fontsize=6, ha='left')
-        if dn: ax.text(cxlims[1], cylims[1]+ylim_pad, 'Up: {}'.format(len(up[0])), fontsize=6, ha='right')
+        print(cxlims)
+
+        if dn: ax.text(cxlims[0], cylims[1]+ylim_pad, 'Down: {}'.format(len(dn[0])), fontsize=6, ha='left')
+        if up: ax.text(cxlims[1], cylims[1]+ylim_pad, 'Up: {}'.format(len(up[0])), fontsize=6, ha='right')
 
         real_filename = self.draw.savefigure(fig, filename)
 
