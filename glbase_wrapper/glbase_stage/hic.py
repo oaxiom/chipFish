@@ -283,6 +283,7 @@ class hic:
 
         """
         assert self.readonly, 'To __find_binID_spans, this must be read-only, set new=False'
+        assert isinstance(loc, location), 'loc must be location type'
 
         # These are in global bins.
         binLeft = 1e50
@@ -292,7 +293,7 @@ class hic:
         mostLeft = 1e50
         mostRight = -1
 
-        chrom = loc.loc['chr']
+        chrom = loc.chrom
         if 'chr' not in chrom:
             chrom = 'chr{0}'.format(chrom)
 
@@ -300,11 +301,11 @@ class hic:
         for bin in self.bin_lookup_by_chrom[chrom]:
             # bin = (binID, left, right)
             #print(bin, loc)
-            if bin[2] > loc['left'] and bin[0] < binLeft:
+            if bin[2] > loc.left and bin[0] < binLeft:
                 binLeft = bin[0]
                 locLeft = bin[1]
                 #print('bL', binLeft, binRight, loc)
-            if loc['right'] > bin[1] and bin[0] > binRight:
+            if loc.right > bin[1] and bin[0] > binRight:
                 binRight = bin[0]
                 locRight = bin[2]
                 #print('bR', binLeft, binRight, loc)
@@ -331,6 +332,7 @@ class hic:
         mostRight = self.bin_lookup_by_binID[mostRight][3] # Convert to newBinID:
         mostLeft = self.bin_lookup_by_binID[mostLeft][3]
         #print (binLeft, binRight, newloc, mostLeft, mostRight)
+
         assert binRight-binLeft > 10, 'the genome view (loc) is too small, and contains < 10 bins'
 
         return (binLeft, binRight, newloc, mostLeft, mostRight)
@@ -990,7 +992,7 @@ class hic:
             if not isinstance(loc, location):
                 loc = location(loc)
 
-            chrom = loc.loc['chr']
+            chrom = loc.chrom
             if 'chr' not in chrom:
                 chrom = 'chr{}'.format(chrom)
 
@@ -1943,18 +1945,18 @@ class hic:
         for aidx, item in enumerate(bedpe.linearData):
             p.update(aidx)
 
-            l1 = item['loc1'].loc
-            l2 = item['loc2'].loc
+            l1 = item['loc1']
+            l2 = item['loc2']
 
-            if l1['chr'] != l2['chr']:
+            if l1.chrom != l2.chrom:
                 __intra_chroms += 1
                 continue # differnent chroms are not supported
 
-            chrom = 'chr{}'.format(l1['chr'])
+            chrom = 'chr{}'.format(l1.chrom)
 
             try:
-                localLeft1, localRight1 = self.__quick_find_binID_spans(chrom, l1['left'], l1['right'], do_assert_check=False)
-                localLeft2, localRight2 = self.__quick_find_binID_spans(chrom, l2['left'], l2['right'], do_assert_check=False)
+                localLeft1, localRight1 = self.__quick_find_binID_spans(chrom, l1.left, l1.right, do_assert_check=False)
+                localLeft2, localRight2 = self.__quick_find_binID_spans(chrom, l2.left, l2.right, do_assert_check=False)
             except KeyError:
                 # The chrom is in one list, but not in the other, ignore it
                 continue
@@ -2026,8 +2028,8 @@ class hic:
             anchors = anchors['loc']
             p = progressbar(len(anchors))
             for lidx, loc in enumerate(anchors):
-                chrom = 'chr{}'.format(loc.loc['chr'])
-                cpt = ((loc.loc['left'] + loc.loc['right']) // 2) // self['bin_size']
+                chrom = 'chr{}'.format(loc.chrom)
+                cpt = ((loc.left + loc.right) // 2) // self['bin_size']
 
                 if cpt in used_bins:
                     continue

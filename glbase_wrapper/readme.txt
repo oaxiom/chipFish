@@ -2,7 +2,7 @@
 This is a part of chipFish, it is a series of headers overriding the
 vanilla glbase.
 
-(c) 2009-2014 A.Hutchins.
+(c) 2009-2023 A.Hutchins.
 
 Introduction
 ------------

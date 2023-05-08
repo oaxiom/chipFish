@@ -1,7 +1,7 @@
 """
 opt, part of chipFish
 
-(c) 2008-2019 oAxiom
+(c) 2008-2023 oAxiom
 
 Not for distribution.
 
@@ -17,13 +17,16 @@ class generic:
     some very generic options and constants.
     """
     debug = True
-    web = True
+    web = False
+    gui = False
     app_path = sys.path[0]
-    v = ["0.3"]
+    v = ["0.4"]
     if web:
         v.append("web")
     if debug:
         v.append("debug")
+    if gui:
+        v.append('gui')
 
     version = " ".join(v)
 
