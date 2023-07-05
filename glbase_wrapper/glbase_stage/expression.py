@@ -3989,6 +3989,8 @@ class expression(base_expression):
         spot_size:int = 5,
         hist2d:bool = False,
         highlights = None,
+        cmap = cm.RdBu_r,
+        cols = None,
         **kargs):
         """
         **Purpose**
@@ -4041,6 +4043,10 @@ class expression(base_expression):
             highlights (Optional, default=False)
                 genes to highlight on the plot
 
+            cols (Optional, default='blue')
+                a list of colors for each spot. Must bne in the same order as the
+                data in theis object.
+
         **Returns**
             None
         """
@@ -4051,15 +4057,24 @@ class expression(base_expression):
         c2d = self.getDataForCondition(cond2)
         names = self[label_key]
 
+        # NEed to do early for range on hist2d
+        if 'xlims' in kargs and 'ylims' in kargs and kargs['xlims'] and kargs['ylims']:
+            xlims = kargs['xlims']
+            ylims = kargs['ylims']
+        else:
+            minmax = max([abs(min(c1d)), max(c1d), abs(min(c2d)), max(c2d)])
+            xlims = [-minmax,minmax]
+            ylims = [-minmax,minmax]
+
         # load the data for plotting
         pt_x = []
         pt_y = []
         labs = []
-        cols = []
+        if not cols: cols = []
         for index, x in enumerate(c1d):
             pt_x.append(c1d[index])
             pt_y.append(c2d[index])
-            cols.append("blue")
+            if not cols: cols.append("blue")
 
             # do the colouring here if away from the diagonal
             if label_key:
@@ -4088,21 +4103,15 @@ class expression(base_expression):
         ax.set_ylim(zoom_bracket)
         ax.set_xlabel(cond1)
         ax.set_ylabel(cond2)
-
-        # NEed to do early for range on hist2d
-        if 'xlims' in kargs and 'ylims' in kargs and kargs['xlims'] and kargs['ylims']:
-            xlims = kargs['xlims']
-            ylims = kargs['ylims']
-        else:
-            minmax = max([abs(min(c1d)), max(c1d), abs(min(c2d)), max(c2d)])
-            xlims = [-minmax,minmax]
-            ylims = [-minmax,minmax]
+        ax.set_xlim(xlims)
+        ax.set_ylim(ylims)
 
         ax = fig.add_subplot(122)
         if hist2d:
-            ax.hist2d(pt_x, pt_y, bins=50,
+            ax.hist2d(pt_x, pt_y, bins=30,
                 range=[kargs['xlims'], kargs['ylims']],
-                cmin=1)
+                cmin=0,
+                cmap=cmap)
 
         else:
             ax.scatter(pt_x, pt_y, alpha=alpha, edgecolor='none', color=cols,

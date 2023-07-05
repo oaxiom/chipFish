@@ -378,7 +378,11 @@ class draw:
             I must guess the vmax value. I will do this by working out the
             mean then determining a symmetric colour distribution
             """
-            me = statistics.mean(data)
+            try:
+                me = statistics.mean(data)
+            except (AttributeError, TypeError):
+                me = data.mean()
+
             ma = abs(me - max(data))
             mi = abs(min(data) + me)
             if ma > mi:
@@ -771,9 +775,16 @@ class draw:
 
         return(self.savefigure(fig, filename))
 
-    def _heatmap_and_plot(self, peak_data=None, match_key=None,
-        arraydata=None, peakdata=None, bin=None, draw_frames=False,
-        imshow=False, **kargs):
+    def _heatmap_and_plot(self,
+        peak_data=None,
+        match_key=None,
+        arraydata=None,
+        peakdata=None,
+        bin=None,
+        draw_frames=False,
+        plot_bracket=None,
+        imshow=False,
+        **kargs):
         """
         Required:
 
@@ -797,9 +808,7 @@ class draw:
             draw a frame around each of the elements in the figure.
 
         imshow (Optional, default=False)
-
-
-        Optional:
+            heatmaps are drawn using imshow, not individual squares
 
         window
 
@@ -832,12 +841,9 @@ class draw:
         left_heatmap = [0.10,  0.05,  0.20,  0.85]
         scale_bar =    [0.10,  0.97,  0.30,  0.02]
         binding_map =  [0.32,  0.05,  0.08,  0.85]
-        freq_plot =    [0.42,   0.05,  0.4,   0.85]
+        freq_plot =    [0.42,   0.05,  0.4,  0.85]
 
         # Now do the plots:
-        #plot.subplot(111)
-        #plot.cla()
-
         fig = self.getfigure(**kargs)
 
         # heatmap ------------------------------------------------------
@@ -878,13 +884,9 @@ class draw:
             ax1.set_xlim([0,plot_data.shape[1]])
             ax1.set_xticklabels("")
 
-        if "row_names" in kargs and kargs["row_names"] and len(kargs["row_names"]) <= 200: # you can't meaningfully see >200 labels. So suppress them:
-            ax1.set_yticks(arange(len(kargs["row_names"]))+0.5)
-            ax1.set_ylim([0, len(kargs["row_names"])])
-            ax1.set_yticklabels(kargs["row_names"])
-        else:
-            ax1.set_ylim([0,plot_data.shape[0]])
-            ax1.set_yticklabels("")
+        # Don't draw labels on the rows. Makes no sense in this plot;
+        ax1.set_ylim([0,plot_data.shape[0]])
+        ax1.set_yticklabels("")
 
         ax1.yaxis.tick_left()
         ax1.tick_params(top=False, bottom=False, left=False, right=False)
@@ -904,8 +906,6 @@ class draw:
 
         if imshow:
             ax2.set_position(binding_map)
-            #hm = ax1.imshow(plot_data, cmap=cmap, vmin=vmin, vmax=vmax,
-            #    interpolation=config.get_interpolation_mode(kargs["filename"]))
             hm = ax2.imshow(
                 a.T,
                 cmap=cm.binary,
@@ -947,6 +947,9 @@ class draw:
         ax3.axvline(x=m, color='black', linestyle=":", linewidth=1)
         ax3.axvline(x=(m+s), color='r', linestyle=":", linewidth=0.5)
         ax3.axvline(x=(m-s), color='r', linestyle=":", linewidth=0.5)
+
+        if plot_bracket:
+            ax3.set_xlim(plot_bracket)
 
         return self.savefigure(fig, kargs["filename"], dpi=600)
 
@@ -3065,7 +3068,8 @@ class draw:
             patch_artist=True,
             widths=0.5,
             vert=False,
-            showmeans=showmeans)
+            showmeans=showmeans,
+            meanprops={'marker': 'o'})
 
         #print([i.get_data() for i in r['medians']])
 

@@ -408,20 +408,22 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         if not self.linearData: # list is empty, not possible to optimise anything...
             return False
 
+        keys = self.keys()
+
         # Guess a loc key
         loc_key = None
-        if "tss_loc" in self.linearData[0]: # always use tss_loc in preference of loc, if available
+        if "tss_loc" in keys: # always use tss_loc in preference of loc, if available
             loc_key = "tss_loc"
-        elif "loc" in self.linearData[0]:
+        elif "loc" in keys:
             loc_key = "loc" # Don't change this though. annotate() relies on the bucket system using tss_loc
 
-        if "tss_loc" in self.linearData[0] and "loc" in self.linearData[0]:
+        if "tss_loc" in keys and "loc" in keys:
             config.log.warning("List contains both 'tss_loc' and 'loc'. By default glbase will use 'tss_loc' for overlaps/collisions/annotations")
 
-        if loc_key in self.linearData[0]: # just checking the first entry.
-            self.dataByChr = {}
-            self.dataByChrIndexLookBack = {}
-            self.buckets = {}
+        self.dataByChr = {}
+        self.dataByChrIndexLookBack = {}
+        self.buckets = {}
+        if loc_key:
             for n, item in enumerate(self.linearData): # build the chromosome quick search maps.
                 chr = item[loc_key]["chr"]
                 if chr not in self.dataByChr:
@@ -432,7 +434,6 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                 # I can't remember what this look-back is for, but you
                 # can use it to get the linearData index even though looking at the
                 # dataByChr data It is not documented for a reason!
-                # New bucket system to go in here.
 
                 if chr not in self.buckets:
                     self.buckets[chr] = {}
@@ -885,17 +886,19 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         **Returns**
             A saved bed file and None
         """
+        assert 'loc' in self.keys(), 'This list has no "loc" key'
+
         if 'gzip' in kargs and kargs['gzip']:
             oh = gzip.open(filename, "wt")
         else:
             oh = open(filename, "w")
 
         for index, item in enumerate(self.linearData):
-            todo = ["chr%s" % str(item["loc"]["chr"]), str(item["loc"]["left"]), str(item["loc"]["right"])]
+            todo = ["chr%s" % str(item["loc"].chrom), str(item["loc"].left), str(item["loc"].right)]
             if not loc_only:
                 if uniqueID:
                     if id:
-                        todo += ["%s-%s" % (str(item[id]), index)]
+                        todo += [f"{str(item[id])}-{index}"]
                     else:
                         todo += ["%s-%s" % (self.name.replace(' ', '_'), index)]
                 else:
@@ -2740,7 +2743,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
 
             result_key (Optional)
                 the name of the key to store the result in.
-                (defualts to '<key1><operation><key2>')
+                (defaults to '<key1><operation><key2>')
                 Will overwrite a key if it is already present.
 
         **Returns**
@@ -2817,8 +2820,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         #except Exception:
         #    self.linearData = copy.deepcopy(list_to_load)
 
-        # See if we have a name:
-        if name:
+        if name: # Overwrite name if set
             self.name = name
 
         self._optimiseData()
@@ -2934,7 +2936,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         for i in self:
             for k in i:
                 if i[k] == value:
-                    return(i)
+                    return i
 
         return False
 
@@ -3176,9 +3178,34 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         match_key=None,
         expression=None,
         spline_interpolate=False,
-        imshow=False,
+        imshow:bool = False,
         step_style=False,
-        window=None, **kargs):
+        window=None,
+        **kargs):
+
+        # Deprecated 2023-06-26
+
+        config.log.warning('frequencyAgainstArray() is deprecated, please use the identical fAA()')
+
+        return self.fAA(
+            filename=filename,
+            match_key=match_key,
+            expression=expression,
+            spline_interpolate=spline_interpolate,
+            imshow = imshow,
+            step_style=step_style,
+            window=window,
+            **kargs)
+
+    def fAA(self,
+        filename=None,
+        match_key=None,
+        expression=None,
+        spline_interpolate=False,
+        imshow:bool = False,
+        step_style=False,
+        window=None,
+        **kargs):
         """
         Draw a peaklist and compare against an array.
         Draws a three panel figure showing an array heatmap, the binding events
@@ -3237,7 +3264,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             plots a multi-panel image of the array and a moving average plot of the density of
             chip-seq peaks. Saves the image to filename.
         """
-        assert filename, "must specify a filename to save as"
+        assert filename, "must specify a filename to save to"
         assert expression, "must provide some expression data"
         assert match_key, "'match_key' is required"
         assert match_key in list(self.linearData[0].keys()), f"match_key '{match_key}' not found in this list"
@@ -3292,14 +3319,15 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
 
         # reload/override not really a good way to do this...
         # I should reload a new dict... As I may inadvertantly override another argument?
-        kargs["filename"] = filename
-        kargs["arraydata"] = arraydata.T
-        kargs["row_names"] = expression["name"]
-        kargs["col_names"] = expression.getConditionNames()
         if "bracket" not in kargs:
             kargs["bracket"] = [0, 1]
 
-        actual_filename = self.draw._heatmap_and_plot(peakdata=peak_data,
+        actual_filename = self.draw._heatmap_and_plot(
+            arraydata=arraydata.T,
+            row_names=expression["name"],
+            col_names=expression.getConditionNames(),
+            filename=filename,
+            peakdata=peak_data,
             bin=bin,
             row_label_key=match_key,
             imshow=imshow,
@@ -3552,7 +3580,12 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         actual_filename = self.draw.savefigure(fig, filename)
         return (data, rand, err, labels)
 
-    def genome_distribution(self, genome, random_lists, filename=None, **kargs):
+    def genome_distribution(self,
+        genome,
+        random_lists,
+        filename=None,
+        radial=True,
+        **kargs):
         """
         **Purpose**
             draw a genome distribution plot, based on the frequency of the nearest annotated gene
@@ -3569,6 +3602,9 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             filename (Required)
                 the filename to use to save the resulting figure to.
 
+            radial (Optional, default=True)
+                Draw the plot as a radial plot
+
         **Returns**
             The values:
                 hist, back, back_err, labels
@@ -3584,20 +3620,20 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
 
             prints a table of distributions to the console (stdout)
         """
+        assert filename, 'You must specify a filename to save the image to'
+
         if random_lists:
             if not isinstance(random_lists, list):
                 background = [random_lists] # make a one item'd list
+            todos = [self] + random_lists
+        else:
+            todos = [self]
 
         hist = {"desert": 0, (-200, -100): 0, (-100, -50): 0, (-50, -10): 0, (-10, 0): 0,
             (0, 10): 0, (10, 50): 0, (50, 100): 0, (100, 200): 0}
 
         back = {"desert": [], (-200, -100): [], (-100, -50): [], (-50, -10): [], (-10, 0): [],
             (0, 10): [], (10, 50): [], (50, 100): [], (100, 200): []}
-
-        if random_lists:
-            todos = [self] + random_lists
-        else:
-            todos = [self]
 
         for i, glist in enumerate(todos):
             ann = genome.annotate(genelist=glist, distance=200000, closest_only=True)
@@ -3655,47 +3691,97 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             t = [dlabels[k], hist[k], numpy.mean(back[k]), numpy.std(back[k]), numpy.std(back[k])/math.sqrt(len(back[k]))]
             #print "\t".join([str(i) for i in t])
 
-        fig = self.draw.getfigure(**kargs)
-        ax = fig.add_subplot(111)
-        ax.set_position([0.1, 0.2, 0.8, 0.70])
-
         data = numpy.array([hist[k] for k in kord], dtype=float)
-
         total = sum(data)
-
         data = (data / total)*100
-
-        x_bar = numpy.arange(len(labels))
-        width = 0.35
-        ax.bar(x_bar, data, width, color="orange", label=self.name, ec="none")
 
         if random_lists:
             rand = numpy.array([numpy.mean(back[k]) for k in kord])
             rand = rand*100
             err = [(numpy.array(back[k]))*100 for k in kord]
-            print(err)
             err = [numpy.std(i) for i in err]
-            print(err)
-            ax.bar(x_bar + width, rand, width, color="grey", yerr=err, ec='none', ecolor="black", label="Background")
+
+        if radial:
+            if 'figsize' not in kargs:
+                kargs['figsize'] = (3,3)
+
+            fig = self.draw.getfigure(**kargs)
+            #fig.subplots_adjust(0.02, 0.02, 0.97, 0.97, wspace=0.1, hspace=0.1)
+            ax = fig.add_subplot(111, polar=True)
+
+            erad = 0.69813170079773 # each segment gets 0.69813170079773 (or thereabouts) rads
+            eradh = erad / 2.0
+            eradq = eradh / 2.0
+            theta = numpy.arange(0.0, 2*numpy.pi, 2*numpy.pi/len(data))
+            width = (numpy.pi/4)*len(data) # in rads?
+            width = 0.5
+
+            ax.set_theta_offset(3*numpy.pi /2)
+            ax.set_theta_direction(-1)
+
+            colors = [
+                "#FFF800", # (255, 248, 0)
+                "#000E7C", # (0, 14, 177)
+                "#001EFF", # (0, 30, 255)
+                "#6275FF", # (98, 117, 255)
+                "#B1BAFF", # (177, 186, 255)
+                "#FFB7B1", # (255, 183, 177)
+                "#FF6E62", # (255, 110, 98)
+                "#FF1300", # (255, 19, 0)
+                "#7C0900"] # (124, 9, 0)
+
+            #N = 20
+            #theta = numpy.linspace(0.0, 2 * np.pi, N, endpoint=False)
+
+            ax.bar(theta, data, width=erad-0.20, bottom=0.0, color=colors, alpha=1.0, zorder=2)
+            ax.bar(theta, rand, width=erad,      bottom=0.0, color='grey', alpha=0.3, zorder=1, yerr=err)
+
+            ax.set_xticks(numpy.linspace(0.0, 2 * numpy.pi, len(data), endpoint=False)+(2*numpy.pi / len(data) / 2))
+            ax.set_xticklabels("")
+            l = ax.get_ylim()
+            #print k, ["%s%%" % i for i in range(l[0], l[1]+5, l[1]//len(axes[k].get_yticklabels()))]
+            #print [str(t) for t in axes[k].get_yticklabels()]
+            [t.set_fontsize(6) for t in ax.get_yticklabels()]
+            #print ["%s%%" % (i*10, ) for i, t in enumerate(axes[k].get_yticklabels())]
+            #print [t.get_text() for t in axes[k].get_yticklabels()]
+            ylabs = ["%s%%" % str(i) for i in range(int(l[0]), int(l[1])+5, int(l[1]//len(ax.get_yticklabels())))][1:]
+            ax.set_yticklabels(ylabs, fontsize=6)
+
+            ax.annotate('TSS', xy=(3*numpy.pi+0.5, l[1]) , xytext=(3*numpy.pi, l[1]+(l[1]/10)), arrowprops={'arrowstyle':'->'})
+
         else:
-            rand = None # spoof entries for the return()
-            err = None
+            fig = self.draw.getfigure(**kargs)
+            ax = fig.add_subplot(111)
+            ax.set_position([0.1, 0.2, 0.8, 0.70])
 
-        ax.set_xticklabels(labels)
-        ymax = max(max(rand), max(data))
-        ax.set_ylim([0,ymax + (ymax/10)])
-        ax.legend(prop={'size':6})
+            x_bar = numpy.arange(len(labels))
+            width = 0.35
+            ax.bar(x_bar, data, width, color="orange", label=self.name, ec="none")
 
-        ax.set_ylabel("Percent in category", size=6)
+            if random_lists:
+                ax.bar(x_bar + width, rand, width, color="grey", yerr=err, ec='none', ecolor="black", label="Background")
+            else:
+                rand = None # spoof entries for the return()
+                err = None
 
-        ax.set_xticks(x_bar)
-        fig.autofmt_xdate()
-        [t.set_fontsize(6) for t in ax.get_xticklabels()]
-        [t.set_fontsize(6) for t in ax.get_yticklabels()]
+            ax.set_xticklabels(labels)
+            ymax = max(max(rand), max(data))
+            ax.set_ylim([0,ymax + (ymax/10)])
+            ax.legend(prop={'size':6})
+
+            ax.set_ylabel("Percent in category", size=6)
+
+            ax.set_xticks(x_bar)
+            fig.autofmt_xdate()
+            [t.set_fontsize(6) for t in ax.get_xticklabels()]
+            [t.set_fontsize(6) for t in ax.get_yticklabels()]
 
         self.draw.do_common_args(ax, **kargs)
         if filename:
             actual_filename = self.draw.savefigure(fig, filename)
+
+        config.log.info(f'Saved Genome distribution image to {actual_filename}')
+
         return (data, rand, err, labels)
 
     def hist(self, key=None, filename=None, range=None, suppress_zeros=False, log=None,
@@ -3766,7 +3852,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         self.draw.do_common_args(ax, **kargs)
         real_filename = self.draw.savefigure(fig, filename)
 
-        config.log.info("Saved '%s'" % real_filename)
+        config.log.info(f"Saved '{real_filename}'")
         return values
 
     def bar_chart(self, filename=None, labels=None, data=None, percents=False,
@@ -3866,7 +3952,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             if not isinstance(random_backgrounds, list):
                 random_backgrounds = [random_backgrounds]
             for item in random_backgrounds:
-                assert key in item.linearData[0], "key '%s' not found in the random background" % key # check the first entry only.
+                assert key in item.linearData[0], f"key '{key}' not found in the random background" # check the first entry only.
 
         # get the counts:
         # All stored in qkeyfind
@@ -4136,6 +4222,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         fc_threshold = 1, # In log2;
         highlights = None,
         highlight_key = None,
+        highlight_override:bool = False,
         figsize=[3,3],
         only_tes:bool = False,
         only_genes:bool = False,
@@ -4173,7 +4260,15 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                 A list of items to draw a label over on the plot
 
             highlights_key (Optional, required if highlights is True, or one of the only_* is True)
-                Key to match highlights in;
+                Key to match highlights in
+
+            highlight_override (Optional, default=False)
+                If True, then draw the matches in highlight in red (don't label).
+                This mode ignores FC and q-value thresholds for coloring, although you'd
+                still want to provide them for drawing the threshold lines on the plot.
+
+                This is useful for e.g. highlighting a set of genes/TEs and where they appear on the
+                Volcano
 
             only_tes (Optional, default=False)
                 only plot the TEs (with a ':' in highlights_key
@@ -4200,6 +4295,11 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             assert highlight_key in self.keys(), 'highlight_key not found in this genelist'
 
         if highlights:
+            assert highlight_key, 'highlight_key must have a value if highlights=True'
+            assert highlight_key in self.keys(), 'highlight_key not found in this genelist'
+
+        if highlight_override:
+            assert highlights, 'If highlight_override then highlights must be valid as well'
             assert highlight_key, 'highlight_key must have a value if highlights=True'
             assert highlight_key in self.keys(), 'highlight_key not found in this genelist'
 
@@ -4250,18 +4350,39 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
 
         ax = fig.add_subplot(111)
 
-        up = list(zip(*up))
-        dn = list(zip(*dn))
-        rest = list(zip(*rest))
-        if up:
-            ax.scatter(up[0], up[1], c='red', s=2, ec='none', alpha=0.3)
-        if dn:
-            ax.scatter(dn[0], dn[1], c='blue', s=2, ec='none', alpha=0.3)
+        if highlight_override:
+            up = []
+            rest = []
+            # we only use up and rest;
+            for item, fc, q in zip(self.linearData, fcs, qs):
 
-        ax.scatter(rest[0], rest[1], c='grey', s=2, alpha=0.1, ec='none')
-        if highlights and highs:
-            for gene_name in highs:
-                ax.text(highs[gene_name][0], highs[gene_name][1], gene_name, ha='center', va='center', fontsize=6)
+                if item[highlight_key] in highlights:
+                    print(item)
+                    up.append((fc, q))
+                else:
+                    rest.append((fc, q))
+
+            up = list(zip(*up))
+            rest = list(zip(*rest))
+
+            if rest:
+                ax.scatter(rest[0], rest[1], c='grey', s=2, alpha=0.1, ec='none')
+            if up:
+                ax.scatter(up[0], up[1], c='red', s=3, ec='none', alpha=0.3)
+
+        else: # Traditional red/blue style
+            up = list(zip(*up))
+            dn = list(zip(*dn))
+            rest = list(zip(*rest))
+            if up:
+                ax.scatter(up[0], up[1], c='red', s=2, ec='none', alpha=0.3)
+            if dn:
+                ax.scatter(dn[0], dn[1], c='blue', s=2, ec='none', alpha=0.3)
+
+            ax.scatter(rest[0], rest[1], c='grey', s=2, alpha=0.1, ec='none')
+            if highlights and highs:
+                for gene_name in highs:
+                    ax.text(highs[gene_name][0], highs[gene_name][1], gene_name, ha='center', va='center', fontsize=6)
 
         ax.axhline(q_threshold, ls=':', c='grey')
         ax.axvline(-fc_threshold, ls=':', c='grey')
@@ -4279,8 +4400,6 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         cylims = ax.get_ylim()
 
         ylim_pad = (cylims[1] - cylims[0]) * 0.05
-
-        print(cxlims)
 
         if dn: ax.text(cxlims[0], cylims[1]+ylim_pad, 'Down: {}'.format(len(dn[0])), fontsize=6, ha='left')
         if up: ax.text(cxlims[1], cylims[1]+ylim_pad, 'Up: {}'.format(len(up[0])), fontsize=6, ha='right')
