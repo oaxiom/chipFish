@@ -113,7 +113,8 @@ with open(os.path.expanduser('~/mm10/gencode.vM20.annotation.gtf'), 'r') as oh:
                     item = item.strip(' ').replace('"', '').split(' ')
                     gtf_dec[item[0]] = item[1]
             #print(gtf_dec)
-            if 'ref_gene_id' not in gtf_dec:
+
+            if 'gene_name' not in gtf_dec:
                 gtf_dec['ref_gene_id'] = gtf_dec['gene_id']
                 gtf_dec['ref_gene_name'] = gtf_dec['transcript_id'] # If one is missing, the other is also missing;
                 gtf_dec['reference_id'] = gtf_dec['transcript_id'] # enst
@@ -123,9 +124,9 @@ with open(os.path.expanduser('~/mm10/gencode.vM20.annotation.gtf'), 'r') as oh:
                 'exonCounts': 0,
                 'exonStarts': [],
                 'exonEnds': [],
-                'name': gtf_dec['ref_gene_name'],
-                'ensg': gtf_dec['ref_gene_id'],
-                'enst': gtf_dec['reference_id'],
+                'name': gtf_dec['gene_name'],
+                'ensg': gtf_dec['gene_id'].split('.')[1],
+                'enst': gtf_dec['transcript_id'].split('.')[1],
                 'gene_id': gtf_dec['gene_id'],
                 'transcript_id': gtf_dec['transcript_id']
                 }
