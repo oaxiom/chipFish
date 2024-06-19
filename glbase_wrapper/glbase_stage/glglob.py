@@ -22,6 +22,7 @@ from .progress import progressbar
 from .genelist import genelist
 from .expression import expression
 from .data import positive_strand_labels, negative_strand_labels
+from collections.abc import Iterable
 
 import matplotlib.pyplot as plot
 import matplotlib.cm as cm
@@ -49,7 +50,8 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         # we then store them in the linearData set
 
         if args: # So we can have empty glglobs.
-            self.linearData = args
+            self.linearData = [i for i in args]
+            print(self.linearData)
             self._optimiseData()
         else:
             self.linearData = []
@@ -588,7 +590,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         assert key, "Must specify a 'key' to map the two lists"
 
         if mode == 'collide': # Deflect to the collide routine
-            return(self.__venn_collide(key=key, filename=filename))
+            return self.__venn_collide(key=key, filename=filename)
 
         proportional = False
         if "experimental_proportional_venn" in kargs and kargs["experimental_proportional_venn"]:
@@ -604,7 +606,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             realfilename = self.draw.venn2(len(A), len(B), len(AB),
                 self.linearData[0].name, self.linearData[1].name,
                 filename, **kargs)
-            return(None)
+            return None
 
         elif len(self.linearData) == 3:
             A = set(self.linearData[0][key])
@@ -1767,12 +1769,12 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                     if float(item[pvalue_key]) < p_value_limit:
                         if item['name'] not in go_store:
                             go_store[item['name']] = [-1] * (number_of_clusters)
-                        go_store[item['name']][idx] = -math.log10(item['pvalue'])
+                        go_store[item['name']][idx] = -math.log10(item[pvalue_key])
                 else:
                     if float(item[pvalue_key]) > -math.log10(p_value_limit): # i.e. 0.01
                         if item['name'] not in go_store:
                             go_store[item['name']] = [-1] * (number_of_clusters)
-                        go_store[item['name']][idx] = item['pvalue']
+                        go_store[item['name']][idx] = item[pvalue_key]
 
 
         # fill in the holes:
@@ -1785,12 +1787,12 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                         if float(item[pvalue_key]) < p_value_limit:
                             if item['name'] not in go_store:
                                 go_store[item['name']] = [-1] * (number_of_clusters)
-                            go_store[k][cond_names_idx[go.name]] = -math.log10(float(this_k[0]['pvalue']))
+                            go_store[k][cond_names_idx[go.name]] = -math.log10(float(this_k[0][pvalue_key]))
                     else:
                         if float(item[pvalue_key]) > -math.log10(p_value_limit): # i.e. 0.01
                             if item['name'] not in go_store:
                                 go_store[item['name']] = [-1] * (number_of_clusters)
-                            go_store[k][cond_names_idx[go.name]] = float(this_k[0]['pvalue'])
+                            go_store[k][cond_names_idx[go.name]] = float(this_k[0][pvalue_key])
 
         newe = []
 
@@ -1829,8 +1831,15 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
         config.log.warning("GO_heatmap: Saved heatmap '%s'" % filename)
         return reversed(res["reordered_rows"])
 
-    def measure_density(self, trks, peaks, norm_by_library_size=True, log=False,
-        read_extend=0, pointify=True, expand=1000,
+    def measure_density(self,
+        trks:Iterable,
+        peaks:Iterable,
+        density_measure_method:str = 'sum',
+        norm_by_library_size:bool = True,
+        log=False,
+        read_extend:int = 0,
+        pointify:bool = True,
+        expand:int = 1000,
         **kargs):
         """
         **Purpose**
@@ -1841,7 +1850,12 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 a list of tracks/flats
 
             peaks (Required)
-                a list of peaks, a genelist containing a 'loc' key
+                a genelist containing a 'loc' key
+
+            density_measure_method(Optional, default='sum')
+                How to measure the peaks density:
+                    'sum': sum all the reads within the window used.
+                    'max': max value within the window
 
             read_extend (Optional, default=200)
                 read extend the sequence tags in the tracks by xbp
@@ -1863,10 +1877,19 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             an expression object, with the conditions as the tag density from the tracks
 
         """
-        assert isinstance(trks, list), 'measure_density: trks must be a list'
+        density_measure_methods = {
+            'sum': numpy.sum,
+            'max': numpy.max,
+            'average': numpy.average,
+            }
+
+        assert list(trks), 'measure_density: trks must be an iterable'
         assert 'loc' in list(peaks.keys()), 'measure_density: no loc key found in peaks'
         all_trk_names = [t["name"] for t in trks]
         assert len(set(all_trk_names)) == len(all_trk_names), 'track names are not unique. Please change the track.meta_data["name"] to unique names'
+        assert density_measure_method in density_measure_methods, f'density_measure_methods "{density_measure_method}" not found'
+
+        density_measure_method = density_measure_methods[density_measure_method]
 
         peaks = peaks.deepcopy()
         if pointify:
@@ -1905,9 +1928,9 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                     continue
 
                 if norm_by_library_size:
-                    p["conditions"][it] = numpy.average(d) / all_sizes[it]
+                    p["conditions"][it] = density_measure_method(d) / all_sizes[it]
                 else:
-                    p["conditions"][it] = numpy.average(d)
+                    p["conditions"][it] = density_measure_method(d)
 
         expn = expression(loadable_list=peaks.linearData, cond_names=[t["name"] for t in trks])
         if log:
@@ -1915,8 +1938,13 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
 
         return(expn)
 
-    def measure_enrichment(self, trks, peaks, log=False,
-        read_extend=0, peak_window=200,local_lambda=5000,
+    def measure_enrichment(self,
+        trks,
+        peaks,
+        log=False,
+        read_extend:int = 0,
+        peak_window:int = 200,
+        local_lambda:int = 5000,
         **kargs):
         """
         **Purpose**
@@ -1930,7 +1958,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             peaks (Required)
                 a list of peaks, a genelist containing a 'loc' key
 
-            read_extend (Optional, default=200)
+            read_extend (Optional, default=0)
                 read extend the sequence tags in the tracks by xbp
 
             log (Optional, default=False)
@@ -2348,7 +2376,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 and all other elements as vectors).
 
         **Returns**
-            Returns None
+            Returns dictionary of numpy matrix
         """
         assert not (range_bracket and bracket), "You can't use both bracket and range_bracket"
         assert False not in ['loc' in gl.keys() for gl in list_of_peaks], 'At least one of your peak data (list_of_peaks) does not contain a "loc" key'
@@ -2417,6 +2445,7 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
             for tindex, trk in enumerate(list_of_trks):
                 for plidx, peaklist in enumerate(list_of_peaks):
                     peaklist_linearData_loc = peaklist['loc'] # faster?
+                    peaklist_linearData = peaklist.linearData
                     for chrom in porder[plidx]:
                         # The chr_blocks iterates across all chromosomes, so this only hits the db once per chromosome:
                         data = trk.get_array_chromosome(chrom, read_extend=read_extend) # This will use the fast cache version if available.
@@ -2610,8 +2639,8 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
                 dpi=300,
                 )
 
-        config.log.info("chip_seq_heatmap: Saved overlap heatmap to '{0}'".format(real_filename))
-        return None
+        config.log.info(f"chip_seq_heatmap: Saved overlap heatmap to '{real_filename}'")
+        return matrix
 
     def hic_correlate(self,
         list_of_hiccys:list,
@@ -2682,3 +2711,46 @@ class glglob(_base_genelist): # cannot be a genelist, as it has no keys...
 
         return {"pearsonr": results["reordered_data"], "labels": results["reordered_cols"]}
 
+    def saveGMT(self,
+        filename:str=None,
+        key:str=None,
+        ):
+        '''
+        **Purpose**
+            Save a glglob as a GMT for GSEA analysis
+
+            A GMT is a file format suitable for GSEA analysis. This converts all of the genelist
+            objects into a valid GMT.
+
+            A typical GMT looks like this:
+
+            ALPHA6BETA4INTEGRIN    Alpha6Beta4Integrin    LAMB1    PTPN11    PTK2 ...
+
+            glglobs will convert to:
+
+            genelist.name   genelist.name   GENE1   GENE2   GENE3   ...
+            genelist.name   genelist.name   GENE1   GENE2   GENE3   ...
+            genelist.name   genelist.name   GENE1   GENE2   GENE3   ...
+            genelist.name   genelist.name   GENE1   GENE2   GENE3   ...
+            genelist.name   genelist.name   GENE1   GENE2   GENE3   ...
+            ...
+
+        **Arguments**
+            filename (Required)
+                filename to save the GMT data to.
+
+        '''
+        assert filename, 'You must specify a filename'
+        assert key, 'You must specify a key'
+        assert key in self.linearData[0].keys(), f'{key} not found in a genelist in this glglob'
+
+        oh = open(filename, 'wt')
+
+        for gl in self.linearData:
+            oh.write(f'{gl.name}\t{gl.name}\t')
+            oh.write('\t'.join([str(n) for n in gl[key]]))
+            oh.write('\n')
+
+        oh.close()
+
+        return

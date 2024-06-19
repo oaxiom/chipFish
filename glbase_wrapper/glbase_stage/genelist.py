@@ -1205,9 +1205,9 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
     def _collectIdenticalKeys(self, gene_list):
         """
         (Internal)
-        What it says, returns a list of valid keys in common between this list and gene_list
+        returns a list of keys in common between this list and gene_list
         """
-        return(list(set(self.keys()) & set(gene_list.keys())))
+        return list(set(self.keys()) & set(gene_list.keys()))
 
     def getColumns(self, return_keys=None):
         """
@@ -1380,7 +1380,8 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         """
         assert key, 'You must specify a key'
         assert value, 'You must specify a value'
-        assert key in self.keys(), '{} key not found in this genelist'.format(key)
+        assert key in self.keys(), f'{key} key not found in this genelist'
+        assert remove in (True, False), 'You must specify True/False for the remove argument'
 
         newgl = self.deepcopy()
 
@@ -1423,7 +1424,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                 The value of change required to pass the test.
 
         **Returns**
-            A new expression-object containing only the items that pass.
+            A new genelist-like object containing only the items that pass.
         """
         assert key, "filter_by_value: 'key' argument is required"
         assert evaluator in ("gt", "lt", "gte", "lte", "equal", ">", "<", ">=", "<=", "=="), "filter_by_value: evaluator argument '%s' not recognised" % evaluator
@@ -1874,7 +1875,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         newl._optimiseData()
 
         config.log.info("Pointified peaklist '%s'" % self.name)
-        return(newl)
+        return newl
 
     def addEmptyKey(self, key=None, value=None):
         """
@@ -1965,7 +1966,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         newl._optimiseData()
 
         config.log.info("Expanded '%s' in genelist '%s' by %s base pairs" % (key, self.name, base_pairs))
-        return(newl)
+        return newl
 
     def pointLeft(self, key="loc"):
         """
@@ -1992,7 +1993,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         newl._optimiseData()
 
         config.log.info("pointLeft genelist %s" % (self.name))
-        return(newl)
+        return newl
 
     def pointRight(self, key="loc"):
         """
@@ -2018,7 +2019,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         newl._optimiseData()
 
         config.log.info("pointRight genelist %s" % (self.name))
-        return(newl)
+        return newl
 
     def collide(self, compare_mode="Collide", loc_key="loc", delta=200, title=None, bins=20,
         add_tags=False, image_filename=None, keep_rank=False, genelist=None, **kargs):
@@ -2105,7 +2106,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                     perc = 1.0
                 config.log.info("{0}: found {1} (Jaccard={2:.3f}) overlaps in [{3} & {4}] with '{5}' key".format(compare_mode.lower(), len_res, perc, self.name, genelist.name, loc_key))
 
-        return(newl)
+        return newl
 
     def overlap(self,
         compare_mode="Overlap",
@@ -2191,7 +2192,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             else:
                 config.log.info("%s two lists using '%s' key, found: %s overlaps" % (compare_mode, loc_key, len_res))
 
-        return(newl)
+        return newl
 
     def _unified_collide_overlap(self, compare_mode=None, loc_key="loc", delta=200, title=None, bins=20, add_tags=False, image_filename=None,
         keep_rank=False, **kargs):
@@ -2380,7 +2381,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             return None
 
         newl._optimiseData()
-        return(newl)
+        return newl
 
     def removeDuplicatesByLoc(self, mode, key="loc", delta=200, use_strand=False,
         delete_any_matches=False):
@@ -2654,7 +2655,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         newl._optimiseData()
 
         config.log.info("removeExactDuplicates: %s exact duplicates" % (len(self) - len(newl)))
-        return(newl)
+        return newl
 
     def removeEmptyDataByKey(self, key=None):
         """
@@ -2711,7 +2712,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         newl._optimiseData()
 
         config.log.info("Removed empty data in %s key: %s entries" % (key, len(self) - len(newl)))
-        return(newl)
+        return newl
 
     def act(self, operation, key1, key2, result_key=None):
         """
@@ -3173,38 +3174,20 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         config.log.info("Saved pie to '%s'" % newfilename)
         return data
 
-    def frequencyAgainstArray(self,
-        filename=None,
-        match_key=None,
-        expression=None,
-        spline_interpolate=False,
-        imshow:bool = False,
-        step_style=False,
-        window=None,
-        **kargs):
-
+    def frequencyAgainstArray(self, *args, **kargs):
         # Deprecated 2023-06-26
-
-        config.log.warning('frequencyAgainstArray() is deprecated, please use the identical fAA()')
-
-        return self.fAA(
-            filename=filename,
-            match_key=match_key,
-            expression=expression,
-            spline_interpolate=spline_interpolate,
-            imshow = imshow,
-            step_style=step_style,
-            window=window,
-            **kargs)
+        raise AssertionError('frequencyAgainstArray() is deprecated, please use the identical fAA()')
 
     def fAA(self,
-        filename=None,
-        match_key=None,
+        filename:str = None,
+        match_key:str = None,
         expression=None,
-        spline_interpolate=False,
+        random_backgrounds:int = 10,
+        spline_interpolate:bool = False,
         imshow:bool = False,
         step_style=False,
         window=None,
+        bracket=None,
         **kargs):
         """
         Draw a peaklist and compare against an array.
@@ -3217,6 +3200,11 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
 
             filename (Required)
                 a file name for the image including the path.
+
+            random_backgrounds (Optional, default=10)
+                If random_backgrounds is >0, int random (shuffled) backgrounds will be drawn from
+                the expression object of the same length as the number of matches
+                for this genelist.
 
             window (Optional)
                 size of the sliding window to use.
@@ -3254,8 +3242,8 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                 Save the heatmap as blocks (imshow=False) or save as an image (imshow=True)
 
         **Result**
-            returns a new peaklist containing the overlapping sites only. The microarray condition value
-            will be added to the data and you can get a new microarray out using something like:
+            returns a new peaklist containing the overlapping sites only. The expression condition value
+            will be added to the data and you can get a new expression object out using something like:
 
             o = p.frequencyAgainstArray()
 
@@ -3280,10 +3268,12 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         arraydata = expression.getExpressionTable() # for compatability
         #arraydata = numpy.array([array_dict_data[key] for key in array_dict_data]) # needs to be sorted already.
         # There is a potential bug here, with the column names if multiple data is sent.
-        if "bracket" in kargs:
-            arraydata = self.draw.bracket_data(arraydata, kargs["bracket"][0], kargs["bracket"][1])
+        if bracket:
+            arraydata = self.draw.bracket_data(arraydata, bracket[0], bracket[1])
+        else:
+            bracket = [0, 1]
 
-        bin = [0 for x in arraydata]
+        bin = [0] * len(arraydata)
 
         newgl = self.shallowcopy()
         newl = []
@@ -3304,23 +3294,45 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                 newl += newf
 
         if not newl:
-            raise AssertionError("frequencyAgainstArray: no matches were found, it's possible this is correct, but it is unlikely. I suspect you have not specified match_key correctly")
+            raise AssertionError("fAA: no matches were found, it's possible this is correct, but it is unlikely. I suspect you have not specified match_key correctly")
 
-        newgl.load_list(newl)
+        if not window: # get 10% of the list
+            window = int(len(bin) * 0.1) # bin is the same length as the data
 
         if spline_interpolate:
             f = scipy.interpolate.interp1d(list(range(len(bin))), bin, kind=spline_interpolate)
             xnew = numpy.linspace(0, 40, 40) # A space to interpolate into
             peak_data = list(f(xnew)) # dump out the falues from formula
         else:
-            if not window: # get 10% of the list
-                window = int(len(bin) * 0.1) # bin is the same length as the data
             peak_data = utils.movingAverage(bin, window, normalise=True)[1]
 
-        # reload/override not really a good way to do this...
-        # I should reload a new dict... As I may inadvertantly override another argument?
-        if "bracket" not in kargs:
-            kargs["bracket"] = [0, 1]
+        newgl.load_list(newl)
+
+        # Sort out backgrounds
+        backgrounds = None
+        if random_backgrounds:
+            backgrounds = []
+            match_key_names = expression[match_key]
+
+            for bidx, b in enumerate(range(random_backgrounds)):
+                config.log.info(f'Generate random background {bidx+1}')
+                binned_back = [0] * len(arraydata)
+
+                random_sampling = random.sample(match_key_names, len(newl)) # NOT len(self), len(the number of matches)
+                matches = set(random_sampling)
+
+                for idx, key in enumerate(expression[match_key]):
+                    if key in matches:
+                        binned_back[idx] = 1 # Does not support tag_key
+
+                if spline_interpolate:
+                    f = scipy.interpolate.interp1d(list(range(len(binned_back))), binned_back, kind=spline_interpolate)
+                    xnew = numpy.linspace(0, 40, 40) # A space to interpolate into
+                    binned_back = list(f(xnew)) # dump out the falues from formula
+                else:
+                    binned_back = utils.movingAverage(binned_back, window, normalise=True)[1]
+
+                backgrounds.append(binned_back)
 
         actual_filename = self.draw._heatmap_and_plot(
             arraydata=arraydata.T,
@@ -3328,12 +3340,15 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             col_names=expression.getConditionNames(),
             filename=filename,
             peakdata=peak_data,
+            random_backgrounds=backgrounds,
             bin=bin,
             row_label_key=match_key,
             imshow=imshow,
+            window=window,
+            bracket=bracket,
             **kargs)
 
-        config.log.info(f"frequencyAgainstArray: Saved '{actual_filename}'")
+        config.log.info(f"fAA: Saved '{actual_filename}'")
         return newgl
 
     def islocinlist(self, loc, key="loc", mode="collide", delta=200):
@@ -4226,6 +4241,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         figsize=[3,3],
         only_tes:bool = False,
         only_genes:bool = False,
+        spot_size:int = 3,
         **kargs
         ):
         '''
@@ -4276,6 +4292,9 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             only_genes (Optional, default=False)
                 only plot the genes (lacking a ':' in highlights_key
 
+            spot_size (Optional, default=3)
+                Spot size for each dot in the scatter.
+
         **Returns**
             The genes picked as up-regulated
             The genes picked as down-regulated;
@@ -4288,10 +4307,10 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         assert fc_val_key in self.keys(), 'fc_val_key was not found in this genelist'
         assert not (only_tes and only_genes), 'You cant have both only_tes and only_genes both True'
         if only_tes:
-            assert highlight_key, 'if only_tes=True, you need to specify a highlights_key to look for the ":" character that signifies TEs'
+            assert highlight_key, 'if only_tes=True, you need to specify a highlight_key to look for the ":" character that signifies TEs'
             assert highlight_key in self.keys(), 'highlight_key not found in this genelist'
         if only_genes:
-            assert highlight_key, 'if only_genes=True, you need to specify a highlights_key to look for the ":" character that signifies TEs'
+            assert highlight_key, 'if only_genes=True, you need to specify a highlight_key to look for the ":" character that signifies TEs'
             assert highlight_key in self.keys(), 'highlight_key not found in this genelist'
 
         if highlights:
@@ -4325,10 +4344,10 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             if only_genes and ':' in item[highlight_key]:
                 continue
 
-            if fc >= fc_threshold and q > q_threshold:
+            if fc > fc_threshold and q > q_threshold:
                 up.append((fc, q))
                 upgl.append(item)
-            elif fc <= -fc_threshold and q > q_threshold:
+            elif fc < -fc_threshold and q > q_threshold:
                 dn.append((fc, q))
                 dngl.append(item)
             else:
@@ -4366,27 +4385,28 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             rest = list(zip(*rest))
 
             if rest:
-                ax.scatter(rest[0], rest[1], c='grey', s=2, alpha=0.1, ec='none')
+                ax.scatter(rest[0], rest[1], c='grey', s=spot_size, alpha=0.1, ec='none')
             if up:
-                ax.scatter(up[0], up[1], c='red', s=3, ec='none', alpha=0.3)
+                ax.scatter(up[0], up[1], c='red', s=spot_size, ec='none', alpha=0.3)
 
         else: # Traditional red/blue style
             up = list(zip(*up))
             dn = list(zip(*dn))
             rest = list(zip(*rest))
             if up:
-                ax.scatter(up[0], up[1], c='red', s=2, ec='none', alpha=0.3)
+                ax.scatter(up[0], up[1], c='red', s=spot_size, ec='none', alpha=0.3)
             if dn:
-                ax.scatter(dn[0], dn[1], c='blue', s=2, ec='none', alpha=0.3)
+                ax.scatter(dn[0], dn[1], c='blue', s=spot_size, ec='none', alpha=0.3)
+            if rest:
+                ax.scatter(rest[0], rest[1], c='grey', s=spot_size, alpha=0.1, ec='none')
 
-            ax.scatter(rest[0], rest[1], c='grey', s=2, alpha=0.1, ec='none')
             if highlights and highs:
                 for gene_name in highs:
                     ax.text(highs[gene_name][0], highs[gene_name][1], gene_name, ha='center', va='center', fontsize=6)
 
-        ax.axhline(q_threshold, ls=':', c='grey')
-        ax.axvline(-fc_threshold, ls=':', c='grey')
-        ax.axvline(fc_threshold, ls=':', c='grey')
+        ax.axhline(q_threshold, ls=':', c='grey', lw=0.5)
+        ax.axvline(-fc_threshold, ls=':', c='grey', lw=0.5)
+        ax.axvline(fc_threshold, ls=':', c='grey', lw=0.5)
 
         ax.set_xlim([-10, 10])
         ax.set_ylim([-2, 40])
@@ -4408,6 +4428,5 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
 
         config.log.info('volcanoplot: Saved {}'.format(real_filename))
         return upgl, dngl, real_filename
-
 
 genelist = Genelist # Hack alert! Basically used only in map() for some dodgy old code I do not want to refactor.

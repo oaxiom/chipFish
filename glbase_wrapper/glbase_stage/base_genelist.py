@@ -107,6 +107,7 @@ class _base_genelist:
         a = genelist["name"] returns a python list containing a vertical slice of all of the "name" keys
 
         """
+        print(index)
         newl = False
         if isinstance(index, int):
             # this should return a single dictionary.
@@ -116,6 +117,7 @@ class _base_genelist:
             return(self._findAllLabelsByKey(index))
         elif isinstance(index, slice):
             # returns a new genelist corresponding to the slice.
+            print(index)
             newl = self.shallowcopy()
             newl.linearData = utils.qdeepcopy(self.linearData[index]) # separate the data so it can be modified.
             newl._optimiseData()
@@ -297,7 +299,7 @@ class _base_genelist:
                 except ValueError:
                     try: # see if I can cooerce it into a location:
                         # Turns out ~12% of loading was spent in this test:
-                        if ':' in value and '-' in value: # Shortcut
+                        if ':' in value and '-' in value:
                             return location(loc=value)
                         else:
                             raise ValueError
@@ -347,7 +349,7 @@ class _base_genelist:
                         d[key] = self._guessDataType(value)
         return d
 
-    def save(self, filename=None, compressed=False):
+    def save(self, filename=None):
         """
         **Purpose**
 
@@ -371,9 +373,6 @@ class _base_genelist:
             filename
                 filename (and path, if you like) to save the file to
 
-            compressed (Optional, default=False)
-                use compression (not currently implemented)
-
         **Result**
 
             returns None
@@ -383,8 +382,6 @@ class _base_genelist:
         assert filename, "no filename specified"
 
         with open(filename, "wb") as oh:
-            if compressed:
-                config.log.warning("compression not currently implemented, saving anyway")
             pickle.dump(self, oh, -1)
         config.log.info(f"Saved binary version: '{filename}'")
 

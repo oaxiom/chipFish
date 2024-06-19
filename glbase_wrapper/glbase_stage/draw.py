@@ -512,18 +512,12 @@ class draw:
             hm = ax3.pcolormesh(data, cmap=colour_map, vmin=vmin, vmax=vmax, antialiased=False, edgecolors=edgecolors, lw=0.4)
 
         if col_colbar:
-            # Must be reordered by the col_cluster if present, done above;
-            newd = {}
-            colors_ = dict(list(matplotlib_colors.cnames.items()))
-            for c in colors_:
-                newd[c] = matplotlib_colors.hex2color(colors_[c])
-
             new_colbar = []
             for c in col_colbar:
                 if '#' in c:
                     new_colbar.append([utils.hex_to_rgb(c)]) # needs to be tupled?
                 else: # must be a named color:
-                    new_colbar.append([newd[c]])
+                    new_colbar.append([matplotlib_colors.to_rgb(c)])
 
             col_colbar = numpy.array(new_colbar)#.transpose(1,0,2)
 
@@ -552,18 +546,12 @@ class draw:
             ax4.set_yticklabels("")
 
         if row_colbar:
-            # Must be reordered by the row_cluster if present, done above;
-            newd = {}
-            colors_ = dict(list(matplotlib_colors.cnames.items()))
-            for c in colors_:
-                newd[c] = matplotlib_colors.hex2color(colors_[c])
-
             new_colbar = []
             for c in row_colbar:
                 if '#' in c:
                     new_colbar.append([utils.hex_to_rgb(c)]) # needs to be tupled?
                 else: # must be a named color:
-                    new_colbar.append([newd[c]])
+                    new_colbar.append([matplotlib_colors.to_rgb(c)])
 
             row_colbar = numpy.array(new_colbar)
 
@@ -780,6 +768,7 @@ class draw:
         match_key=None,
         arraydata=None,
         peakdata=None,
+        random_backgrounds=None,
         bin=None,
         draw_frames=False,
         plot_bracket=None,
@@ -931,22 +920,33 @@ class draw:
         # linegraph -----------------------------------------------------
 
         ax3 = fig.add_subplot(144)
+        if random_backgrounds:
+            ms = []
+            ss = []
+            for b in random_backgrounds:
+                ax3.plot(b, arange(len(peakdata)), lw=0.5, c='lightgrey', alpha=0.5)
+
+                ms.append(statistics.mean(b))
+                ss.append(statistics.stdev(b))
+
+            m = statistics.mean(ms)
+            s = statistics.mean(ss)
+
+            ax3.axvline(x=m, color='grey', linestyle=":", linewidth=1)
+            ax3.axvline(x=(m+s), color='r', linestyle=":", linewidth=0.5)
+            ax3.axvline(x=(m-s), color='r', linestyle=":", linewidth=0.5)
+
         ax3.plot(peakdata, arange(len(peakdata))) # doesn't use the movingAverage generated x, scale it across the entire graph.
+
         ax3.set_frame_on(draw_frames)
         ax3.set_position(freq_plot)
         ax3.set_yticklabels("")
         ax3.set_ylim([0, len(peakdata)])
-        ax3.set_xlim([min(peakdata), (max(peakdata))+(max(peakdata)/10.0)])
+        pad = s*2
+        ax3.set_xlim([min(peakdata)-pad, (max(peakdata))+pad])
         ax3.tick_params(left=False, right=False)
         [item.set_markeredgewidth(0.2) for item in ax3.xaxis.get_ticklines()]
         [t.set_fontsize(6) for t in ax3.get_xticklabels()]
-
-        m = statistics.mean(peakdata)
-        s = statistics.stdev(peakdata)
-
-        ax3.axvline(x=m, color='black', linestyle=":", linewidth=1)
-        ax3.axvline(x=(m+s), color='r', linestyle=":", linewidth=0.5)
-        ax3.axvline(x=(m-s), color='r', linestyle=":", linewidth=0.5)
 
         if plot_bracket:
             ax3.set_xlim(plot_bracket)
@@ -1320,7 +1320,7 @@ class draw:
         if "xaxis" in kargs: axis.set_xticks(kargs["xaxis"])
         if "yaxis" in kargs: axis.set_yticks(kargs["yaxis"])
 
-        return(self.savefigure(fig, filename))
+        return self.savefigure(fig, filename)
 
     def _qhist(self, filename=None, data=None, bins=60, **kargs):
         """
@@ -1973,7 +1973,7 @@ class draw:
 
         if len(size) == 2: # overrides aspect/size
             size_in_in = (size[0], size[1])
-            return(plot.figure(figsize=size_in_in))
+            return plot.figure(figsize=size_in_in)
 
         data = {"normal": {"small": (5,4), "medium": (8,6), "large": (12,9), "huge": (16,12)},
                 "square": {"small": (4,4), "medium": (7,7), "large": (9,9), "huge": (12,12)},
@@ -2714,7 +2714,7 @@ class draw:
         spot_cols='grey',
         overplot=None,
         spot_size=40,
-        label_font_size=7,
+        label_font_size=6,
         label_style=None,
         cut=None,
         squish_scales=False,
@@ -2856,7 +2856,12 @@ class draw:
         config.log.info("scatter: Saved '%s%s' vs '%s%s' scatter to '%s'" % (mode, x, mode, y, real_filename))
         return ret_data
 
-    def dotbarplot(self, data, filename, yticktitle='Number', **kargs):
+    def dotbarplot(self,
+        data,
+        filename:str,
+        yticktitle='Number',
+        draw_stds:bool = True,
+        **kargs):
         """
         **Purpose**
             A drawing wrapper for the new style dot-mean-stderr plots.
@@ -2896,7 +2901,8 @@ class draw:
 
         # Get the means/stdevs:
         means = [numpy.mean(data[k]) for k in data]
-        stds = [numpy.std(data[k]) / math.sqrt(len(data[k])) for k in data]
+        if draw_stds:
+            stds = [numpy.std(data[k]) / math.sqrt(len(data[k])) for k in data]
         lengths = [len(data[k]) for k in data] # for working out if it is valid to plot errs or mean
 
         # convert the data array into a linear list of x and y:
@@ -2911,9 +2917,12 @@ class draw:
 
         ax.scatter(xd, yd, edgecolors='black', lw=0.5, c='none', s=15)
         if False not in [i>=3 for i in lengths]:
-            ax.errorbar(xs, means, yerr=stds, barsabove=True, fmt='none', capsize=4, capthick=0.5, ls='-', color='black', lw=0.5)
+            if draw_stds:
+                ax.errorbar(xs, means, yerr=stds, barsabove=True, fmt='none', capsize=4, capthick=0.5, ls='-', color='black', lw=0.5)
+            else:
+                ax.bar(xs, means, ls='-', color='black', lw=0.5)
 
-        ax.set_ylim([0, max(yd)+10])
+        #ax.set_ylim([0, max(yd)+10])
         ax.set_xlim([-0.2, len(labs)+0.2])
         ax.set_xticks(xs)
         ax.set_xticklabels(list(labs))
@@ -3047,7 +3056,6 @@ class draw:
         cols='lightgrey',
         bot_pad=0.1,
         showmeans=False,
-        cond_order=None,
         **kargs):
 
         assert filename, 'A filename to save the image to is required'
@@ -3069,11 +3077,14 @@ class draw:
             widths=0.5,
             vert=False,
             showmeans=showmeans,
-            meanprops={'marker': 'o'})
+            meanprops={'marker': 'o', 'markerfacecolor':'black',
+                       'markeredgecolor':'black',
+                       'markersize':'3'})
 
         #print([i.get_data() for i in r['medians']])
 
         plot.setp(r['medians'], color='black', lw=2) # set nicer colours
+        if showmeans: plot.setp(r['means'], color='black', lw=2)
         plot.setp(r['boxes'], color='black', lw=0.5)
         plot.setp(r['caps'], color="grey", lw=0.5)
         plot.setp(r['whiskers'], color="grey", lw=0.5)

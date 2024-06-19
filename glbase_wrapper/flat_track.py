@@ -56,6 +56,7 @@ class flat_track(glbase_stage.flat_track):
             newa[i] = data[int(i*resolution)]
 
         if norm_by_lib_size:
+            print(norm_by_lib_size)
             if not self.get_total_num_reads():
                 raise AssertionError('Asked for norm_by_lib_size=True, but this flat does not have a valid total_num_reads')
             newa /= (self.get_total_num_reads() / 100000000.0)# Quick hack to get it back to ints.

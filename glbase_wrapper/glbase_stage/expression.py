@@ -25,7 +25,7 @@ from .base_expression import base_expression
 from .draw import draw
 from .progress import progressbar
 from .errors import AssertionError, ArgumentError
-from .genelist import genelist
+from .genelist import genelist, Genelist # Name mangling for the win!
 from .location import location
 from .stats import stats
 
@@ -481,6 +481,46 @@ class expression(base_expression):
         self._optimiseData()
         return None
 
+    def sort_by_expression(self, key:str=None, value:str=None):
+        '''
+        **Purpose**
+            Sort the conditions by a gene expression value.
+
+            TODO: This is kind of slow...
+
+        **Arguments**
+            key (Required)
+                key to mach the gene name in
+
+            value (Required)
+                value to match
+
+        **Returns**
+            A new sorted expression object
+
+        '''
+        assert key, 'key not specified'
+        assert value, 'value not specified'
+        assert key in self.keys(), f'{key} not found in this expression object'
+
+        # check the key/value pair is a match;
+        assert value in self.qkeyfind[key], f'{value} not found in key {key}'
+
+        idx = self.qkeyfind[key][value]
+
+        assert len(idx) == 1, f'Found more than one match for {key} = {value}'
+
+        gene_row = self.linearData[idx[0]]
+
+        order = dict(zip(self.getConditionNames(), gene_row['conditions']))
+
+        sorted_conds = list(sorted(order, key=order.get))
+
+        ret = self.sliceConditions(sorted_conds, _silent=True)
+
+        config.log.info(f'Sorted conditions by {key}: {value}')
+        return ret
+
     def findGene(self, **kargs):
         """
         Deprecated method
@@ -608,6 +648,7 @@ class expression(base_expression):
 
     def sliceConditions(self,
         conditions:Iterable=None,
+        _silent=False,
         **kargs):
         """
         **Purpose**
@@ -638,7 +679,7 @@ class expression(base_expression):
 
         conditions = list(conditions) # Some weird bugs if not a list;
         for item in conditions:
-            assert item in self._conditions, "sliceConditions: '%s' condition not found in this expression data" % item
+            assert item in self._conditions, f"sliceConditions: '{item}' condition not found in this expression data"
 
         newgl = self.deepcopy()
 
@@ -665,7 +706,7 @@ class expression(base_expression):
 
         newgl._optimiseData()
 
-        config.log.info("sliceConditions: sliced for %s conditions" % (len(newgl[0]["conditions"]),))
+        if not _silent: config.log.info("sliceConditions: sliced for %s conditions" % (len(newgl[0]["conditions"]),))
         return newgl
 
     def getDataForCondition(self, condition_name):
@@ -746,7 +787,7 @@ class expression(base_expression):
         z[numpy.isnan(z)] = 0
         self.numpy_array_all_data = z.T
 
-        self._load_numpy_back_into_linearData()
+        self._load_numpy_back_into_linearData() # calls _optimseData()
 
     def column_Z(self, col_wise_variance=True):
         '''
@@ -2035,7 +2076,7 @@ class expression(base_expression):
         self.draw.do_common_args(ax, **kargs)
         realfilename = self.draw.savefigure(fig, filename)
         config.log.info("draw_scatter_CV: Saved '%s'" % (realfilename))
-        return(None)
+        return None
 
     def scatter(self, x_condition_name, y_condition_name, filename=None, genelist=None, key=None,
         label=False, label_fontsize=6, **kargs):
@@ -2102,6 +2143,10 @@ class expression(base_expression):
             kargs["ylabel"] = y_condition_name
 
         if genelist and key:
+            if isinstance(genelist, list): # Compatability for passing a simple list;
+                gl = Genelist()
+                gl.load_list([{key: v} for v in genelist])
+                genelist = gl
             matches = genelist.map(genelist=self, key=key) # make sure resulting object is array
             tx = matches.getDataForCondition(x_condition_name)
             ty = matches.getDataForCondition(y_condition_name)
@@ -2113,8 +2158,8 @@ class expression(base_expression):
             real_filename = self.draw.nice_scatter(x_data, y_data, filename, **kargs)
 
 
-        config.log.info("scatter: Saved '%s'" % real_filename)
-        return(True)
+        config.log.info(f"scatter: Saved '{real_filename}'")
+        return True
 
     def boxplot(self,
         filename=None,
@@ -2247,6 +2292,7 @@ class expression(base_expression):
             None
         """
         from statsmodels.stats.multitest import multipletests
+        assert stats_test in (None, 'ttest_ind', 'welch', 'mannwhitneyu'), f'stats_test {stats_test} not found'
 
         assert filename, "must provide a filename"
         if isinstance(box_colors, list):
@@ -2452,7 +2498,7 @@ class expression(base_expression):
         for item in self.linearData:
             item["conditions"] = [v*number for v in item["conditions"]]
         self._optimiseData()
-        return(None)
+        return None
 
     def add(self, number=None):
         """
@@ -3301,8 +3347,15 @@ class expression(base_expression):
         actual_filename = self.draw.savefigure(fig, filename)
         config.log.info("gene_curve: Saved '%s'" % actual_filename)
 
-    def correlation_heatmap(self, axis="conditions", filename=None, label_key=None, mode="r", aspect="square", bracket=(0,1),
-        optimal_ordering=True, **kargs):
+    def correlation_heatmap(self,
+        axis="conditions",
+        filename=None,
+        label_key=None,
+        mode="r",
+        aspect="square",
+        bracket=(0,1),
+        optimal_ordering=True,
+        **kargs):
         """
         **Purpose**
             Plot a heatmap of the (R, R^2, Pearson or Spearman) correlation for all pairs of
@@ -3504,10 +3557,21 @@ class expression(base_expression):
 
         return(cc)
 
-    def barh_single_item(self, key=None, value=None, filename=None, tree=None,
-        plot_mean=True, plot_stdev=False, fold_change=False, tight_layout=False,
+    def barh_single_item(self,
+        key=None,
+        value=None,
+        filename=None,
+        tree=None,
+        plot_mean=True,
+        plot_stdev=False,
+        fold_change=False,
+        tight_layout=False,
         vline_for_condition=None,
-        bar_cols=None, vert_space=0.75, hori_space=0.5, **kargs):
+        bar_height:float = 0.5,
+        bar_cols=None,
+        vert_space:float = 0.75,
+        hori_space:float = 0.5,
+        **kargs):
         """
         **Purpose**
             Plot a horizontal bar for a single item (gene?), for all conditions.
@@ -3629,10 +3693,10 @@ class expression(base_expression):
         y = numpy.arange(len(data))
         if err:
             # error bars'd graphs look better with black on grey
-            ax.barh(y, data, xerr=err, ec="none", color=bar_cols, height=0.5, error_kw={'linewidth': 0.3, 'capthick': 0.3}, capsize=2.0)
+            ax.barh(y, data, xerr=err, ec="none", color=bar_cols, height=bar_height, error_kw={'linewidth': 0.3, 'capthick': 0.3}, capsize=2.0)
         else:
             # no error bars, solid black is better
-            ax.barh(y, data, ec="none", color=bar_cols, height=0.5)
+            ax.barh(y, data, ec="none", color=bar_cols, height=bar_height)
 
         ax.set_yticklabels(conds)
         ax.set_yticks(y)#+0.25) # 0.25 should be half of the height of the bars so that text aligns with the bar
@@ -4103,8 +4167,8 @@ class expression(base_expression):
         ax.set_ylim(zoom_bracket)
         ax.set_xlabel(cond1)
         ax.set_ylabel(cond2)
-        ax.set_xlim(xlims)
-        ax.set_ylim(ylims)
+        #ax.set_xlim(xlims)
+        #ax.set_ylim(ylims)
 
         ax = fig.add_subplot(122)
         if hist2d:
@@ -4434,9 +4498,9 @@ class expression(base_expression):
         **Returns**
             the actual filename saved as and a new image in filename.
         """
-        assert filename, "no filename specified"
+        assert filename, "No filename specified"
         assert condition_name in self.serialisedArrayDataDict, "%s condition not found" % x_condition_name
-        assert p_value_key in self.keys(), '"%s" p_value_key not found in this list' % p_value_key
+        assert p_value_key in self.keys(), f'"{p_value_key}" p_value_key not found in this list'
         if highlights:
             assert highlight_key, 'highlight_key must hold a value if highlights=True'
             assert highlight_key in self.keys(), f'highlight_key "{highlight_key}" not found in this list'
@@ -4454,7 +4518,7 @@ class expression(base_expression):
         xlim = max(x_data)
 
         if label_key:
-            assert label_key in self.keys(), 'label_key "%s" not found in this list' % label_key
+            assert label_key in self.keys(), f'label_key "{label_key}" not found in this list'
             tx = []
             ty = []
             matches = []
