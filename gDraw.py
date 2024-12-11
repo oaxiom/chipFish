@@ -1130,17 +1130,29 @@ class gDraw:
         (Internal - draw primitive)
         A macro for changing the current pen colour.
         deals with rgb and rgba intelligently.
+
+        Deals with matplotlib style :
         """
-        if '#' in colour:
+        if ':' in colour:
+            # A matplotlib style color
+            import matplotlib.colors as mcolors
+            rgba = mcolors.to_rgba(colour)
+            self.ctx.set_source_rgb(rgba[0], rgba[1], rgba[2])
+
+        elif '#' in colour:
             rgb = hex_to_rgb(colour)
             self.ctx.set_source_rgb(rgb[0], rgb[1], rgb[2])
+
         elif isinstance(colour, str):
             assert colour in colour_lookup_name, 'colour (%s) not found in the colour_lookup' % (colour,)
             rgb = colour_lookup_name[colour]
             self.ctx.set_source_rgb(rgb[0], rgb[1], rgb[2])
+
         elif len(colour) == 3:
             self.ctx.set_source_rgb(colour[0], colour[1], colour[2])
+
         elif len(colour) == 4:
             self.ctx.set_source_rgba(colour[0], colour[1], colour[2], colour[3])
+
         else:
             raise ValueError('colour (%s) not found' % (colour,))

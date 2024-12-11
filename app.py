@@ -58,7 +58,14 @@ class app():
         mode will set default options for the track type
         """
         if "=" not in options:
-            return({}) # No valid parseable options
+            return {} # No valid parseable options
+
+        options = options.strip()
+        # trim the first ':'
+        options = ':'.join(options.split(':')[1:])
+
+        if not options:
+            return {} # No valid parseable options
 
         # Standardise input string:
         s = options.strip(" ").replace("\t", " ").replace("  ", " ").replace("\n", "").replace("\r", "")
@@ -133,7 +140,7 @@ class app():
                         raise ErrorUnrecognisedTrackMode(mode)
 
                     # process options
-                    options = self.__do_options(line.split(":")[-1], mode)
+                    options = self.__do_options(line, mode)
                 elif mode:
                     path = os.path.expanduser(track_path)
                     tt = line.strip().split()
@@ -164,6 +171,7 @@ class app():
 
                         if mode == "flat":
                             self.draw.bindTrack(flat_track(filename=os.path.join(path, name)), track_type="graph", options=options, label=label)
+                            print(options)
                         elif mode == "bed":
                             self.draw.bindTrack(genelist(filename=os.path.join(path, name), format=format.bed), options=options, label=label)
                         elif mode == "macs_bed":

@@ -107,6 +107,7 @@ class _base_genelist:
         a = genelist["name"] returns a python list containing a vertical slice of all of the "name" keys
 
         """
+        1/0
         print(index)
         newl = False
         if isinstance(index, int):
