@@ -94,7 +94,8 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                 forse the loader to assume the file is a TSV, rather than the defaul CSV
 
             gtf_decorators
-                This specifies the column number that contains GTF decorators, which will be split into key:value and added to the genelist
+                This specifies the column number that contains GTF decorators, which will be split into key:value and
+                added to the genelist
 
             endwith
                 Stop loading the file if you see a line that contains the value specified in endwith
@@ -224,8 +225,6 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         csv_headers = frozenset(["csv", "xls", "tsv", "txt", "bed"])
         if filename.split(".")[-1].lower() in csv_headers: # check the last one for a csv-like header
             self.loadCSV(filename=filename, format=format, gzip=gzip, **kargs)
-        elif filename.split(".")[-1] in ["glb"]:
-            self = glload(filename) # will this work?
         else:
             self.loadCSV(filename=filename, format=format, gzip=gzip, **kargs)
 
@@ -1775,7 +1774,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             # work out which of the buckets required:
             left_buck = ((loc["left"]-1)//config.bucket_size)*config.bucket_size
             right_buck = ((loc["right"])//config.bucket_size)*config.bucket_size
-            buckets_reqd = list(range(left_buck, right_buck+config.bucket_size, config.bucket_size)) # make sure to get the right spanning and left spanning sites
+            buckets_reqd = range(left_buck, right_buck+config.bucket_size, config.bucket_size) # make sure to get the right spanning and left spanning sites
 
             # get the ids reqd.
             loc_ids = set()
@@ -2111,12 +2110,13 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
     def overlap(self,
         compare_mode="Overlap",
         loc_key="loc",
-        delta=200,
+        delta:int=200,
         title=None,
-        bins=20,
-        add_tags=False,
+        bins:int=20,
+        add_tags:bool=False,
         image_filename=None,
-        keep_rank=False,
+        keep_rank:bool=False,
+        merge_keys:bool=False,
         **kargs):
         """
         **Purpose**
@@ -2156,7 +2156,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                 Sets the number of bins in the frequency histogram showing the collision
                 distances.
 
-            merge (Optional, Default=False)
+            merge_keys (Optional, Default=False)
                 merge the two lists keys together. This is useful for
                 heterogenouse lists. For homogenous lists, don't set this
                 or set it to False and collide() will keep the resulting list
@@ -2180,7 +2180,16 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             the resulting "loc" key will be the left and right most extreme points
             of the two overlapping coordinates.
         """
-        newl = self._unified_collide_overlap(compare_mode, loc_key, delta, title, bins, add_tags, image_filename, keep_rank, **kargs)
+        newl = self._unified_collide_overlap(compare_mode,
+            loc_key,
+            delta,
+            title,
+            bins,
+            add_tags,
+            image_filename,
+            keep_rank,
+            merge_keys,
+            **kargs)
 
         len_res = 0 # because newl can be None.
         if newl:
@@ -2194,14 +2203,24 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
 
         return newl
 
-    def _unified_collide_overlap(self, compare_mode=None, loc_key="loc", delta=200, title=None, bins=20, add_tags=False, image_filename=None,
-        keep_rank=False, **kargs):
+    def _unified_collide_overlap(self,
+        compare_mode=None,
+        loc_key="loc",
+        delta=200,
+        title=None,
+        bins=20,
+        add_tags=False,
+        image_filename=None,
+        keep_rank=False,
+        merge_keys:bool=False,
+        **kargs):
         """
         A new unified overlap() collide() code.
 
         Hopefully less bugs, more features. Or at the very least easier to fix and test.
         """
         assert compare_mode, "compare_mode cannot be False"
+        assert compare_mode in ('Collide', 'Overlap'), f'{compare_mode} must be one of Collide or Overlap'
 
         if image_filename:
             config.log.warning("_unified_collide_overlap: use of image_filename to draw a Venn is not recommended. The values in the Venn")
@@ -2221,10 +2240,6 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
 
         assert loc_key in self[0], "_unified_collide_overlap: The 'loc_key' '%s' not found in this list" % (loc_key, )
         assert loc_key in gene_list[0], "_unified_collide_overlap: The 'loc_key' '%s' not found in the other list" % (loc_key, )
-
-        merge = False
-        if "merge" in kargs:
-            merge = kargs["merge"]
 
         mode = "and"
         if "logic" in kargs and kargs["logic"] != "and":
@@ -2285,7 +2300,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                             foundB[indexB] = True # gene_list
                             foundA[indexA] = True # self
 
-                        if merge:
+                        if merge_keys:
                             a = utils.qdeepcopy(other)
                             for k in item:
                                 if k not in a:
@@ -3304,7 +3319,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
             xnew = numpy.linspace(0, 40, 40) # A space to interpolate into
             peak_data = list(f(xnew)) # dump out the falues from formula
         else:
-            peak_data = utils.movingAverage(bin, window, normalise=True)[1]
+            peak_data = utils.moving_average(bin, window)
 
         newgl.load_list(newl)
 
@@ -3321,7 +3336,7 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                 random_sampling = random.sample(match_key_names, len(newl)) # NOT len(self), len(the number of matches)
                 matches = set(random_sampling)
 
-                for idx, key in enumerate(expression[match_key]):
+                for idx, key in enumerate(match_key_names):
                     if key in matches:
                         binned_back[idx] = 1 # Does not support tag_key
 
@@ -3330,7 +3345,9 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
                     xnew = numpy.linspace(0, 40, 40) # A space to interpolate into
                     binned_back = list(f(xnew)) # dump out the falues from formula
                 else:
-                    binned_back = utils.movingAverage(binned_back, window, normalise=True)[1]
+                    #binned_back = utils.movingAverage(binned_back, window, normalise=True)[1]
+                    binned_back = utils.moving_average(binned_back, window)
+                    #print(binned_back)
 
                 backgrounds.append(binned_back)
 
@@ -4326,7 +4343,11 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         qs = self[q_val_key]
 
         if log_q_values:
-            qs = [-math.log10(i+1e-216) for i in qs]
+            def remove_na(i):
+                if i == 'NA': return 1.0
+                return i
+            qs = [remove_na(i) for i in qs]
+            qs = [-math.log10(i+1e-216) for i in qs if i != 'NA']
         if log_fc_values:
             qs = [math.log2(f) for f in fcs]
 
@@ -4427,6 +4448,217 @@ class Genelist(_base_genelist): # gets a special uppercase for some dodgy code i
         real_filename = self.draw.savefigure(fig, filename)
 
         config.log.info('volcanoplot: Saved {}'.format(real_filename))
+        return upgl, dngl, real_filename
+
+    def plotMA(self,
+        filename:str,
+        q_val_key:str,
+        fc_val_key:str,
+        mean_val_key:str,
+        log_q_values = False,
+        q_threshold = 2, # In log10
+        log_fc_values = False,
+        fc_threshold = 1, # In log2;
+        log_mean_values = True,
+        highlights = None,
+        highlight_key = None,
+        highlight_override:bool = False,
+        figsize=[3,3],
+        only_tes:bool = False,
+        only_genes:bool = False,
+        spot_size:int = 3,
+        **kargs
+        ):
+        '''
+        **Purpose**
+            Draw a MA plot of log2(fold-change) versus log2(mean expression)
+
+            using the keys fc vs. p_adjust and mean
+
+        **Argumants**
+            filename (Required)
+                filename to save the image to.
+
+            q_val_key (Required)
+                q_value key name to use
+
+            fc_val_key (Required)
+                key containing the fold-change
+
+            log_q_values (Optional, default=False)
+                -log10 transform the q-values
+
+            q_threshold (Optional, default=2)
+                q-value threshold to use as significant;
+
+            log_fc_values (Optional, default=False)
+                -log10 transform the fold-change
+
+            fc_threshold (Optional, default=1)
+                fold-change threshold to use as significant;
+
+            highlights (Optional)
+                A list of items to draw a label over on the plot
+
+            highlights_key (Optional, required if highlights is True, or one of the only_* is True)
+                Key to match highlights in
+
+            highlight_override (Optional, default=False)
+                If True, then draw the matches in highlight in red (don't label).
+                This mode ignores FC and q-value thresholds for coloring, although you'd
+                still want to provide them for drawing the threshold lines on the plot.
+
+                This is useful for e.g. highlighting a set of genes/TEs and where they appear on the
+                Volcano
+
+            only_tes (Optional, default=False)
+                only plot the TEs (with a ':' in highlights_key
+
+            only_genes (Optional, default=False)
+                only plot the genes (lacking a ':' in highlights_key
+
+            spot_size (Optional, default=3)
+                Spot size for each dot in the scatter.
+
+        **Returns**
+            The genes picked as up-regulated
+            The genes picked as down-regulated;
+            filename save the image to
+        '''
+        assert filename, 'You must specify a filename'
+        assert q_val_key, 'You must specify q_val_key'
+        assert fc_val_key,  'You must specify fc_val_key'
+        assert mean_val_key, 'You must specify a mean_val_key'
+
+        assert q_val_key in self.keys(), 'q_val_key was not found in this genelist'
+        assert fc_val_key in self.keys(), 'fc_val_key was not found in this genelist'
+        assert mean_val_key in self.keys(), 'mean_val_key was not found in this genelist'
+
+        assert not (only_tes and only_genes), 'You cant have both only_tes and only_genes both True'
+        if only_tes:
+            assert highlight_key, 'if only_tes=True, you need to specify a highlight_key to look for the ":" character that signifies TEs'
+            assert highlight_key in self.keys(), 'highlight_key not found in this genelist'
+        if only_genes:
+            assert highlight_key, 'if only_genes=True, you need to specify a highlight_key to look for the ":" character that signifies TEs'
+            assert highlight_key in self.keys(), 'highlight_key not found in this genelist'
+
+        if highlights:
+            assert highlight_key, 'highlight_key must have a value if highlights=True'
+            assert highlight_key in self.keys(), 'highlight_key not found in this genelist'
+
+        if highlight_override:
+            assert highlights, 'If highlight_override then highlights must be valid as well'
+            assert highlight_key, 'highlight_key must have a value if highlights=True'
+            assert highlight_key in self.keys(), 'highlight_key not found in this genelist'
+
+        fcs = self[fc_val_key]
+        qs = self[q_val_key]
+        means = self[mean_val_key]
+
+        if log_q_values:
+            qs = [-math.log10(i+1e-216) for i in qs]
+        if log_fc_values:
+            fcs = [math.log2(f) for f in fcs]
+        if log_mean_values:
+            means = [math.log2(f) for f in means]
+
+        up = []
+        dn = []
+        rest = []
+        upgl = []
+        dngl = []
+        highs = {}
+
+        for item, fc, mean, q in zip(self.linearData, fcs, means, qs):
+            if only_tes and ':' not in item[highlight_key]:
+                continue
+
+            if only_genes and ':' in item[highlight_key]:
+                continue
+
+            if fc > fc_threshold and q > q_threshold:
+                up.append((mean, fc))
+                upgl.append(item)
+            elif fc < -fc_threshold and q > q_threshold:
+                dn.append((mean, fc))
+                dngl.append(item)
+            else:
+                rest.append((mean, fc))
+
+            if highlights:
+                if item[highlight_key] in highlights:
+                    highs[item[highlight_key]] = (mean, q)
+
+        # Repack for return
+        if upgl:
+            gl = genelist()
+            upgl = gl.load_list(upgl)
+        if dngl:
+            gl = genelist()
+            dngl = gl.load_list(dngl)
+
+        fig = self.draw.getfigure(figsize=figsize)
+
+        ax = fig.add_subplot(111)
+
+        if highlight_override:
+            up = []
+            rest = []
+            # we only use up and rest;
+            for item, mean, fc, q in zip(self.linearData, means, fcs, qs):
+
+                if item[highlight_key] in highlights:
+                    up.append((mean, fc))
+                else:
+                    rest.append((mean, fc))
+
+            up = list(zip(*up))
+            rest = list(zip(*rest))
+
+            if rest:
+                ax.scatter(rest[0], rest[1], c='grey', s=spot_size, alpha=0.1, ec='none')
+            if up:
+                ax.scatter(up[0], up[1], c='red', s=spot_size, ec='none', alpha=0.3)
+
+        else: # Traditional red/blue style
+            up = list(zip(*up))
+            dn = list(zip(*dn))
+            rest = list(zip(*rest))
+            if up:
+                ax.scatter(up[0], up[1], c='red', s=spot_size, ec='none', alpha=0.3)
+            if dn:
+                ax.scatter(dn[0], dn[1], c='blue', s=spot_size, ec='none', alpha=0.3)
+            if rest:
+                ax.scatter(rest[0], rest[1], c='grey', s=spot_size, alpha=0.1, ec='none')
+
+            if highlights and highs:
+                for gene_name in highs:
+                    ax.text(highs[gene_name][0], highs[gene_name][1], gene_name, ha='center', va='center', fontsize=6)
+
+        #ax.axhline(q_threshold, ls=':', c='grey', lw=0.5)
+        #ax.axvline(-fc_threshold, ls=':', c='grey', lw=0.5)
+        #ax.axvline(fc_threshold, ls=':', c='grey', lw=0.5)
+        ax.axhline(0.0, ls=':', c='grey', lw=0.5)
+
+        #ax.set_xlim([4, 14])
+        ax.set_ylim([-4, 4])
+
+        ax.tick_params(axis='x', labelsize=6)
+        ax.tick_params(axis='y', labelsize=6)
+
+        self.draw.do_common_args(ax, **kargs)
+
+        cxlims = ax.get_xlim()
+        cylims = ax.get_ylim()
+
+        ylim_pad = (cylims[1] - cylims[0]) * 0.05
+
+        if dn: ax.text(cxlims[0], cylims[1]+ylim_pad, 'Down: {}'.format(len(dn[0])), fontsize=6, ha='left')
+        if up: ax.text(cxlims[1], cylims[1]+ylim_pad, 'Up: {}'.format(len(up[0])), fontsize=6, ha='right')
+
+        real_filename = self.draw.savefigure(fig, filename)
+
+        config.log.info('plotMA: Saved {}'.format(real_filename))
         return upgl, dngl, real_filename
 
 genelist = Genelist # Hack alert! Basically used only in map() for some dodgy old code I do not want to refactor.

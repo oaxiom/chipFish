@@ -71,7 +71,8 @@ class flat_track():
             self.hdf5_handle.attrs['name'] = name
             self.hdf5_handle.attrs['bin_format'] = bin_format
             self.hdf5_handle.attrs['num_reads'] = 0
-            self.hdf5_handle.attrs['version'] = '5.0' # Fifth major revision in the flat format
+            self.hdf5_handle.attrs['version'] = '5.1' # Fifth major revision in the flat format
+            self.hdf5_handle.attrs['file_type'] = 'flat'
             self.chrom_names = []
             self.meta_data = self.hdf5_handle.attrs
 
@@ -93,6 +94,12 @@ class flat_track():
                 sys.exit()
 
             self.meta_data = self.hdf5_handle.attrs
+
+            try:
+                # TODO: Deprecate warning and enforce error.
+                assert self.meta_data['file_type'] == 'flat', 'Not a flat file!'
+            except KeyError:
+                config.log.warning('file_type not found in this track metadata. Bypassing for now, this will be enforced in future')
 
             self.chrom_names = [i[0] for i in self.hdf5_handle['all_chrom_names'][()]]# flatten
             self.chrom_names = [n.decode("ascii", "ignore") for n in self.chrom_names]
@@ -267,7 +274,7 @@ class flat_track():
         background=None,
         mask_zero=False,
         respect_strand=True,
-        norm_by_read_count=False,
+        norm_by_read_count=True,
         **kargs):
         """
         **Purpose**
@@ -323,7 +330,7 @@ class flat_track():
                 This is useful if you are, say, using the TSS's and want to maintain the
                 orientation with respect to the transcription direction.
 
-            norm_by_read_count (Optional, default=False)
+            norm_by_read_count (Optional, default=True)
                 If you are not using a norm_factor for this library then you probably want to set this to True.
                 It will divide the resulting number of reads by the total number of reads,
                 i.e. it will account for differences in library sizes.
@@ -380,7 +387,7 @@ class flat_track():
         return ret
 
     def _pileup_unscaled(self, genelists=None, filename=None, window_size=None, average=True,
-        background=None, mask_zero=False, respect_strand=True, norm_by_read_count=False, **kargs):
+        background=None, mask_zero=False, respect_strand=True, norm_by_read_count=True, **kargs):
 
         read_count = 1.0
         if norm_by_read_count:
@@ -551,7 +558,7 @@ class flat_track():
         background=None,
         mask_zero=False,
         respect_strand=True,
-        norm_by_read_count=False,
+        norm_by_read_count=True,
         **kargs):
         '''
 
@@ -614,7 +621,7 @@ class flat_track():
                 rite_flank = numpy.array(rite_flank, dtype=float)
 
                 if respect_strand:
-                    # positive strand is always correct, so I leave as is.
+                    # positive strand is correct, so I leave as is.
                     # For the reverse strand all I have to do is flip the array.
                     if strand in negative_strand_labels:
                         left_flank, rite_flank = rite_flank[::-1], left_flank[::-1] # And flip the 5' and 3' regions;

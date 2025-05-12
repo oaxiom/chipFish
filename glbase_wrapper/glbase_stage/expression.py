@@ -912,7 +912,7 @@ class expression(base_expression):
             THIS IS AN IN-PLACE CONVERSION
         """
         if new_type == int:
-            self.numpy_array_all_data = self.numpy_array_all_data.astype(numpy.int32)
+            self.numpy_array_all_data = self.numpy_array_all_data.astype(numpy.int64)
             self._load_numpy_back_into_linearData()
         else:
             for item in self.linearData:
@@ -2039,7 +2039,7 @@ class expression(base_expression):
 
             logx (Optional, default=2)
                 You usually calculate CV on the raw (un transofrmed data)
-                Generally it is easier to comprehend if the X axis (mean expression)
+                Hence, when displaying it is easier to comprehend if the X axis (mean expression)
                 is log2 transformed
         '''
         assert filename, "no filename specified"
@@ -2355,7 +2355,7 @@ class expression(base_expression):
             **kargs)
 
         config.log.info(f"boxplots_vertical: Saved '{real_filename}'")
-        return None
+        return p_values
 
     def violinplot(self, filename=None, beans=False, **kargs):
         """

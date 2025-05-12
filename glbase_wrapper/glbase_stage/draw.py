@@ -50,7 +50,7 @@ from collections.abc import Iterable
 from numpy import array, arange, mean, max, min, std, float32
 from scipy.cluster.hierarchy import distance, linkage, dendrogram
 from scipy.spatial.distance import pdist # not in scipy.cluster.hierarchy.distance as you might expect :(
-from scipy import polyfit, polyval
+from numpy import polyfit, polyval
 from scipy.stats import linregress
 import scipy.stats
 import numpy as np
@@ -89,14 +89,13 @@ class draw:
 
     def bracket_data(self,
         data,
-        min:int,
-        max:int):
+        min: int,
+        max: int):
         """
         brackets the data between min and max (ie. bounds the data with no scaling)
 
         This should be a helper?
         """
-        ran = max - min
         newd = copy.deepcopy(data)
         for x, row in enumerate(data):
             for y, value in enumerate(row):
@@ -104,33 +103,33 @@ class draw:
                     newd[x][y] = min
                 elif value > max:
                     newd[x][y] = max
-        return(newd)
+        return newd
 
     def heatmap(self,
-        filename:str = None,
-        cluster_mode:str = "euclidean",
-        row_cluster:bool = True,
-        col_cluster:bool = True,
+        filename: str = None,
+        cluster_mode: str = "euclidean",
+        row_cluster: bool = True,
+        col_cluster: bool = True,
         vmin = 0,
         vmax = None,
         colour_map=cm.RdBu_r,
-        col_norm:bool = False,
-        row_norm:bool = False,
+        col_norm: bool = False,
+        row_norm: bool = False,
         heat_wid = 0.25,
         heat_hei = 0.85,
         highlights = None,
-        digitize:bool = False,
-        border:bool = False,
-        draw_numbers:bool = False,
+        digitize: bool = False,
+        border: bool = False,
+        draw_numbers: bool = False,
         draw_numbers_threshold = -9e14,
         draw_numbers_fmt = '{:.1f}',
         draw_numbers_font_size = 6,
-        grid:bool = False,
-        row_color_threshold:bool = None,
-        col_names:bool = None,
-        row_colbar:bool = None,
-        col_colbar:bool = None,
-        optimal_ordering:bool = True,
+        grid: bool = False,
+        row_color_threshold: bool = None,
+        col_names: bool = None,
+        row_colbar: bool = None,
+        col_colbar: bool = None,
+        optimal_ordering: bool = True,
         dpi:int = 300,
         _draw_supplied_cell_labels = False,
         **kargs):
@@ -2019,13 +2018,14 @@ class draw:
             # So that saving supports relative paths.
             path, head = os.path.split(filename)
             if "." in filename: # trust Ralf to send a filename without a . in it Now you get your own special exception!
-                save_name = "%s.%s" % (".".join(head.split(".")[:-1]), mode) # this will delete .. in filename, e.g. file.meh.png
+                save_name = "%s.%s" % (".".join(head.split(".")[:-1]), mode)
             else:
                 save_name = "%s.%s" % (head, mode)
 
             fig.savefig(os.path.join(path, save_name), bbox_inches=bbox_inches, dpi=dpi)
             if config.draw_mode != 'jupyter': # Cannot close in jupyter, it will delete the figure
                 plot.close(fig) # Saves a huge amount of memory when saving thousands of images
+
         return save_name
 
     def do_common_args(self, ax, **kargs):
@@ -2090,9 +2090,9 @@ class draw:
         if "zlims" in kargs: # For 3D plots
             ax.set_zlim([kargs["zlim"][0], kargs["zlim"][1]])
         if "logx" in kargs:
-            ax.set_xscale("log", basex=kargs["logx"])
+            ax.set_xscale("log", base=kargs["logx"])
         if "logy" in kargs:
-            ax.set_yscale("log", basey=kargs["logy"])
+            ax.set_yscale("log", base=kargs["logy"])
         if "log" in kargs and kargs["log"]:
             ax.set_xscale("log", basex=kargs["log"])
             ax.set_yscale("log", basey=kargs["log"])
@@ -2850,6 +2850,9 @@ class draw:
                 ret_data = genelist()
                 ret_data.load_list(tdata)
 
+        ax.tick_params(axis='x', labelsize=6)
+        ax.tick_params(axis='y', labelsize=6)
+
         self.do_common_args(ax, **kargs)
 
         real_filename = self.savefigure(fig, filename)
@@ -2872,7 +2875,7 @@ class draw:
 
         **Arguments**
             data (Required)
-                A dictionary of label: [0, 1, 2, ... n] values.
+                A dictionary of {label: [0, 1, 2, ... n]} values.
 
                 The x category labels will be taken from the dict key.
 
@@ -3049,12 +3052,13 @@ class draw:
         data_as_list,
         data_labels,
         qs=None,
+        p_threshold:float =0.01,
         title=None,
         xlims=None,
-        sizer=0.022,
+        sizer:float =0.022,
         vert_height=4,
         cols='lightgrey',
-        bot_pad=0.1,
+        bot_pad:float =0.1,
         showmeans=False,
         **kargs):
 
@@ -3099,7 +3103,7 @@ class draw:
 
         if qs:
             for i, p in zip(range(0, len(data_as_list)), qs):
-                if p < 0.01:
+                if p < p_threshold:
                     ax.text(xlim+(xlim/12), i+1, '*', ha='left', va='center', fontsize=6,)
                 ax.text(xlim+(xlim/8), i+1, f'{p:.1e}', ha='left', va='center', fontsize=6,)
 

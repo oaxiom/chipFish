@@ -107,8 +107,6 @@ class _base_genelist:
         a = genelist["name"] returns a python list containing a vertical slice of all of the "name" keys
 
         """
-        1/0
-        print(index)
         newl = False
         if isinstance(index, int):
             # this should return a single dictionary.
@@ -118,7 +116,6 @@ class _base_genelist:
             return(self._findAllLabelsByKey(index))
         elif isinstance(index, slice):
             # returns a new genelist corresponding to the slice.
-            print(index)
             newl = self.shallowcopy()
             newl.linearData = utils.qdeepcopy(self.linearData[index]) # separate the data so it can be modified.
             newl._optimiseData()

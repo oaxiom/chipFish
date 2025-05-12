@@ -191,7 +191,7 @@ class hic:
         if new:
             self.readonly = False
             #try:
-            self.hdf5_handle = h5py.File(filename, 'w')  # This should be x to stop overwriting an exisiting file
+            self.hdf5_handle = h5py.File(filename, 'w')  # This should be x to stop overwriting an existing file
 
             # h5py hierarchy (Made at load_time)
             # Things stored:
@@ -827,8 +827,8 @@ class hic:
         dat = [str(n).encode("ascii", "ignore") for n in self.all_chrom_names]
         self.hdf5_handle.create_dataset('all_chrom_names', (len(self.all_chrom_names), 1), 'S10', dat)
 
-        self._OEmatrix()
-        self._ABcompart()
+        #self._OEmatrix()
+        #self._ABcompart()
 
         return True
 
@@ -926,6 +926,7 @@ class hic:
         colour_map=cm.inferno_r,
         log2=False,
         diff_map = None,
+        dpi:int = 1000,
         **kargs):
         """
         **Purpose**
@@ -1112,7 +1113,7 @@ class hic:
         cb.set_label(colbar_label)
         [label.set_fontsize(5) for label in ax0.get_xticklabels()]
 
-        actual_filename = self.draw.savefigure(fig, filename)
+        actual_filename = self.draw.savefigure(fig, filename, dpi=dpi)
         config.log.info("heatmap: Saved '%s'" % actual_filename)
 
     def tri_plot(self, filename, chr=None, loc=None, bracket=None, colour_map=cm.inferno_r,
@@ -1824,8 +1825,8 @@ class hic:
                     chrom = 'chr{0}'.format(chrom)
                 localLeft, localRight = self.__quick_find_binID_spans(chrom, anchor['loc']['left']-window, anchor['loc']['right']+window)
 
-                1/0 # I feel this is wrong somehow:
-                ##data = self.mats[chrom][localLeft:localRight, localLeft:localRight]
+                #1/0 # I feel this is wrong somehow:
+                data = self.mats[chrom][localLeft:localRight, localLeft:localRight]
 
                 if data.shape != mat.shape:
                     data = reshap_mats(data, num_bins, num_bins)
