@@ -152,7 +152,6 @@ class gDraw:
 
         # And finally draw:
         for item in self.tracks:
-            print(item)
             colbox = self.draw_modes_dict[item["type"]](item, **item["options"])
 
             # the collision boxes are not used. But I suppose in future...
@@ -621,9 +620,6 @@ class gDraw:
             new_f_array = track_data["draw_data"]["+"]
             new_r_array = track_data["draw_data"]["-"]
 
-        #print new_f_array
-        #print track_data["array"]
-
         colbox = self.__drawTrackBackground(track_data["track_location"], "graph")
 
         lastpx = -1
@@ -828,8 +824,6 @@ class gDraw:
         self.__setPenColour( (col,col,col) )
         self.ctx.move_to(posLeft[0], posLeft[1]-9) # start x,y
 
-        print(new_array)
-
         for index, value in enumerate(new_array):
             fraction_along_array = index / len(new_array)
 
@@ -847,7 +841,6 @@ class gDraw:
 
                 # update the currValue
                 currValue = value
-                #print index, col, len(new_array)
 
         self.ctx.line_to(posRight[0], posRight[1]-9)
         self.ctx.stroke()

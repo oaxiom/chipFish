@@ -155,7 +155,6 @@ class app():
                         #
                         path = os.path.expanduser(os.path.normpath(os.path.join(track_path, tail)))
                         name = head
-                        #print path, name
 
                     if name:
                         options = copy.deepcopy(options)
