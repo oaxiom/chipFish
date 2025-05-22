@@ -170,22 +170,27 @@ class app():
                             label = per_track_options['label']
 
                         if mode == "flat":
-                            self.draw.bindTrack(flat_track(filename=os.path.join(path, name)), track_type="graph", options=options, label=label)
-                            print(options)
+                            self.draw.bindTrack(flat_track(filename=os.path.join(path, name)),
+                                                track_type="graph", options=options, label=label)
+
                         elif mode == "bed":
-                            self.draw.bindTrack(genelist(filename=os.path.join(path, name), format=format.bed), options=options, label=label)
+                            self.draw.bindTrack(genelist(filename=os.path.join(path, name),
+                                                         format=format.bed),
+                                                options=options, label=label)
+
                         elif mode == "macs_bed":
                             f = format.minimal_bed
                             f["skiplines"] = 1 # Changes in recent version of macs bed.
                             self.draw.bindTrack(genelist(filename=os.path.join(path, name), format=f), options=options, label=label)
+
                         elif mode == "genome": # must be a glb
                             # First see if I can get it out of the pre-packaged genomes:
                             try:
                                 g = genomes()
                                 if name in g:
-                                    print(name)
                                     self.draw.bindTrack(g.get_genome(name))
                                     continue
+
                             except AssertionError:
                                 # Okay, that did'nt work. see If I can get a file in this dir:
                                 self.draw.bindTrack(glload(os.path.join(path, name)))
@@ -194,8 +199,10 @@ class app():
                             self.draw.bindTrack(glload(name), track_type="genome")
                         elif mode == "repeat_sql":
                             self.draw.bindTrack(genome_sql(filename=os.path.join(path, name)), track_type='repeats')
+
                         elif mode == "genome_sql":
-                            self.draw.bindTrack(genome_sql(filename=os.path.join(path, name)), track_type='genome_sql')
+                            self.draw.bindTrack(genome_sql(filename=os.path.join(path, name)), options=options, track_type='genome_sql')
+
             oh.close()
 
         self.draw.setViewPortSize(opt.draw.view_port_width)

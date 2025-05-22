@@ -152,7 +152,7 @@ class gDraw:
 
         # And finally draw:
         for item in self.tracks:
-            #print item
+            print(item)
             colbox = self.draw_modes_dict[item["type"]](item, **item["options"])
 
             # the collision boxes are not used. But I suppose in future...
@@ -210,9 +210,10 @@ class gDraw:
             label = track['name']
 
         self.tracks.append({"data": track,
-            'label': label,
-            "type": track_type,
-            "options": options})
+                            'label': label,
+                            "type": track_type,
+                            "options": options}
+                           )
 
     def __calculateTrackBoxes(self):
         """
@@ -450,20 +451,6 @@ class gDraw:
         """
         return(self.ctx.text_extents(text)[:4])
 
-    '''
-    # This is currently invalid as it uses hard-coded track_heights;
-    def __drawTrackBackground(self, track_location, track_type):
-        """
-        track_location is the bottom edge of the track block
-        """
-        # get an available track slot
-        self.__setPenColour( (0.95,0.95,0.95) )
-        base_loc = self.__realToLocal(0, track_location)
-        self.ctx.rectangle(0, base_loc[1]-opt.track.height_px[track_type]+4, self.w, opt.track.height_px[track_type]-4) # 30 = half genomic track size
-        self.ctx.fill()
-        return( (0, base_loc[1]-opt.track.height_px[track_type], self.w, opt.track.height_px[track_type]-2) )
-    '''
-
     def __drawTrackGraph(self, track_data, scaled=True, min_scaling=opt.track.min_scale, clamp=1,
         no_scaling=False, colour=None, name=None, mid_line=False, inverted=False, **kargs):
         """
@@ -510,7 +497,6 @@ class gDraw:
         if scaled:
             scaling_value = max(min_scaling+clamp, track_max) / float(opt.track.height_px["graph"])
             data = data / scaling_value
-        #print ":", track_max, scaling_value, min_scaling,  max(min_scaling, track_max)
 
         if opt.track.background:
             colbox = self.__drawTrackBackground(track_data["track_location"], "graph")
@@ -904,10 +890,19 @@ class gDraw:
         half_track_height = (full_track_height / 2.0)
         for idx, item in enumerate(track_data["draw_data"]):
             track_slot_base = track_data["track_location"] - half_track_height - (full_track_height * idx)
-            draw_modes_dict[item["type"]](item, track_data, track_slot_base)
+            draw_modes_dict[item["type"]](item, track_data, track_slot_base, **kargs)
 
-    def __drawGene(self, data, track_data, track_slot_base):
+    def __drawGene(self,
+                   data,
+                   track_data,
+                   track_slot_base,
+                   colour=opt.graphics.gene_colour,
+                   **kargs
+                   ):
         """
+        For future reference, and to avoid confusion
+        this method is not draw directly by paint, but goes through __drawGenome()
+
         draw Features of the type "Gene"
         should be an dict containing the following keys:
         type: gene
@@ -917,11 +912,15 @@ class gDraw:
         exonStarts: list of exon start locations
         exonEnds: list of ends
         """
+
+        if "colour" in kargs:
+            colour = kargs["colour"]
+
         posLeft = self.__realToLocal(data["loc"]["left"], track_slot_base)[0]
         posBase = self.__realToLocal(data["loc"]["left"], track_slot_base)[1]
         posRight = self.__realToLocal(data["loc"]["right"], track_slot_base)[0]
         self.ctx.set_line_width(1)
-        self.__setPenColour(opt.graphics.gene_colour)
+        self.__setPenColour(colour)
 
         #---------------------------------------------------------------
         # draw gene blocks.
@@ -989,7 +988,7 @@ class gDraw:
             # this looks best when the genome is not being drawn.
             leftmost = self.__realToLocal(data["loc"]["left"], track_slot_base)
             rightmost = self.__realToLocal(data["loc"]["right"], track_slot_base)
-            self.__setPenColour(opt.graphics.gene_colour)
+            self.__setPenColour(colour)
             self.ctx.set_line_width(3)
             self.ctx.move_to(leftmost[0], leftmost[1])
             self.ctx.line_to(rightmost[0], rightmost[1])
