@@ -44,7 +44,6 @@ class gDraw:
             "lncRNA": self.__drawGene,
             "microRNA": self.__drawGene,
             "graph": self.__drawTrackGraph,
-            "kde_graph": self.__drawTrackGraph,
             "graph_split_strand": self.__drawTrackGraph_split_strand,
             "bar": self.__drawTrackBar,
             "spot": self.__drawTrackSpot,
@@ -85,11 +84,6 @@ class gDraw:
                 track["draw_data"] = track["data"].get_data("graph",
                     location(loc=self.curr_loc),
                     resolution=self.bps_per_pixel, **track["options"])
-
-            elif track["type"] == "kde_graph":
-                track["draw_data"] = track["data"].get_data("graph",
-                    location(loc=self.curr_loc),
-                    resolution=self.bps_per_pixel, kde_smooth=True, view_wid=self.w, **track["options"])
 
             elif track["type"] in ("bar", 'splice'):
                 track["draw_data"] = track["data"].get_data(track["type"],
@@ -450,8 +444,18 @@ class gDraw:
         """
         return(self.ctx.text_extents(text)[:4])
 
-    def __drawTrackGraph(self, track_data, scaled=True, min_scaling=opt.track.min_scale, clamp=1,
-        no_scaling=False, colour=None, name=None, mid_line=False, inverted=False, **kargs):
+    def __drawTrackGraph(self,
+                         track_data,
+                         scaled:bool = True,
+                         min_scaling=opt.track.min_scale,
+                         clamp=1,
+                         no_scaling=False,
+                         colour=None,
+                         name=None,
+                         mid_line:bool = False,
+                         inverted=False,
+                         smooth:bool = False,
+                         **kargs):
         """
         **Arguments**
             track_data
@@ -482,11 +486,20 @@ class gDraw:
                 draw a midline in to mark the center.
         """
         data = track_data["draw_data"]
+
+        if smooth:
+            data = track_data['draw_data'][0]
+            smoothed_data = track_data['draw_data'][1]
+
         data = numpy.array(data, dtype=numpy.float32)
 
         if clamp:
             for i, v in enumerate(data):
                 data[i] = v-clamp if v > clamp-1.0 else 0
+
+            if smooth:
+                for i, v in enumerate(smoothed_data):
+                    smoothed_data[i] = v - clamp if v > clamp - 1.0 else 0
         else:
             clamp = 0 # I need a clamp int later even if clamp=None
 
@@ -496,6 +509,8 @@ class gDraw:
         if scaled:
             scaling_value = max(min_scaling+clamp, track_max) / float(opt.track.height_px["graph"])
             data = data / scaling_value
+            if smooth:
+                smoothed_data = smoothed_data / scaling_value
 
         if opt.track.background:
             colbox = self.__drawTrackBackground(track_data["track_location"], "graph")
@@ -556,6 +571,16 @@ class gDraw:
             else:
                 self.ctx.stroke()
 
+        if smooth:
+            smooth_coords = []
+            self.__setPenColour((0.6, 0.6, 0.6))
+            for index, value in enumerate(smoothed_data):
+                loc = self.__realToLocal(self.lbp + index, track_data["track_location"])
+                smooth_coords.append( (index, loc[1] - value)) # +30 locks it to the base of the track
+
+            self.ctx.move_to(0, smooth_coords[0][1]) # start x,y
+            [self.ctx.line_to(item[0], item[1]) for item in smooth_coords]
+
         if opt.track.draw_names:
             if not name:
                 name = track_data['label']
@@ -571,7 +596,7 @@ class gDraw:
                 int(max(min_scaling+clamp, track_max+clamp)), # You must add the clamp, otherwise you end up with maximums less than the clamp
                 size=opt.track.scale_bar_font_size, align="right", colour=(0,0,0))
 
-        return(colbox)# collision box dimensions
+        return colbox # collision box dimensions
 
     def __drawTrackGraph_split_strand(self, track_data, scaled=True, min_scaling=opt.track.min_scale,
         name=None, clamp=True, **kargs):

@@ -1,7 +1,7 @@
 """
 track pass through for chipFish, see the accompanying readme.txt for details.
 
-(c) 2009-2018 oAxiom
+(c) 2009-2026 oAxiom
 
 """
 
@@ -9,6 +9,9 @@ import sys, os, numpy
 
 #sys.path.append("..") # get the parent options
 import opt
+
+import numpy as np
+from scipy.stats import norm
 
 from . import glbase_stage # import like this to get around namespace issues
 
@@ -25,7 +28,14 @@ class flat_track(glbase_stage.flat_track):
     _default_draw_type = "graph"
     _available_draw_types = ("graph", "bar")
 
-    def get_data(self, type, loc, strand=None, resolution=1, norm_by_lib_size=False, **kargs):
+    def get_data(self,
+                 type,
+                 loc,
+                 strand=None,
+                 resolution=1,
+                 norm_by_lib_size:bool = False,
+                 smooth:bool = False,
+                 **kargs):
         """
         **Purpose**
             get data from the track.
@@ -42,6 +52,9 @@ class flat_track(glbase_stage.flat_track):
             resolution
                 the bp resolution to use for the array.
 
+            kde (True|False)
+                return the KDE version of the graph;
+
         **Results**
             returns a Numpy array, or a dictionary.
         """
@@ -56,10 +69,24 @@ class flat_track(glbase_stage.flat_track):
             newa[i] = data[int(i*resolution)]
 
         if norm_by_lib_size:
-            print(norm_by_lib_size)
             if not self.get_total_num_reads():
                 raise AssertionError('Asked for norm_by_lib_size=True, but this flat does not have a valid total_num_reads')
             newa /= (self.get_total_num_reads() / 100000000.0)# Quick hack to get it back to ints.
+
+        if smooth:
+            def smooth_func(scalars, weight: float):  # Weight between 0 and 1
+                last = scalars[0]  # First value in the plot (first timestep)
+                smoothed = list()
+                for point in scalars:
+                    smoothed_val = last * weight + (1 - weight) * point  # Calculate smoothed value
+                    smoothed.append(float(smoothed_val))  # Save it
+                    last = smoothed_val  # Anchor the last smoothed value
+
+                return smoothed
+
+            # HIGHER = SMOOTHER cannot go above 1.0
+
+            return newa, np.array(smooth_func(newa, 0.95)) # np.array(f_cubic(x))
 
         if type in self._available_draw_types:
             return newa

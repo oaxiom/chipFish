@@ -118,9 +118,7 @@ class app():
                     # collect "macs_bed" so "macs_bed" must go first.
                     # There can only be one mode
                     # Gods, just do strip() and regex it!?!?!!!!
-                    if "kde_track:" in line: # Must go before "track"
-                        mode = "kde_track"
-                    elif "split_track" in line:
+                    if "split_track" in line:
                         mode = "split_track"
                     elif "track:" in line:
                         mode = "track"
@@ -141,6 +139,7 @@ class app():
 
                     # process options
                     options = self.__do_options(line, mode)
+
                 elif mode:
                     path = os.path.expanduser(track_path)
                     tt = line.strip().split()
@@ -180,7 +179,8 @@ class app():
                         elif mode == "macs_bed":
                             f = format.minimal_bed
                             f["skiplines"] = 1 # Changes in recent version of macs bed.
-                            self.draw.bindTrack(genelist(filename=os.path.join(path, name), format=f), options=options, label=label)
+                            self.draw.bindTrack(genelist(filename=os.path.join(path, name), format=f),
+                                                options=options, label=label)
 
                         elif mode == "genome": # must be a glb
                             # First see if I can get it out of the pre-packaged genomes:
